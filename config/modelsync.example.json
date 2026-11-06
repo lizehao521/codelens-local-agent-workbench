@@ -1,0 +1,9 @@
+{
+  "MODEL_SOURCE_URL": "https://your-upstream.example.com/catalog.json",
+  "MODEL_REFRESH_INTERVAL_MS": 3600000,
+  "MODEL_SYNC_RETRY_MAX_ATTEMPTS": 3,
+  "MODEL_SYNC_RETRY_BACKOFF_MS": 1000,
+  "MODEL_SOURCE_ALLOW_INSECURE": false,
+  "MODEL_SOURCE_ALLOW_PRIVATE": false,
+  "MODEL_SOURCE_FORMAT": "native"
+}

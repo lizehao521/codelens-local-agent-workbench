@@ -1,0 +1,132 @@
+{
+  "at": "2026-11-06T06:26:46.497Z",
+  "states": {
+    "completed": {
+      "outcome": "completed",
+      "statusCode": "RUN_COMPLETED",
+      "runId": "7f2fb685-2d09-42e6-9fb2-8254c0ff12a3",
+      "text": "本轮汇报 已完成 RUN_COMPLETED 7f2fb685-2d09-42e6-9fb2-8254c0ff12a3 改动 1 个文件（1 次写入）；工具调用 1 次；耗时 2.9s；token 390（复核 0） 文件改动 1 390 tokens"
+    },
+    "createdOnDisk": true,
+    "createdContent": "# 新建文件\n\n由夹具上游创建。\n",
+    "auditCreate": {
+      "shot": "docs\\review-20261105\\shots\\09-audit-new-file.png",
+      "treeItems": [
+        "demo",
+        "new-created.md新增1 次"
+      ],
+      "treeHasNewBadge": true,
+      "diffHead": "1 | @@ 第 1 步 · call_fixture_1 · 快照 cp_6a6bb4aee59b72071946bee7 · 新增 | 2 | @@ -0,0 +1,4 @@ | 3 | +# 新建文件 | 4 | +",
+      "headerHasNewBadge": true
+    },
+    "undoConfirm": {
+      "shot": "docs\\review-20261105\\shots\\10-undo-confirm.png",
+      "text": "确认撤销？ 将恢复 0 个文件、删除 1 个新建文件。 删除仅针对本 run 新建、且内容未被改动过的文件；你后来改过的会保留。 只处理 demo/new-created.md，不影响其他文件。 取消 确认撤销",
+      "defaultFocus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "取消",
+        "focusVisible": true
+      }
+    },
+    "undoCancel": {
+      "shot": "docs\\review-20261105\\shots\\11-undo-cancelled.png",
+      "dialogClosed": true,
+      "fileStillExists": true,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "撤销该文件",
+        "focusVisible": true
+      }
+    },
+    "undoDone": {
+      "shot": "docs\\review-20261105\\shots\\12-undo-done.png",
+      "dialogClosed": true,
+      "fileDeleted": true,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "撤销整个 run",
+        "focusVisible": true
+      },
+      "notice": []
+    },
+    "contextFull": {
+      "shot": "docs\\review-20261105\\shots\\13-context-full.png",
+      "outcome": "error",
+      "statusCode": "RUN_ERROR",
+      "text": "本轮汇报 出错 RUN_ERROR f44b3343-b682-42aa-907c-74797bcd69f8 工具调用 1 次；耗时 0.5s；token 33100（复核 0） 上下文已满：压缩自检未通过（缺：无历史可压缩），任务已回退。建议：新建会话，或把任务拆小后重试 成本超阈值 异常终止 33.1k tokens",
+      "hasReason": true
+    }
+  },
+  "keyboard": {
+    "dialogOpen": true,
+    "defaultFocus": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "取消",
+      "focusVisible": true
+    },
+    "dialogText": "确认撤销？ 将恢复 0 个文件、删除 1 个新建文件。 删除仅针对本 run 新建、且内容未被改动过的文件；你后来改过的会保留。 只处理 demo/new-created.md，不影响其他文件。 取消 确认撤销",
+    "tab1": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "确认撤销",
+      "focusVisible": true
+    },
+    "shiftTab1": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "取消",
+      "focusVisible": true
+    },
+    "cancel": {
+      "dialogClosed": true,
+      "fileStillExists": true,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "撤销该文件",
+        "focusVisible": true
+      }
+    },
+    "reopen": true,
+    "tabToConfirm": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "确认撤销",
+      "focusVisible": true
+    },
+    "confirm": {
+      "dialogClosed": true,
+      "fileDeleted": true,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "撤销整个 run",
+        "focusVisible": true
+      },
+      "notice": []
+    },
+    "tabAfterUndo": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "demo",
+      "focusVisible": true
+    }
+  },
+  "console": {
+    "errorCount": 0,
+    "errors": [],
+    "faviconRequested": false
+  },
+  "network": {
+    "totalRequests": 367,
+    "crossOriginCount": 0,
+    "crossOrigin": [],
+    "failed": [],
+    "httpErrors": [],
+    "rollbackPosts": 1
+  }
+}

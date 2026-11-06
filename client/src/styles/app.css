@@ -1,0 +1,77 @@
+/* ============================================================
+   CodeLens 组件层补充样式
+   铁律：只允许引用 design-tokens.css 定义的 Token 变量，禁止裸色值
+   ============================================================ */
+
+/* ── Markdown 内容排版（结果卡 / 结论摘要） ── */
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+.markdown-body p { margin: 0.5rem 0; }
+.markdown-body ul { margin: 0.5rem 0; padding-left: 1.25rem; list-style: disc; }
+.markdown-body ol { margin: 0.5rem 0; padding-left: 1.25rem; list-style: decimal; }
+.markdown-body li { margin: 0.25rem 0; }
+.markdown-body h1,
+.markdown-body h2 { margin: 0.75rem 0 0.5rem; font-size: var(--text-lg); font-weight: 600; }
+.markdown-body h3 { margin: 0.5rem 0 0.25rem; font-size: var(--text-base); font-weight: 600; }
+.markdown-body h4 { margin: 0.5rem 0 0.25rem; font-size: var(--text-base); font-weight: 500; }
+.markdown-body blockquote {
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--c-border);
+  color: var(--c-text-secondary);
+}
+.markdown-body hr { margin: 0.75rem 0; border: none; border-top: 1px solid var(--c-border); }
+.markdown-body table { margin: 0.5rem 0; border-collapse: collapse; font-size: var(--text-sm); }
+.markdown-body th,
+.markdown-body td { border: 1px solid var(--c-border); padding: 0.25rem 0.5rem; }
+.markdown-body th { background: var(--c-bg-tertiary); font-weight: 500; }
+.markdown-body a { color: var(--c-accent); }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body strong { font-weight: 600; }
+
+/* ── CodeMirror 6 语法高亮覆写为设计 Token ──
+   CM6 的 style module 为运行时注入，与静态样式表竞争；
+   用更高特异性选择器确保 Token 色板胜出（语法色随主题切换） */
+.cm-editor .cm-content .tok-keyword { color: var(--c-syntax-keyword) !important; }
+.cm-editor .cm-content .tok-atom { color: var(--c-syntax-keyword) !important; }
+.cm-editor .cm-content .tok-bool { color: var(--c-syntax-keyword) !important; }
+.cm-editor .cm-content .tok-self { color: var(--c-syntax-keyword) !important; }
+.cm-editor .cm-content .tok-string { color: var(--c-syntax-string) !important; }
+.cm-editor .cm-content .tok-string-2 { color: var(--c-syntax-string) !important; }
+.cm-editor .cm-content .tok-comment { color: var(--c-syntax-comment) !important; font-style: italic; }
+.cm-editor .cm-content .tok-meta { color: var(--c-syntax-comment) !important; }
+.cm-editor .cm-content .tok-processingInstruction { color: var(--c-syntax-comment) !important; }
+.cm-editor .cm-content .tok-number { color: var(--c-syntax-number) !important; }
+.cm-editor .cm-content .tok-typeName { color: var(--c-syntax-number) !important; }
+.cm-editor .cm-content .tok-namespace { color: var(--c-syntax-number) !important; }
+.cm-editor .cm-content .tok-propertyName { color: var(--c-syntax-number) !important; }
+.cm-editor .cm-content .tok-attributeName { color: var(--c-syntax-number) !important; }
+.cm-editor .cm-content .tok-variableName-2 { color: var(--c-syntax-number); }
+.cm-editor .cm-content .tok-unit { color: var(--c-syntax-number); }
+.cm-editor .cm-content .tok-literal { color: var(--c-syntax-number); }
+.cm-editor .cm-content .tok-labelName { color: var(--c-syntax-number); }
+.cm-editor .cm-content .tok-className { color: var(--c-syntax-function) !important; }
+.cm-editor .cm-content .tok-definition { color: var(--c-syntax-function); }
+.cm-editor .cm-content .tok-heading { color: var(--c-syntax-function); font-weight: 600; }
+.cm-editor .cm-content .tok-tagName { color: var(--c-syntax-keyword) !important; }
+.cm-editor .cm-content .tok-attributeValue { color: var(--c-syntax-string) !important; }
+.cm-editor .cm-content .tok-regexp { color: var(--c-syntax-builtin); }
+.cm-editor .cm-content .tok-escape { color: var(--c-syntax-builtin); }
+.cm-editor .cm-content .tok-special { color: var(--c-syntax-builtin); }
+.cm-editor .cm-content .tok-operator { color: var(--c-text-secondary); }
+.cm-editor .cm-content .tok-punctuation { color: var(--c-text-secondary); }
+.cm-editor .cm-content .tok-typeOperator { color: var(--c-text-secondary); }
+.cm-editor .cm-content .tok-invalid { color: var(--c-danger); }
+.cm-editor .cm-content .tok-link { color: var(--c-accent); }
+
+/* ── Toast 淡入（250ms + 标准缓动；reduced-motion 关闭） ── */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.toast-in { animation: toast-in 250ms var(--c-ease-standard); }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in { animation: none; }
+}

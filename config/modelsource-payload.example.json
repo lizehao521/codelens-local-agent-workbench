@@ -1,0 +1,23 @@
+{
+  "providers": [
+    {
+      "id": "demo-models",
+      "name": "Demo 自动获取 Provider",
+      "baseUrl": "https://api.demo.example/v1",
+      "defaultModel": "demo-fast",
+      "docsUrl": "https://demo.example/docs",
+      "models": [
+        {
+          "id": "demo-fast",
+          "name": "Demo Fast",
+          "capabilities": { "function_calling": true, "context_window": 128000 }
+        },
+        {
+          "id": "demo-reason",
+          "name": "Demo Reasoner",
+          "capabilities": { "function_calling": false, "context_window": 32000 }
+        }
+      ]
+    }
+  ]
+}

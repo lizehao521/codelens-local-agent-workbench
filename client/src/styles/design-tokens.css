@@ -1,0 +1,351 @@
+/* ============================================================
+   CodeLens Design Tokens — 唯一样式来源
+   来源：docs/phase1-uiux.md §3/§4/§6，Spec §8 锁定
+   铁律：组件层禁止裸色值（唯一例外 #fff/#000 仅允许出现在本文件 Token 定义处）
+   ============================================================ */
+
+@import "tailwindcss";
+
+/* ── 主题变量：深色（默认） ── */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 背景层（亮度递进表达层级，不用阴影） */
+  --c-bg-primary: #0D1117;
+  --c-bg-secondary: #161B22;
+  --c-bg-tertiary: #21262D;
+  --c-bg-inset: #010409;
+
+  /* 前景层 */
+  --c-text-primary: #F0F6FC;
+  --c-text-secondary: #8B949E;
+  --c-text-tertiary: #6E7681;
+  --c-text-on-accent: #FFFFFF;
+
+  /* 边框层 */
+  --c-border: #30363D;
+  --c-border-subtle: rgba(255, 255, 255, 0.06);
+
+  /* 强调色 Signal Blue（每屏可见使用 ≤ 2 处） */
+  --c-accent: #197FE6;
+  --c-accent-hover: #3B96F5;
+  --c-accent-active: #1268C4;
+  --c-accent-subtle: rgba(25, 127, 230, 0.14);
+
+  /* 语义色 */
+  --c-success: #3FB950;
+  --c-warning: #D29922;
+  --c-danger: #F85149;
+  --c-success-subtle: rgba(63, 185, 80, 0.12);
+  --c-warning-subtle: rgba(210, 153, 34, 0.12);
+  --c-danger-subtle: rgba(248, 81, 73, 0.12);
+
+  /* diff 专用（内容层） */
+  --c-diff-add-bg: rgba(63, 185, 80, 0.12);
+  --c-diff-add-text: #3FB950;
+  --c-diff-del-bg: rgba(248, 81, 73, 0.12);
+  --c-diff-del-text: #F85149;
+
+  /* 语法高亮（内容渲染层，rehype-highlight 类名） */
+  --c-syntax-keyword: #FF7B72;
+  --c-syntax-string: #A5D6FF;
+  --c-syntax-comment: #8B949E;
+  --c-syntax-function: #D2A8FF;
+  --c-syntax-number: #79C0FF;
+  --c-syntax-builtin: #FFA657;
+
+  /* 阴影 */
+  --c-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --c-shadow-drag: 0 16px 40px rgba(0, 0, 0, 0.40);
+}
+
+/* ── 主题变量：浅色 ── */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --c-bg-primary: #F9FAFB;
+  --c-bg-secondary: #F3F4F6;
+  --c-bg-tertiary: #E5E7EB;
+  --c-bg-inset: #F3F4F6;
+
+  --c-text-primary: #111827;
+  --c-text-secondary: #6B7280;
+  --c-text-tertiary: #9CA3AF;
+  --c-text-on-accent: #FFFFFF;
+
+  --c-border: #E5E7EB;
+  --c-border-subtle: #F3F4F6;
+
+  --c-accent: #0B5CCB;
+  --c-accent-hover: #0A4FA8;
+  --c-accent-active: #083F87;
+  --c-accent-subtle: rgba(11, 92, 203, 0.08);
+
+  --c-success: #16A34A;
+  --c-warning: #D97706;
+  --c-danger: #DC2626;
+  --c-success-subtle: rgba(22, 163, 74, 0.08);
+  --c-warning-subtle: rgba(217, 119, 6, 0.10);
+  --c-danger-subtle: rgba(220, 38, 38, 0.08);
+
+  --c-diff-add-bg: rgba(22, 163, 74, 0.10);
+  --c-diff-add-text: #16A34A;
+  --c-diff-del-bg: rgba(220, 38, 38, 0.08);
+  --c-diff-del-text: #DC2626;
+
+  --c-syntax-keyword: #CF222E;
+  --c-syntax-string: #0A3069;
+  --c-syntax-comment: #6E7781;
+  --c-syntax-function: #8250DF;
+  --c-syntax-number: #0550AE;
+  --c-syntax-builtin: #953800;
+
+  --c-shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --c-shadow-drag: 0 16px 40px rgba(0, 0, 0, 0.16);
+}
+
+/* ── 静态 Token（双主题共用） ── */
+:root {
+  --c-font-ui: "Inter", "Noto Sans SC", -apple-system, "Segoe UI", sans-serif;
+  --c-font-mono: "JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --c-motion-fast: 150ms;
+  --c-motion-base: 250ms;
+  --c-ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --c-caret-blink: 1s step-end infinite;
+
+  --c-focus-ring: 0 0 0 3px var(--c-accent-subtle);
+
+  --c-z-sticky: 100;
+  --c-z-dropdown: 200;
+  --c-z-drawer: 300;
+  --c-z-modal: 400;
+  --c-z-toast: 500;
+}
+
+/* ── Tailwind 映射：静态值 ── */
+@theme {
+  --font-sans: var(--c-font-ui);
+  --font-mono: var(--c-font-mono);
+
+  /* 字号阶梯（UIUX §4.2，px + rem 双写值） */
+  --text-xs: 0.75rem;      /* 12px 徽章/时间戳/行号/语言标签 */
+  --text-sm: 0.8125rem;    /* 13px 辅助说明/会话摘要 */
+  --text-base: 0.875rem;   /* 14px UI 基准 */
+  --text-md: 1rem;         /* 16px 对话正文 */
+  --text-lg: 1.25rem;      /* 20px 卡片标题 */
+  --text-xl: 1.5rem;       /* 24px 页面主标题 */
+  --text-2xl: 2rem;        /* 32px 空状态主标题 */
+  --text-code: 0.875rem;   /* 14px 代码 */
+
+  /* 圆角（上限 12px，禁止更大） */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* 字距场景（UIUX §4.3，用 arbitrary tracking 或下表） */
+  --tracking-caps: 0.08em;
+}
+
+/* ── Tailwind 映射：动态值（随主题切换） ── */
+@theme inline {
+  --color-bg-primary: var(--c-bg-primary);
+  --color-bg-secondary: var(--c-bg-secondary);
+  --color-bg-tertiary: var(--c-bg-tertiary);
+  --color-bg-inset: var(--c-bg-inset);
+
+  --color-text-primary: var(--c-text-primary);
+  --color-text-secondary: var(--c-text-secondary);
+  --color-text-tertiary: var(--c-text-tertiary);
+  --color-text-on-accent: var(--c-text-on-accent);
+
+  --color-border: var(--c-border);
+  --color-border-subtle: var(--c-border-subtle);
+
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-active: var(--c-accent-active);
+  --color-accent-subtle: var(--c-accent-subtle);
+
+  --color-success: var(--c-success);
+  --color-warning: var(--c-warning);
+  --color-danger: var(--c-danger);
+  --color-success-subtle: var(--c-success-subtle);
+  --color-warning-subtle: var(--c-warning-subtle);
+  --color-danger-subtle: var(--c-danger-subtle);
+
+  --color-diff-add-bg: var(--c-diff-add-bg);
+  --color-diff-add-text: var(--c-diff-add-text);
+  --color-diff-del-bg: var(--c-diff-del-bg);
+  --color-diff-del-text: var(--c-diff-del-text);
+
+  --color-syntax-keyword: var(--c-syntax-keyword);
+  --color-syntax-string: var(--c-syntax-string);
+  --color-syntax-comment: var(--c-syntax-comment);
+  --color-syntax-function: var(--c-syntax-function);
+  --color-syntax-number: var(--c-syntax-number);
+  --color-syntax-builtin: var(--c-syntax-builtin);
+
+  --shadow-overlay: var(--c-shadow-overlay);
+  --shadow-drag: var(--c-shadow-drag);
+}
+
+/* ── 基础层 ── */
+@layer base {
+  html {
+    font-family: var(--c-font-ui);
+    font-size: 14px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--c-bg-primary);
+    color: var(--c-text-primary);
+    font-family: var(--c-font-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 全项目统一焦点环：仅 :focus-visible 出现 */
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--c-focus-ring), 0 0 0 2px var(--c-accent);
+  }
+
+  ::selection {
+    background: var(--c-accent-subtle);
+  }
+
+  /* 细滚动条（IDE 观感） */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-border) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--c-border);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* ── 语法高亮 token（rehype-highlight / highlight.js 类名） ── */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-name,
+.hljs-section,
+.hljs-tag,
+.hljs-meta .hljs-keyword {
+  color: var(--c-syntax-keyword);
+}
+
+.hljs-string,
+.hljs-symbol,
+.hljs-attribute,
+.hljs-addition,
+.hljs-meta {
+  color: var(--c-syntax-string);
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--c-syntax-comment);
+  font-style: italic;
+}
+
+.hljs-function,
+.hljs-title,
+.hljs-title.function_,
+.hljs-class .hljs-title,
+.hljs-section .hljs-title {
+  color: var(--c-syntax-function);
+}
+
+.hljs-number,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-params,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: var(--c-syntax-number);
+}
+
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-deletion,
+.hljs-attr {
+  color: var(--c-syntax-builtin);
+}
+
+/* ── 动效降级 ── */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --c-motion-fast: 0ms;
+    --c-motion-base: 0ms;
+    --c-caret-blink: none;
+  }
+}
+
+/* 流式 caret（唯一循环动画） */
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: var(--c-accent);
+  vertical-align: text-bottom;
+  animation: caret-blink var(--c-caret-blink);
+}
+
+/* 排队等待首 token 的三点脉冲 */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.dot-pulse > span {
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+
+.dot-pulse > span:nth-child(2) { animation-delay: 0.15s; }
+.dot-pulse > span:nth-child(3) { animation-delay: 0.3s; }
+
+/* 骨架 shimmer */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+
+.skeleton {
+  background-image: linear-gradient(
+    90deg,
+    var(--c-bg-tertiary) 0%,
+    var(--c-border) 50%,
+    var(--c-bg-tertiary) 100%
+  );
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.5s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}

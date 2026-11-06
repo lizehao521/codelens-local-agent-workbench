@@ -1,0 +1,54 @@
+# CodeLens 桌面安装包配置（Windows x64 / NSIS）
+appId: com.codelens.desktop
+productName: CodeLens
+copyright: Copyright © 2026 CodeLens
+
+directories:
+  # 输出目录放在 Desktop 之外（C:/codelens-build），规避本机云同步/杀软
+  # （ctyun cloudshare、ecloudDisk、火绒 HipsDaemon）对 Desktop 目录持有文件句柄，
+  # 导致 electron-builder 解包/重命名 app.asar 时报 EBUSY。如换到不同机器或不再同步该目录，
+  # 可改回相对路径 "release"。
+  output: C:/codelens-build/release
+  buildResources: build
+
+# 打进去的就是 Electron 外壳 + 服务端单文件包；前端产物走 extraResources
+files:
+  - main.cjs
+  - server-bundle.cjs
+  - lib/*.cjs
+  - package.json
+  - build/icon.png
+
+asar: true
+compression: normal
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: x64
+  artifactName: CodeLens-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CodeLens
+  # 自定义卸载收尾（兜底清理桌面/开始菜单快捷方式），见 build/installer.nsh
+  include: build/installer.nsh
+  # 必须为 false：用户数据（会话库 / 沙箱 / 审批密钥）落在 %APPDATA%\CodeLens，
+  # 与程序目录分离，升级或重装都不应丢数据（docs/桌面端安装说明.md 的契约）。
+  # 曾误设为 true，实测卸载会连带删除整个用户数据目录；且 NSIS 升级流程会先静默
+  # 调用旧版卸载器，导致「升级一次，历史会话全没」。需要彻底清除请走
+  # desktop/scripts/uninstall-cleanup.cjs（显式、可审计）。
+  deleteAppDataOnUninstall: false
+
+extraResources:
+  - from: ../server/dist-client
+    to: client
+    filter:
+      - "**/*"
+  - from: ../config/modelsync.json
+    to: modelsync.json

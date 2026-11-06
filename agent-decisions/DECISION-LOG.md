@@ -1,0 +1,93 @@
+# 决策日志（Agent 平台改造线）
+
+> 格式：[时间] Phase N - 决策描述 - 原因 - 影响
+> 本文件仅记录**通用 Agent 工具调用平台**改造线的决策（Phase 1 架构调研）。
+> CodeLens 原编程助手线的决策见 `docs/decisions/DECISION-LOG.md`。
+
+[2026-10-21 15:10] Agent Phase 1 - 架构文档产出：`docs/agent/phase1-architecture.md` - 原因：CodeLens 改造为通用 Agent 平台，需先锁定复用边界、Agent 循环、双通道、工具注册表、记忆、SSE 契约、安全清单 - 影响：Phase 2 实现的唯一技术契约
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 1：SQLite 驱动选用 Node 22 内置 `node:sqlite`，不引入 `better-sqlite3` - 原因：本机实测 `node:sqlite` 功能完备（WAL/事务/prepared statement/backup 均可用），零安装零编译；而 `better-sqlite3` 安装实测耗时 2 分 30 秒，且预编译产物与 Node 版本强绑定、跨平台仍可能退化为源码编译（需 Python + MSVC）——任务书原假设「better-sqlite3 必需 node-gyp 编译」经实测已不成立，但其残余风险仍高于零依赖方案 - 影响：ADR-011；代价是承担 Node 22 上 Stability 1.1（实验性）风险，通过锁定 Node 22.22.2 精确版本 + `--disable-warning=ExperimentalWarning` + 薄数据访问层（`repositories/db.ts`）缓解；启动脚本需加该 flag
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 2：Agent 循环采用显式状态机的单 Agent 循环，不引入 LangGraph/AutoGen 等框架 - 原因：本项目复杂度在工具与安全而不在编排拓扑；框架会与既有 Express 分层、TS 类型体系、SSE 契约冲突，核心诉求仍需自写 - 影响：ADR-012；五个终止条件（正常/超迭代/超预算/用户中止/熔断）逐一可测
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 3：双通道以统一 IR（`TurnIR`/`ToolCallIR`）隔离，上层不感知通道差异 - 原因：联网核实发现 5 家 provider 的 function calling 差异远超预期（DeepSeek 保留 `reasoning_content` 否则 400、GLM 必传 `tool_stream:true`、Qwen 不支持 `tool_choice:required`、Kimi `required` 仅 kimi-k3、旧 `deepseek-reasoner` 完全不支持 Function Call），差异必须集中在能力表与两个归一化函数内 - 影响：ADR-013；现有 `openai-compatible.adapter.ts` 的 tool_calls 分支把 arguments 降级成纯文本，必须重写
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 4：工具注册表以 `ToolDefinition` 为核心，规范名（点号）与线上名（下划线）双轨，MCP 工具规范名加 `mcp.<serverId>.<tool>` 前缀 - 原因：保证内置工具永不被 MCP 覆盖，冲突消解规则可预测；禁用语义采用「LLM 看不到被禁工具」而非「知道但不能用」；**线上名消毒是必需项**——provider 强制 `tools[].function.name` 匹配 `^[a-zA-Z0-9_-]{1,64}$`，点号会导致整个请求 HTTP 400 - 影响：ADR-014；新增工具须走 8 步标准流程；架构文档 §6.1.1
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 5：MCP 接入选用 `@modelcontextprotocol/client` 2.3.1（v2 稳定线，2026-07-27 发布），stdio transport，按需启动 + 故障隔离 - 原因：v2 为当前稳定线，v1 仅维护至 v2 发布后 6 个月；MCP 故障必须只影响 MCP 工具自身，不影响内置工具 - 影响：ADR-015；本期只接 tools 能力，不接 resources/prompts/sampling
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 6：SSE 事件协议由 4 种扩展为 12 种，事件名 `delta` 改 `token`，类型定义前后端双向对齐 - 原因：工具调用过程需完整可视化；审批与上下文压缩必须对用户可见 - 影响：ADR-016；前端 `stream.ts` 改造期同时兼容 `delta` 与 `token`；同一次请求内可能两次 `meta`（降级重发），前端约定后到者覆盖
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 7：记忆压缩采用滑动窗口（按整轮丢弃）+ 工具结果外置（>4000 字符只留摘要与 resultId）+ LLM 摘要压缩，压缩失败降级为确定性摘要 - 原因：长工具结果会挤占决策空间；压实必须保真（用户约束/未决事项/错误原因不可丢）；压缩失败不得中断主循环 - 影响：ADR-017；新增内置工具 `tool_result_read` 供回查，校验 resultId 归属当前 sessionId
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 8：工具失败一律作为「负向 observation」回喂 LLM 而非终止循环，连续失败 3 次熔断 - 原因：任一失败即终止会让 Agent 几乎不可用；无限重试会让循环永不结束 - 影响：ADR-018；错误信息须可操作（哪个参数错、期望类型、可用工具名）但不含堆栈/绝对路径/内网拓扑
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 9：安全边界为「风险四级分级 + 不可逆操作强制审批 + SSRF/路径 jail 硬拦截 + 内置工具零 shell 执行」 - 原因：Agent 自主调用工具天然引入 SSRF、路径越界、命令注入三类高危面 - 影响：ADR-019；刻意不提供 `process_exec`；MCP 子进程以 `shell:false` spawn、禁 shell 元字符、不透传服务端密钥；信任模型（配置 MCP = 授权本机用户权限）必须在 UI 明示
+
+[2026-10-21 15:10] Agent Phase 1 - 一致性裁决 10：依赖升级一律不采纳，lockfile 锁定 - 原因：核实发现 `lucide-react` 1.61.0 / `vite` 8.3.5 有更新、`typescript` 7.0.2 已发布，但 P0 已锁定 lucide-react 1.60.0 且 TS 7 的 typescript-eslint 生态未验证（延续 OD-3）；本期唯一新增依赖是 `@modelcontextprotocol/client` 2.3.1 - 影响：ADR-011~019；`react`/`zustand`/`zod`/`express`/`tailwindcss` 均已是最新
+
+[2026-10-21 15:40] Agent Phase 1 - 一致性裁决 11：跨文档一致性裁决（C-1~C-10）写入架构文档 §16 - 原因：PRD / UIUX / 架构三份文档由不同成员并行产出，存在 10 处分歧（工具名点号命名空间、风险等级体系、SSE 事件命名风格、审批回执通道、Message.content 粒度、工具状态与事件关系等），必须收敛为唯一契约 - 影响：架构文档 §16.1（裁决总表）与 §16.2（PM/设计侧需回改的点）；ADR-014 / ADR-016 已按裁决重写
+
+[2026-10-21 15:40] Agent Phase 1 - **P0 阻断项 C-1**：工具名双轨制（规范名点号 + 线上名下划线） - 原因：PRD §5.1 与 UIUX §3.1 要求的点号命名空间（`http.request`）**违反所有 OpenAI 兼容 provider 的 `tools[].function.name` 强校验 `^[a-zA-Z0-9_-]{1,64}$`**，实测导致整个请求 HTTP 400（非跳过单工具），已有两起生产事故佐证 - 影响：架构文档 §6.1.1（消毒规则 + 回程映射）；ADR-014；**Phase 2 第一个里程碑必须有「注册带点号工具 → 断言下发为下划线 → 断言 LLM 返回能反查」的端到端测试**（单测拦不住——单测里工具名只是字符串 key，从不经过 LLM）
+
+[2026-10-21 15:40] Agent Phase 1 - 一致性裁决 12：撤销「delta 改名 token」的提议，保持 `delta` 不变 - 原因：现有前端 `stream.ts` 的 `case 'delta'` 已在消费该事件，改名收益为零、回归风险为正；UIUX §4.1 假设的 `text-delta` 一并对齐为 `delta` - 影响：架构文档 §8.1（C-3）；ADR-016
+
+[2026-10-21 15:35] Phase 1 门禁 - 一致性裁决 1：PRD 配色 6 处越界色值改为语义 Token 引用 - 原因：PM 沿用参考文档的 Tailwind 示例值（#10b981/#1a56db/#3b82f6/#f8fafc/#f1f5f9），不在锁定色板内，前端照抄即绕过 design-tokens.css 硬编码（P0-3）- 影响：docs/agent/phase1-prd.md §14.4、§18
+
+[2026-10-21 15:35] Phase 1 门禁 - 一致性裁决 2：PRD 状态机由六态改为「六态 + skipped 注脚值」，枚举以架构 §8.1 七值为准 - 原因：§6.3「从某步重跑」需要 skipped 标记被截断步骤，原六态无处安放，QA 照六态验收会误判架构多一态 - 影响：docs/agent/phase1-prd.md §6.1、§11 第 3 项
+
+[2026-10-21 15:40] Phase 1 门禁 - 一致性裁决 3（SSE 事件命名，阻断级）：统一下划线 snake_case，架构 §16.1 的 C-2「中划线」表述作废 - 原因：架构文档自相矛盾（§8.1 事件表 10 个事件全下划线，C-2 裁决句写 kebab 且自身举例又是下划线）；UIUX v1.1.0 零残留；下划线与已锁定 DB 列名（tool_calls/session_id/args_json）同源，改名收益为零回归风险为正 - 影响：docs/agent/phase1-architecture.md §16.1 C-2、ADR-016；此条不改则前后端监听器与事件名错配，工具可视化整体失效
+
+[2026-10-21 15:40] Phase 1 门禁 - 一致性裁决 4（工具名双轨制，P0 阻断）：规范名点号（落库/展示/审计）+ 线上名下划线（仅下发给 LLM） - 原因：架构师实测所有 OpenAI 兼容 provider 强制 tools[].function.name 匹配 ^[a-zA-Z0-9_-]{1,64}$，点号直接下发会导致整个请求 400 - 影响：PRD §5.1/§5.2 补 wireName 与消毒规则；Phase 2 第一个里程碑必须有点号工具名端到端反查测试
+
+[2026-10-21 15:40] Phase 1 - 采纳架构师 5 条 advisory：Phase 2 首里程碑加点号反查端到端测试；start 命令加 --disable-warning=ExperimentalWarning（node:sqlite 实验性警告污染 SSE 控制台）；CI/Docker 锁精确 Node 22.22.2（node:sqlite 随小版本演进，需可复现）
+
+[2026-10-21 15:40] Phase 1 - 流程教训（写入团队约定）：跨文档改口径必须以「最新落盘文件」为准，不得以对方转述为准 - 原因：PM 与设计曾各自基于对方旧版改稿，产生一轮版本错位与两轮额外修订成本，中间态一度让 PRD §6.1 与 §6.3 自相矛盾 - 影响：后续 Phase 2/3 的协作文风
+
+[2026-10-21 16:40] Agent Phase 1 - 一致性裁决 13：PRD 收敛 —— 采纳 PRD §5.2 的函数式 `enabled(ctx)`、§5.1 锁定的 9 个内置工具、§5.3 的安全网关分层与 HTTPS-only、§7.2 三层压缩、§8 错误分类表、§7.1 跨浏览器恢复码与 9 张表 - 原因：PM 已在 PRD 中锁定产品侧硬约束，架构必须落地而非另起一套 - 影响：架构 §6（工具清单/enabled）、§7.5（三层压缩 + 机械自检 + 锚点保活）、§7.6（恢复码）、§9.1（错误分类表）、§9.4b（供应商降级链）、§10.0（安全网关）、§11.1/§11.2（端点与表）
+
+[2026-10-21 16:40] Agent Phase 1 - 一致性裁决 14：删除是 `fs.write` 的 `operation` 取值，不单设 `fs.delete` 工具；长结果回查不新增 `tool.result.read`，改为 artifacts 落盘在工作区内由 `fs.read` 按路径回查 - 原因：工具越少 LLM 选择准确率越高、上下文成本越低（PRD P3 自身即关注「工具太多不知道怎么选」）；artifacts 在沙箱内即可被现有文件工具覆盖，零新增能力面 - 影响：架构 §6.6.1/§6.6.2、§7.5.1.1；工具总数从初稿 13 收敛到 9
+
+[2026-10-21 16:40] Agent Phase 1 - 一致性裁决 15：SSE 事件不采用 PRD §15 的 `tool_call_start/delta/end` 三段式，采用 `tool_call` / `tool_progress` / `tool_result` / `tool_approval_required` / `context_notice` - 原因：工具参数是结构化对象，整体到达才可校验才有意义；上游 SSE 的 arguments 分片已在服务端累积成完整 JSON，三段式只会让前端多写一个半截参数渲染分支而无信息增益 - 影响：架构 §8.1.1 给出逐项对照表；OpenAPI 按本架构更新；**设计侧 UIUX v1.1.0 已按此实现，零返工**
+
+[2026-10-21 16:40] Agent Phase 1 - 一致性裁决 16：降级标识字段名锁定 `channel`（`'native' | 'react'`），不用 `mode` - 原因：`mode` 与前端暗/亮主题 `mode` 撞名；`function_calling` 是 PRD 能力表的列名语义（`supports_function_calling`）而非运行时通道名；设计侧 v1.1.0 已按 `channel` 实现，采纳以免返工 - 影响：架构 §8.1.1 C-11、§16.1；ADR-016
+
+[2026-10-21 16:40] Agent Phase 1 - **事实纠正**：PRD §16 D2 / §18 OD-06 的「MCP TS SDK v2 ESM-only、协议 2026-07-28 处于 beta」两处描述不准确 - 原因：本机实测 `@modelcontextprotocol/client@2.3.1` 的 `exports` 同时提供 `import` 与 `require` 双入口（非 ESM-only）；官方 versioning 页明确协议 2026-07-28 属 **Current 正式版**（v2 SDK 在 2026-07 期间为 RC beta，现已发布稳定版） - 影响：架构 §18.5 记录实测证据；**锁定 2.3.1 的结论不变**（理由是 API 稳定性与可复现构建，而非 beta 风险）；OD-A6 关闭
+
+[2026-10-21 16:40] Agent Phase 1 - 一致性裁决 17：开放决策登记册落盘至 `agent-decisions/OPEN-DECISIONS.md` 而非 PRD 指定的 `docs/decisions/open-decisions.md` - 原因：①`docs/decisions/OPEN-DECISIONS.md` 是 v1.0 编程助手线的既有册子，改造线不应混入；②**Windows NTFS 文件名大小写不敏感**，`open-decisions.md` 与既有 `OPEN-DECISIONS.md` 命中同一文件，写入会直接改写 v1.0 登记册——而 Phase 1 约束是「禁止修改 docs/ 下已有文档」（已实测确认该冲突） - 影响：OD-A1~A10 共 10 条登记，其中 OD-A3/A4/A6 三条就地关闭；两条线各自维护册子并交叉引用
+
+[2026-10-22 02:10] Agent Phase 2 - 一致性裁决 18（阻断级）：SQLite Schema 由 6 张改为 Spec §6 锁定的 7 张 —— 补 `approvals` / `provider_capabilities` / `tool_results`，去 `artifacts` / `local_events` - 原因：架构 §7.2 初版与自身 API 及 PRD 验收冲突——缺 `approvals` 则 AC-04 第三攻击场景与 AC-06 无处落库；缺 `provider_capabilities` 则 AC-01「不每轮试探」落空；缺 `tool_results` 则 `tool_calls.result_ref` 悬空；而 `artifacts` / `local_events` 已被 PRD v1.1 与 Spec §3 判定不建 - 影响：docs/agent/phase1-architecture.md §7.2 全量重写；新增 docs/agent/schema.sql；ADR-023
+
+[2026-10-22 02:10] Agent Phase 2 - 一致性裁决 19：`POST/GET /api/v1/events`（埋点）本期不实现，路由层不挂载 - 原因：Spec §3 沿用 PRD §14.5「埋点走前端本地事件日志，服务端不落库」，且 `local_events` 表已判不建 - 影响：架构 §11.1 表中该两行以 Spec §3 为准标注；docs/agent/openapi.yaml 不定义这两个路径；细化文档 §3.4
+
+[2026-10-22 02:10] Agent Phase 2 - 一致性裁决 20：SSE 事件名统一下划线，10 个事件 payload 逐事件锁定；`tool_result.status` 七值（pending/running/success/failed/timeout/rejected/skipped）共用同一事件 - 原因：Spec §11 已知坑「SSE 事件名错配」；C-2 已裁决不设 `tool_rejected` / `tool_skipped` 单独事件 - 影响：docs/agent/openapi.yaml 的 Sse* schema；细化文档 §4；ADR-016
+
+[2026-10-22 02:10] Agent Phase 2 - 一致性裁决 21：审批令牌 HMAC 绑定 `sessionId|toolCallId|toolName|argsDigest|expiresAt`，令牌或参数摘要不匹配 → 409 + 异常审计（`mismatch_count` 累计 3 次置 aborted） - 原因：AC-04 第三条攻击场景要求「客户端提交的待执行内容与服务端令牌不匹配 → 拒绝执行 + 409 + 异常审计」；AC-06 要求审计不可篡改 - 影响：新增 `utils/hmac.ts` / `utils/digest.ts`；ADR-024；细化文档 §5
+
+[2026-10-22 02:10] Agent Phase 2 - 一致性裁决 22：现有 adapter L144-151 的 tool_calls 降级为纯文本实现**必须删除**，重写为 `providers/tool-call-normalizer.ts` 的「按 index 累积 + 流末 finalize」纯函数 - 原因：丢 `id`/`name`/`index` 导致回程 `role:"tool"` 无法匹配（上游 400）、并行调用结果错位 - 影响：server/src/providers/openai-compatible.adapter.ts（Phase 3 实施，本阶段不动代码）；10 条纯函数测试点；ADR-025
+
+[2026-10-22 02:10] Agent Phase 2 - 遗留待裁决（L-1~L-5 报项目总监）：①架构 §11.2 仍写「9 张表」且保留含 artifacts/local_events 的重复表清单，本次按指令只改 §7.2 未同步；②Spec §5 端点表 20 行与「18 个端点」口径不符；③`provider_capabilities` 由 Spec 的 5 列扩到 12 列；④`messages.tokens` 与旧稿 `token_estimate` 命名冲突；⑤`/agent/stream` 的 `MISSING_API_KEY` 走 SSE `error` 而非 HTTP 401（依 Spec §12 第 6 步断言）
+
+[2026-10-26 10:20] 缺陷修复 Phase 1 - D-04 桌面审批主密钥 Windows ACL 硬化：main.cjs 在日志通道就绪后调用 hardenSecretFileAcl()，Win 用 `icacls /inheritance:r /grant:r <用户名>:F` 收紧 approval-secret.key、非 Win `chmod 0o600`，对历史旧密钥同样覆盖 - 原因：Windows 忽略 writeFileSync 的 mode 0o600 位、NTFS 继承目录 ACL，明文主密钥可被同机任意进程/用户读取并离线伪造任意高危操作审批令牌（源头是 approval-secret.key 就是审批令牌 HMAC 主密钥） - 影响：新增 `desktop/lib/win-acl.cjs`（纯函数 buildIcalcsArgs）+ `desktop/test/win-acl.test.cjs`（5 例：正常例绿 + 4 破坏夹具红：追加式 /grant、去 /inheritance:r、授 Users/Everyone、空参数抛错）+ `desktop/package.json` 加 `test` 脚本；**改坏验证**：临时把 `/grant:r` 改成 `/grant` → 2 例转红，还原后 5/5 绿；**live 验证**：本机 icacls 实测收紧后仅剩当前用户 `(F)`、继承标记 `(I)` 消失（BEFORE：SYSTEM/Administrators/用户三继承 ACE）。教训：Windows 上 POSIX mode 位不生效，敏感文件必须 icacls ACL 而非 chmod
+
+[2026-10-26 12:26] 缺陷修复 Phase 2 - D-05 MCP command 白名单：新增 server/src/validators/mcp-command.ts 的 isAllowedMcpCommand()（拒绝 shell 解释器/LOLBin 黑名单 + 允许受信任运行时 + 允许绝对路径可执行文件 + 末尾 fail-closed），接入 mcp.schema.ts 的 superRefine（Create 与 Patch 两处） - 原因：原 COMMAND_RE 仅字符级正则，cmd/powershell/bash/wsl/mshta 等解释器及 LOLBin 均可作 command，构成「配置即本地任意代码执行」面（spawn 虽 shell:false，但当 command 本身是解释器时，args 仍被其执行） - 影响：server/tests/mcp-command.test.ts 16 例（正常例 + 破坏夹具：shell 解释器、LOLBin、绝对路径 cmd.exe、元字符、空命令、裸未知命令 fail-closed、大小写归一）；改坏 fail-closed→放行 后 1 例转红、还原 16/16 绿；全量 vitest 34 文件 310 例全绿、tsc 0 错。诚实边界（已注明）：受信任运行时 + 恶意 args 仍可执行代码，属 ADR-019 trust model（UI 明示 + 导入二次确认），命令白名单挡不住这条
+
+[2026-10-26 12:35] 缺陷修复 Phase 3 - AUDIT-006 前端接线四类能力 + 清理 v1.0 孤儿：新增 client/src/lib/agent-request.ts 纯函数 buildAgentStreamRequest（taskKind 透传）+ TASK_MODES；AgentWorkbench 加任务模式选择器（自动/分析/解释/调试/优化），经 buildRequest patch 携带 taskKind；AgentStreamRequest 增 taskKind?: Task；删除孤儿 DiffView.tsx + lib/diff.ts，package.json 移除 @codemirror/* ×12 + @uiw/react-codemirror + diff 依赖 - 原因：服务端 task-prompts.ts 已完整实现四类任务提示词，但前端零消费（buildRequest 从不发 taskKind、无选择器）；DiffView 单栏且无消费者、CodeMirror 依赖 0 import（v1.0 遗留死重） - 影响：client/tests/agent-request.test.ts 4 例（taskKind 透传 + 缺省不带 + 破坏夹具丢弃 taskKind 必红 + 四模式齐全）；改坏「丢 patch」→ 2 例转红、还原 4/4 绿、client 全量 vitest 5 文件 37 例绿、tsc 0 错；**package-lock.json 需 npm install 重新生成以同步依赖删除（本阶段未跑，标注待同步）**
+
+[2026-10-26 12:40] 缺陷修复 Phase 4 - AUDIT-018 会话列表越权：SessionsController.list 在无 X-Device-Token 时 fail-closed 返回空列表（修复前 repository 拿到 null 哈希会降级为无条件 SELECT *，泄露同实例所有会话） - 原因：device_token_hash 是「免登录」模型的账号身份，列表必须按身份过滤，匿名=无身份=空集 - 影响：sessions-access.test.ts 新增 3 例 LIST 测试（无 token 空/正确 token 仅自有/错误 token 空）；改坏「去掉 fail-closed 早退」→ 无 token 例转红、还原后全量 server 34 文件 313 例绿 + tsc 0 错 - 教训（重要）：fail-closed 必须放控制器层而非 repository 层——repository.list(null) 被 RecoveryService.recover 内部用于按恢复码全表扫描（哈希按 session 加盐无法索引）；第一版把 null→空集写进 repo，recovery.service.test 5 例转红被全量套件抓到，遂回退 repo、把设备过滤上移到 REST 控制器。判断「改这里安全吗」要看全部调用方，不止当前入口
+
+[2026-10-26 12:52] 缺陷修复 Phase 5 - D-03 桌面同源协议白名单 + F-05 卸载数据清理：D-03 抽纯函数 desktop/lib/external-url.cjs 的 isSafeExternalUrl（仅 http/https 放行，file:/smb:/codelens:/javascript:/vbscript:/data: 及畸形 URL 全部 fail-closed deny），接入 main.cjs 的 setWindowOpenHandler + will-navigate——修复前任何非同源 URL 都 shell.openExternal（file:/系统文件或注册协议可被外部处理）；F-05 electron-builder.yml deleteAppDataOnUninstall false→true + 新增 scripts/uninstall-cleanup.cjs 兜底卸载脚本（仅删 %APPDATA%/CodeLens，APPDATA 缺失或末段非 CodeLens 拒绝删除） - 影响：desktop/test/external-url.test.cjs 6 例 + uninstall-cleanup.test.cjs 2 例（node:test）；改坏「放行 file:」→ file: 拒绝例转红、还原后 13/13 绿 - 修正：package.json test 脚本 `node --test test/` 实际报 Cannot find module ...\desktop\test（把 test/ 当模块加载），改为 `node --test` 自动发现才真正可跑。F-05 的 yml 值+脚本存在属静态闸（无法在不真卸载的测试环境动态验证 NSIS 行为），已显式声明并附守卫纯函数测试，不当作动态 PASS
+
+[2026-10-26 13:40] 缺陷修复 Phase 6 - AUDIT-019 HTTP 4MB 截断 + 非幂等重试：http-request.tool.ts 超 HTTP_RESPONSE_CAP 时不再 req.destroy()（原会 ECONNRESET 落入 TOOL_NETWORK retryable:true、truncatedBytes 标志丢失），改为立即以已收字节 resolve（truncatedBytes:true 作结果标志送达 LLM）并导出 HTTP_RESPONSE_CAP 供测试；executor.service.ts 重试门把仅拦 network 的 networkSafe 升级为 idempotentSafe——非幂等工具只有天然只读 GET/HEAD 才自动重试，覆盖 network/upstream/timeout/rate_limit 全部 RETRYABLE_KINDS（原 upstream 5xx 会重复 POST 副作用） - 影响：server/tests/http-request-truncate.test.ts（真实 loopback + SSRF 桩回写 CAP+1KB，断言 ok:true/truncatedBytes:true/无 error/body≤4000）+ executor.service.test.ts 增 3 例（非幂等 upstream 不重试/非幂等 GET 重试/幂等 upstream 重试）；改坏「重试门退化只拦 network」→ 非幂等 upstream 例转红、还原后全量 server 35 文件 317 例绿 + tsc 0 错 - 关键裁决：计划写「截断错误」，但 error-kind 为锁定 10 值枚举且 ADR-023 已移除 payload_too_large（oversize 结果用 tool_result.truncated），截断不是工具执行失败，故落点为结果标志 truncatedBytes 而非新增错误类
+
+[2026-10-26 13:50] 缺陷修复 Phase 7 - AUDIT-008 overrideArguments 前端接线：client/src/lib/agent-request.ts 抽 rerunFromPatch(callId, overrideArguments?)（有参=resumeFromCallId+overrideArguments，无参=仅 resumeFromCallId）；AgentWorkbench.handleRerunFrom 改签名为 (callId, overrideArguments?) 并透传该步原参数；ToolCallCard.onRerunFrom 增 overrideArguments 参数、button 传 call.arguments（string 旧数据则 null 不覆写）、修正「callId+overrideArguments」注释与签名矛盾；AgentMessageItem 4 处 onRerunFrom 类型同步 - 影响：client/tests/agent-request.test.ts 增 3 例（携带/无参/破坏夹具丢 overrideArguments 必红）；改坏「丢 overrideArguments」→ 2 例转红、还原后 client 全量 5 文件 40 例绿 + tsc 0 错 - 语义裁决：单步重试(handleRetryStep)仍只 resumeFromCallId（服务端 AC-10「callId only」），只有「从某步重跑」携带 overrideArguments
+
+[2026-10-26 14:00] 缺陷修复 Phase 8 - D-08 桌面加载失败错误页兜底：抽 desktop/lib/error-page.cjs 的 buildErrorPageHtml({title,detail,logPath})（HTML 转义注入值）；main.cjs 增监听 did-fail-load/render-process-gone/preload-error + 20s 首字节超时，失败加载窗口内错误页（含日志路径 + 重新加载按钮）替代原有 dialog.showErrorBox（弹框无重试路径）；loadURL(appOrigin) 的 catch 改走 failPage，服务器启动失败的 dialog 保留 - 影响：desktop/test/error-page.test.cjs 4 例（含注入/引号转义破坏夹具）+ node --check 全绿；改坏「escapeHtml 不转义」→ 2 例转红、还原后桌面 17/17 绿 - 说明：Electron 三事件监听 + 超时属静态闸（无 Electron 运行环境无法动态复现），已标注 UNEXEC 不作动态 PASS；纯函数转义/缺省部分有真实单测
+
+[2026-10-26 17:20] 缺陷修复 Phase 9 - AUDIT-028 token 预算/对账（计划标注「先澄清」→ 需求澄清：预算上限=上下文窗口推导硬顶；usage=端点+SSE/投影都要）。预算：loop-budget.ts 增 tokenBudget 字段 + deriveTokenBudget(contextWindow×2，非正数回退 UNLIMITED) + checkTermination(state, usedTokens) 达上限→budget_exhausted；agent-loop 在 decision 后设 budget.tokenBudget、meta/done 增 tokenBudget、checkTermination 传累计 prompt+completion。对账：MessageRepository.usageBySession 按 messages.usage_json 聚合精确 prompt/completion（损坏 JSON 按 0）；SessionsController.usage 新增 GET /sessions/:id/usage（assertOwned 越权校验）+ detail 投影增 usage；sessions.routes 注册 /usage - 影响：tests/loop-guardrails.test.ts +3、tests/sessions-detail.test.ts +4；改坏「删 token 检查」→硬顶例转红、「删 usage 累加」→聚合+投影 2 例转红，还原后 server 35 文件 324 例绿 + tsc 0 错
+
+[2026-10-26 17:30] 缺陷修复 Phase 10 - AUDIT-027 ReAct 工具目录计上下文：agent-loop buildView 此前对 ReAct 传 undefined（目录在 react-channel 之后才拼），75% 占用率系统性低估；现改传 renderToolCatalogue(toolDefs)（与 runReactTurn 同一份 selectTools 结果）；token-estimator estimateMessagesTokens 的 tools 支持字符串（ReAct 目录按原样计，native 仍 JSON.stringify） - 影响：tests/token-estimator.test.ts +1；改坏「字符串回调 JSON 二次包裹」→该例转红，还原后 server 全量绿 + tsc 0 错（首次误用 providerTools 而非 toolDefs → tsc TS2345，已改回 toolDefs）
+
+[2026-10-26 17:40] 缺陷修复 Phase 11 - AUDIT-036 path-jail 异步化：path-jail.ts 抽出共享 validateInput（词法层）+ computeVerdict（相对性裁决），新增 resolveInSandboxAsync（node:fs/promises realpath/access，JailFs 可注入）；同步 resolveInSandbox 保留给 security-gateway 与既有单测；fs-read/fs-list/fs-write 三个文件工具 handler + readSandboxFile 改 await resolveInSandboxAsync - 影响：tests/path-jail.test.ts +2（异步/同步 parity + 注入 stub 断言 realpath/exists 被调用）；改坏「异步退化委托同步」→ stub 例转红，还原后 server 全量绿 + tsc 0 错 - 说明：security-gateway 的 runGateway/assessRisk 为同步执行前闸，其 resolveInSandbox（含 realpathSync）仍同步，已诚实标注；Windows 上 realpathSync 返回 8.3 短名而异步 realpath 返回长名，二者同一文件，parity 只比 ok/code/sandboxRelative
+
+[2026-10-26 17:50] 缺陷修复 Phase 12 - 一致性/卫生：README env 表 7/22 → 补齐 22 项并更正 AGENT_DB_PATH 默认（原写 server/data/agent.db，实为 <server>/data/codelens.db）；.gitignore 增 desktop/release/（此前只覆盖 release-final*/release2）；新增 scripts/assert-env-docs.mjs 静态断言（README env 表键集 == env.ts schema 键集 + gitignore 忽略 desktop/release）→ 通过（22/22）。残留目录清理：10 个 desktop/release* 中 5 个已删，另 5 个（release / release-final / release-final-1792720220494 / …1792720515122 / …1792730849812）因 app.asar 被运行中的 Electron 进程占用（win-unpacked 正在被加载）无法删除——已由 .gitignore 覆盖（git 卫生已闭合），物理清理需关闭当前桌面应用后重跑 Remove-Item

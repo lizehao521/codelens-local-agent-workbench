@@ -1,0 +1,38 @@
+{
+  "name": "codelens-server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CodeLens programming agent backend: LLM proxy layer (BYOK, zero retention)",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke-real.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "compression": "^1.8.2",
+    "cors": "^2.8.6",
+    "express": "5.3.0",
+    "helmet": "^8.3.0",
+    "undici": "^8.12.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.4",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vitest": "^5.0.5"
+  }
+}

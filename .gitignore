@@ -1,0 +1,81 @@
+node_modules/
+dist/
+dist-client/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+!.env.*.example
+.DS_Store
+.vscode/
+.idea/
+
+# 密钥 / 证书 / 本地凭据（任何层级）
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.secret
+id_rsa
+id_rsa.pub
+
+# 本地运行时数据（审批密钥、SQLite 库、沙箱工作区、checkpoint 快照）
+server/data/
+server/sandbox/
+server/workspace/
+.codelens/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# 构建产物与中间件（保留 desktop/build 的打包资源：icon.ico/png、installer.nsh）
+build/
+out/
+!desktop/build/
+!desktop/build/**
+*.tmp
+*.tsbuildinfo
+.trae/
+.cache/
+
+# 本地 SQLite 运行时数据（含 e2e/smoke 测试残留）
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 桌面端打包废物目录（历史解包残留，体积大；当前输出目录已改为 C:/codelens-build/release）
+desktop/release/
+desktop/release-final/
+desktop/release-final-*/
+desktop/release2/
+
+# 根目录误放的安装包副本（正式产物在 C:/codelens-build/release）
+CodeLens-Setup-*.exe
+
+# 桌面端离线镜像与打包中间产物（体积大，构建时生成）
+desktop/.electron-mirror/
+desktop/server-bundle.cjs
+
+# WorkBuddy 会话工作区与元数据（非项目源码）
+.workbuddy/
+*.genie
+
+# e2e / drill 测试的沙箱工作目录（每次运行留一个 drill-r2-* / e2e-* 目录，
+# 内含测试写的临时文件；不属于源码，且会随运行次数累积）
+server/sandbox/
+
+# 默认工作目录（Agent 的沙箱根，不是源码）
+server/workspace/
+
+# 工具结果落盘（executor 的 .artifacts/<id>.json，运行时产物）
+.artifacts/
+server/.artifacts/
+
+# 审计/性能/依赖脚本生成的中间产物（基线数据、统计 JSON，非源码）
+.audit_*.json
+.dep_*.json
+.perf-*.json

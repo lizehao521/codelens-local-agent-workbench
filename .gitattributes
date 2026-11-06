@@ -1,0 +1,8 @@
+# 统一行尾：仓库内以 LF 存储，检出时按平台（Windows → CRLF / Linux → LF）
+* text=auto
+
+# 二进制不做行尾转换
+*.png binary
+*.ico binary
+*.exe binary
+*.db binary

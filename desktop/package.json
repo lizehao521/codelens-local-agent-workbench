@@ -1,0 +1,20 @@
+{
+  "name": "codelens-desktop",
+  "productName": "CodeLens",
+  "version": "2.0.0",
+  "private": true,
+  "author": "CodeLens",
+  "description": "CodeLens desktop shell (Electron) - 通用 Agent 工具调用平台本地安装包",
+  "main": "main.cjs",
+  "scripts": {
+    "bundle:server": "node scripts/bundle-server.mjs",
+    "icon": "node scripts/gen-icon.mjs",
+    "dist": "electron-builder --win --x64",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2"
+  }
+}

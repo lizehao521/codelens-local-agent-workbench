@@ -1,0 +1,18 @@
+{
+  "name": "codelens",
+  "version": "2.0.0",
+  "private": true,
+  "description": "CodeLens - 编程 Agent Web 应用（React + Express 全栈）",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "build": "npm run build --prefix client && npm run build --prefix server && node scripts/prepare-dist.mjs",
+    "start": "npm run install:all && npm run build && node server/dist/app.js",
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "test": "npm test --prefix server && npm test --prefix client",
+    "e2e": "bash scripts/e2e.sh"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

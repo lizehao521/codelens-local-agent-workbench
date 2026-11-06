@@ -1,0 +1,297 @@
+{
+  "at": "2026-11-06T04:12:53.218Z",
+  "states": {
+    "empty": {
+      "shot": "docs/review-20261105/shots/01-empty-chat.png",
+      "text": "CodeLens 新会话 新建会话 输入恢复码恢复会话 加载中… 还未配置 API Key，前往设置填写后 Agent 才能调用模型 去配置 新会话 会话 审计台 判据塔 沙箱权限 上下文 0（0%） 一句话交代，Agent 动手；每步可见，风险处你拍板 工具调用、参数与结果都摊在界面上；写文件、执行命令等高风险动作按等级先请示你，密钥只留在本机（BYOK）。未配置 Key 时可先用免费试用（上游与模型由服务端固定）；自带 Key 后即可自由切换上游与模型。 用计算工具算 (1234.5*87)/13，并说明每一步 读取 data 目录下的文件列表 生成一个 UUID 并格式化为 JSON 任务模式 自动 分析 解释 调试 优化 运行检视器 任务开始后，这里显示阶段、成本与风险。 阶段序列 尚未开始（等待首个阶段事件）。 风险项 暂无风险项。 连接中… deepseek · deepsee"
+    },
+    "emptyAudit": {
+      "shot": "docs/review-20261105/shots/02-empty-audit.png",
+      "text": "CodeLens 新会话 新建会话 输入恢复码恢复会话 加载中… 还未配置 API Key，前往设置填写后 Agent 才能调用模型 去配置 新会话 会话 审计台 判据塔 沙箱权限 还没有可审计的运行 先发起一次任务；有文件改动后，这里会按步骤列出快照 diff。 运行检视器 任务开始后，这里显示阶段、成本与风险。 阶段序列 尚未开始（等待首个阶段事件）。 风险项 暂无风险项。 连接中… deepseek · deepseek-v4-pro 本会话 0 条消息 跳到最新"
+    },
+    "running": {
+      "shot": "docs/review-20261105/shots/03-running-waiting.png",
+      "stage": "connecting",
+      "bannerText": "正在连接模型… 已等待 0s 中止",
+      "ariaLive": {
+        "role": "status",
+        "ariaLive": "polite",
+        "text": "正在连接模型…"
+      }
+    },
+    "completed": {
+      "shot": "docs/review-20261105/shots/04-run-report.png",
+      "outcome": "completed",
+      "statusCode": "RUN_COMPLETED",
+      "runId": "bfebc35e-aea4-44ca-93af-13d10c34afb2",
+      "text": "本轮汇报 已完成 RUN_COMPLETED bfebc35e-aea4-44ca-93af-13d10c34afb2 改动 1 个文件（1 次写入）；工具调用 1 次；耗时 10.0s；token 390（复核 0） 文件改动 1 390 tokens",
+      "noteOnDisk": "# 夹具原始内容\n\n第一行。\n\n夹具追加的一行。\n"
+    },
+    "audit": {
+      "shot": "docs/review-20261105/shots/05-audit-diff.png",
+      "files": [
+        "demo",
+        "notes.md1 次"
+      ],
+      "diffHead": "1 | @@ 第 1 步 · call_fixture_1 · 快照 cp_0dd4b71f711858f62c00a953 | 2 | @@ -2,3 +2,5 @@ | 3 |  "
+    },
+    "conflictAudit": {
+      "shot": "docs/review-20261105/shots/06-audit-resume-conflict.png",
+      "notice": [
+        "发现 1 个文件冲突，已停止续跑（未写盘）"
+      ]
+    },
+    "conflict": {
+      "shot": "docs/review-20261105/shots/07-resume-conflict-card.png",
+      "text": "续跑已阻止：文件与你上次授权后不一致 Agent 没有自动续跑，也没有覆盖你的改动。请先把下列文件改回期望状态，或撤销本次 run 的改动后再续跑。 demo/notes.md · 期望 4fbddd5c · 实际 2601b5bd · 第 1 步 重新检查",
+      "ariaLive": {
+        "role": "alert",
+        "ariaLive": "assertive"
+      },
+      "diskAfterPrecheck": "# 用户手改\n\n我改了这一行。\n",
+      "diskChangedDuringPrecheck": true
+    },
+    "error": {
+      "shot": "docs/review-20261105/shots/08-error-state.png",
+      "text": "上游（127.0.0.1:9099）认证失败（HTTP 401）：API Key 无效、已过期或无该模型权限。 下一步：到 设置 → Provider 重新填写 API Key（注意别把厂商 key 与 relay key 混用）。 上游原文：invalid api key（夹具构造的鉴权失败） 错误代码：UPSTREAM_ERROR 建议：当前上游拒绝了这份凭据。到「设置 → Provider」更新 API Key；若是免费试用，配自己的 Key 即可自由切换上游。 去配置自己的 Key",
+      "ariaLive": {
+        "role": "alert",
+        "ariaLive": null
+      }
+    }
+  },
+  "console": {
+    "errorCount": 2,
+    "errors": [
+      {
+        "method": "Log.entryAdded",
+        "url": "http://localhost:5173/favicon.ico",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "method": "Log.entryAdded",
+        "url": "http://localhost:5173/api/v1/runs/bfebc35e-aea4-44ca-93af-13d10c34afb2/resume",
+        "text": "Failed to load resource: the server responded with a status of 409 (Conflict)"
+      }
+    ]
+  },
+  "keyboard": {
+    "tabToAudit": {
+      "steps": 22,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "审计台",
+        "focusVisible": true
+      }
+    },
+    "shiftTabBack": {
+      "afterShiftTab": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "会话",
+        "focusVisible": true
+      },
+      "afterTabBack": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "审计台",
+        "focusVisible": true
+      }
+    },
+    "tabToFile": {
+      "steps": 7,
+      "focus": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "notes.md1 次",
+        "focusVisible": true
+      }
+    },
+    "tabToMeta": {
+      "steps": 2,
+      "focus": {
+        "tag": "DIV",
+        "role": "button",
+        "text": "1@@ 第 1 步 · call_fixture_1 · 快照 cp_0dd4b71f711858f62c00a953",
+        "focusVisible": true
+      },
+      "stepDetailOpened": true,
+      "stepDetailText": "第 1 步 cp_0dd4b71f711858f62c00a953 关闭 调用：call_fixture_1 快照：cp_0dd4b71f711858f62c00a953 审批：本步无审批记录"
+    },
+    "escOnStepDetail": {
+      "stillOpen": false,
+      "focus": {
+        "tag": "DIV",
+        "role": "button",
+        "text": "1@@ 第 1 步 · call_fixture_1 · 快照 cp_0dd4b71f711858f62c00a953",
+        "focusVisible": true
+      }
+    },
+    "tabToUndo": {
+      "steps": 22,
+      "reached": true,
+      "focusAtUndo": {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "撤销该文件",
+        "focusVisible": true
+      },
+      "confirmDialogShown": false,
+      "focusAfterUndo": {
+        "tag": "BODY",
+        "role": null,
+        "text": "CodeLens请用夹具上游写一个文件新建会话输入恢复码恢复会话请用夹具上游写一个文件刚刚 · 4 条消息重生成当前会话",
+        "focusVisible": false
+      },
+      "stepDetailAfterUndo": true,
+      "noteAfterUndo": "# 夹具原始内容\n\n第一行。\n"
+    },
+    "escAfterUndo": {
+      "stillOpen": false,
+      "focus": {
+        "tag": "BODY",
+        "role": null,
+        "text": "CodeLens请用夹具上游写一个文件新建会话输入恢复码恢复会话请用夹具上游写一个文件刚刚 · 4 条消息重生成当前会话",
+        "focusVisible": false
+      }
+    },
+    "focusLostPoints": {
+      "duringTabLoops": 2,
+      "afterUndo": "BODY"
+    }
+  },
+  "network": {
+    "totalRequests": 371,
+    "crossOriginCount": 0,
+    "crossOrigin": [],
+    "failed": [
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Other"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      },
+      {
+        "errorText": "net::ERR_ABORTED",
+        "canceled": true,
+        "type": "Fetch"
+      }
+    ],
+    "httpErrors": [
+      {
+        "status": 404,
+        "url": "http://localhost:5173/favicon.ico"
+      },
+      {
+        "status": 409,
+        "url": "http://localhost:5173/api/v1/runs/bfebc35e-aea4-44ca-93af-13d10c34afb2/resume"
+      }
+    ]
+  },
+  "keyboardDebug": {
+    "tabStepsToAudit": 22,
+    "lastTabs": [
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "新建会话",
+        "focusVisible": true
+      },
+      {
+        "tag": "INPUT",
+        "role": null,
+        "text": "搜索会话",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "输入恢复码恢复会话",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "请用夹具上游写一个文件刚刚 · 4 条消息",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "删除会话：请用夹具上游写一个文件",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "重生成当前会话恢复码",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "会话",
+        "focusVisible": true
+      },
+      {
+        "tag": "BUTTON",
+        "role": null,
+        "text": "审计台",
+        "focusVisible": true
+      }
+    ],
+    "shiftTabFocus": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "会话",
+      "focusVisible": true
+    },
+    "tabBackFocus": {
+      "tag": "BUTTON",
+      "role": null,
+      "text": "审计台",
+      "focusVisible": true
+    },
+    "viewButtons": [
+      {
+        "t": "会话",
+        "pressed": "false"
+      },
+      {
+        "t": "审计台",
+        "pressed": "true"
+      }
+    ],
+    "hasFileTree": true
+  }
+}

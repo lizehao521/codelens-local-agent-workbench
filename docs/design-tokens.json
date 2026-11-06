@@ -1,0 +1,118 @@
+{
+  "$schema": "design-tokens/v1",
+  "name": "CodeLens",
+  "source": "docs/phase1-uiux.md",
+  "theme": {
+    "strategy": "dark-first",
+    "attribute": "data-theme",
+    "values": ["dark", "light"],
+    "defaultFollowSystem": true
+  },
+  "color": {
+    "dark": {
+      "bg-primary": "#0D1117",
+      "bg-secondary": "#161B22",
+      "bg-tertiary": "#21262D",
+      "bg-inset": "#010409",
+      "text-primary": "#F0F6FC",
+      "text-secondary": "#8B949E",
+      "text-tertiary": "#6E7681",
+      "text-on-accent": "#FFFFFF",
+      "border": "#30363D",
+      "border-subtle": "rgba(255,255,255,0.06)",
+      "accent": "#197FE6",
+      "accent-hover": "#3B96F5",
+      "accent-active": "#1268C4",
+      "accent-subtle": "rgba(25,127,230,0.14)",
+      "success": "#3FB950",
+      "warning": "#D29922",
+      "danger": "#F85149",
+      "success-subtle": "rgba(63,185,80,0.12)",
+      "warning-subtle": "rgba(210,153,34,0.12)",
+      "danger-subtle": "rgba(248,81,73,0.12)",
+      "diff-add-bg": "rgba(63,185,80,0.12)",
+      "diff-add-text": "#3FB950",
+      "diff-del-bg": "rgba(248,81,73,0.12)",
+      "diff-del-text": "#F85149",
+      "syntax-keyword": "#FF7B72",
+      "syntax-string": "#A5D6FF",
+      "syntax-comment": "#8B949E",
+      "syntax-function": "#D2A8FF",
+      "syntax-number": "#79C0FF",
+      "syntax-builtin": "#FFA657",
+      "shadow-overlay": "0 8px 24px rgba(0,0,0,0.32)",
+      "shadow-drag": "0 16px 40px rgba(0,0,0,0.40)"
+    },
+    "light": {
+      "bg-primary": "#F9FAFB",
+      "bg-secondary": "#F3F4F6",
+      "bg-tertiary": "#E5E7EB",
+      "bg-inset": "#F3F4F6",
+      "text-primary": "#111827",
+      "text-secondary": "#6B7280",
+      "text-tertiary": "#9CA3AF",
+      "text-on-accent": "#FFFFFF",
+      "border": "#E5E7EB",
+      "border-subtle": "#F3F4F6",
+      "accent": "#0B5CCB",
+      "accent-hover": "#0A4FA8",
+      "accent-active": "#083F87",
+      "accent-subtle": "rgba(11,92,203,0.08)",
+      "success": "#16A34A",
+      "warning": "#D97706",
+      "danger": "#DC2626",
+      "success-subtle": "rgba(22,163,74,0.08)",
+      "warning-subtle": "rgba(217,119,6,0.10)",
+      "danger-subtle": "rgba(220,38,38,0.08)",
+      "diff-add-bg": "rgba(22,163,74,0.10)",
+      "diff-add-text": "#16A34A",
+      "diff-del-bg": "rgba(220,38,38,0.08)",
+      "diff-del-text": "#DC2626",
+      "syntax-keyword": "#CF222E",
+      "syntax-string": "#0A3069",
+      "syntax-comment": "#6E7781",
+      "syntax-function": "#8250DF",
+      "syntax-number": "#0550AE",
+      "syntax-builtin": "#953800",
+      "shadow-overlay": "0 8px 24px rgba(0,0,0,0.12)",
+      "shadow-drag": "0 16px 40px rgba(0,0,0,0.16)"
+    }
+  },
+  "font": {
+    "ui": ["Inter", "Noto Sans SC", "-apple-system", "Segoe UI", "sans-serif"],
+    "mono": ["JetBrains Mono", "Fira Code", "Menlo", "Monaco", "Consolas", "Liberation Mono", "monospace"],
+    "selfHosted": ["@fontsource-variable/inter", "@fontsource/noto-sans-sc", "@fontsource-variable/jetbrains-mono"]
+  },
+  "text": {
+    "xs": { "size": "12px", "lineHeight": 1.4, "usage": "徽章/时间戳/行号/语言标签", "font": "mono" },
+    "sm": { "size": "13px", "lineHeight": 1.5, "usage": "辅助说明/会话摘要", "font": "ui" },
+    "base": { "size": "14px", "lineHeight": 1.5, "usage": "UI 基准", "font": "ui" },
+    "md": { "size": "16px", "lineHeight": 1.6, "usage": "对话正文", "font": "ui" },
+    "lg": { "size": "20px", "lineHeight": 1.3, "usage": "卡片标题", "font": "ui" },
+    "xl": { "size": "24px", "lineHeight": 1.2, "usage": "页面主标题", "font": "ui" },
+    "2xl": { "size": "32px", "lineHeight": 1.1, "usage": "空状态主标题", "font": "ui" },
+    "code": { "size": "14px", "lineHeight": 1.6, "usage": "代码区与代码块", "font": "mono" }
+  },
+  "space": {
+    "1": "4px", "2": "8px", "3": "12px", "4": "16px", "6": "24px", "8": "32px"
+  },
+  "radius": {
+    "sm": "4px", "md": "8px", "lg": "12px", "full": "9999px"
+  },
+  "motion": {
+    "fast": "150ms", "base": "250ms",
+    "ease": "cubic-bezier(0.25,0.1,0.25,1)",
+    "caretBlink": "1s step-end infinite",
+    "forbidden": ["cubic-bezier(0.68,-0.55,0.265,1.55)", "width/height animation", ">3 concurrent animations"]
+  },
+  "zIndex": { "sticky": 100, "dropdown": 200, "drawer": 300, "modal": 400, "toast": 500 },
+  "icons": {
+    "library": "lucide-react",
+    "version": "1.60.0",
+    "sizes": [16, 20, 24],
+    "strokeWidth": 2,
+    "forbidden": "emoji as functional icon; second icon library"
+  },
+  "breakpoints": { "tablet": 768, "desktop": 1024 },
+  "accentDiscipline": "max 2 visible accent uses per screen"
+}

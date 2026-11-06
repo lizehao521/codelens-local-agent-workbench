@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeLens v2.0 · 产品现状架构图 · 2026-11-05</title>
+<style>
+  :root{
+    --bg:#f6f7f9;
+    --surface:#ffffff;
+    --ink:#18202c;
+    --muted:#5d6878;
+    --faint:#8b95a5;
+    --line:#e0e5ec;
+    --line-strong:#c9d2df;
+    --primary:#2f5fd0;
+    --primary-soft:#eef3fd;
+    --accent:#c2410c;
+    --accent-soft:#fdf0e8;
+    --ok:#157f5c;
+    --ok-soft:#e7f5ef;
+    --warn:#b7791f;
+    --warn-soft:#fbf2e3;
+    --none:#7c8696;
+    --none-soft:#eef0f3;
+    --client:#f2f6fe;
+    --server:#f1f8f4;
+    --storage:#fdf8ee;
+    --external:#f6f3fb;
+    --planning:#f5f6f8;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    font-size:15px;
+    line-height:1.6;
+  }
+  .wrap{max-width:1440px;margin:0 auto;padding:28px 32px 48px}
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- header ---------- */
+  .hero{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:26px 28px;
+    display:grid;
+    grid-template-columns:minmax(0,1.35fr) minmax(360px,.9fr);
+    gap:24px;
+    align-items:start;
+  }
+  .eyebrow{
+    margin:0 0 8px;
+    font-size:12px;
+    letter-spacing:.08em;
+    color:var(--primary);
+    font-weight:600;
+    text-transform:uppercase;
+  }
+  h1{
+    margin:0 0 8px;
+    font-size:30px;
+    line-height:1.25;
+    letter-spacing:-.01em;
+  }
+  .hero-sub{
+    margin:0;
+    color:var(--muted);
+    max-width:760px;
+    font-size:14px;
+  }
+  .hero-sub strong{color:var(--ink);font-weight:600}
+  .meta{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:hidden;
+  }
+  .meta-item{background:var(--surface);padding:12px 14px}
+  .meta-item span{
+    display:block;
+    font-size:11.5px;
+    color:var(--faint);
+    letter-spacing:.04em;
+    margin-bottom:3px;
+  }
+  .meta-item b{font-size:13px;font-weight:600;color:var(--ink)}
+
+  /* ---------- nav ---------- */
+  .nav{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin:18px 0 22px;
+  }
+  .nav a{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--muted);
+    border-radius:999px;
+    padding:6px 13px;
+    font-size:12.5px;
+    line-height:1.4;
+  }
+  .nav a:hover{border-color:var(--primary);color:var(--primary);text-decoration:none}
+
+  /* ---------- section ---------- */
+  section{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:22px 24px 24px;
+    margin-bottom:20px;
+  }
+  .section-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:18px;
+    flex-wrap:wrap;
+    margin-bottom:16px;
+  }
+  .section-head h2{
+    margin:0;
+    font-size:19px;
+    line-height:1.35;
+    letter-spacing:-.01em;
+  }
+  .section-head p{
+    margin:5px 0 0;
+    color:var(--muted);
+    font-size:13px;
+    max-width:860px;
+  }
+  .section-tag{
+    font-size:11.5px;
+    color:var(--faint);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:4px 10px;
+    white-space:nowrap;
+  }
+
+  /* ---------- legend & filter ---------- */
+  .legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    margin:0 0 12px;
+    font-size:12.5px;
+    color:var(--muted);
+  }
+  .legend-item{display:inline-flex;align-items:center;gap:7px}
+  .legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .legend-dot.ok{background:var(--ok)}
+  .legend-dot.warn{background:var(--warn)}
+  .legend-dot.none{background:var(--none)}
+  .filters{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 14px}
+  .filter{
+    appearance:none;
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--muted);
+    border-radius:999px;
+    padding:5px 11px;
+    font:inherit;
+    font-size:12.5px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .filter[aria-pressed="true"]{
+    border-color:var(--primary);
+    color:var(--primary);
+    background:var(--primary-soft);
+  }
+  .filter em{
+    font-style:normal;
+    color:var(--faint);
+    font-size:11px;
+  }
+  .filter[aria-pressed="true"] em{color:var(--primary)}
+
+  /* ---------- diagram ---------- */
+  .diagram-shell{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:#fbfcfd;
+    padding:10px;
+    overflow-x:auto;
+  }
+  .diagram-shell svg{
+    display:block;
+    width:100%;
+    min-width:940px;
+    height:auto;
+    font-family:inherit;
+  }
+  .scroll-hint{
+    display:none;
+    margin:6px 2px 0;
+    font-size:11.5px;
+    color:var(--faint);
+  }
+  @media (max-width:1100px){
+    .scroll-hint{display:block}
+    .diagram-shell svg{min-width:900px}
+  }
+  .svg text{font-family:inherit}
+  .band-title{fill:#18202c;font-size:15px;font-weight:600}
+  .band-sub{fill:#6b7686;font-size:11px}
+  .node-title{fill:#18202c;font-size:13px;font-weight:600}
+  .node-body{fill:#5d6878;font-size:11.5px}
+  .node-dim{fill:#98a1af;font-size:11.5px}
+  .hint{fill:#6b7686;font-size:10.5px}
+  .edge-label{fill:#5d6878;font-size:10.5px}
+  .flow-title{fill:#18202c;font-size:13px;font-weight:600}
+  .flow-sub{fill:#5d6878;font-size:11px}
+  .flow-time{fill:#2f5fd0;font-size:11px;font-weight:600}
+  .flow-note{fill:#6b7686;font-size:10.5px}
+  .dot{fill:#157f5c}
+  .dot.ok{fill:#157f5c}
+  .dot.warn{fill:#b7791f}
+  .dot.none{fill:#7c8696}
+  .module{cursor:pointer}
+  .module rect{fill:#ffffff;stroke:#dfe4ea;stroke-width:1}
+  .module:hover rect{stroke:#2f5fd0}
+  .module.selected rect{stroke:#2f5fd0;stroke-width:2}
+  .module.dim{opacity:.26}
+  .module:focus{outline:none}
+  .module:focus rect{stroke:#2f5fd0;stroke-width:2}
+  .plan-box{fill:#fbfbfc;stroke:#b9c0cc;stroke-width:1;stroke-dasharray:5 4}
+  .plan-dot{fill:#7c8696}
+  .plane-link{stroke:#2f5fd0;stroke-width:1.4;fill:none}
+  .plane-link.muted{stroke:#8b95a5}
+
+  /* ---------- detail panel ---------- */
+  .detail{
+    margin-top:12px;
+    border:1px solid var(--line);
+    border-left:3px solid var(--primary);
+    border-radius:10px;
+    background:#fbfcfe;
+    padding:12px 14px;
+    min-height:56px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .detail b{color:var(--ink)}
+  .detail .detail-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+  .detail .detail-title strong{font-size:13.5px;color:var(--ink)}
+
+  /* ---------- badges ---------- */
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    border-radius:999px;
+    padding:2px 8px;
+    font-size:11px;
+    line-height:1.5;
+    border:1px solid transparent;
+    white-space:nowrap;
+  }
+  .badge.ok{background:var(--ok-soft);color:var(--ok);border-color:#cfe9de}
+  .badge.warn{background:var(--warn-soft);color:var(--warn);border-color:#eedcb9}
+  .badge.none{background:var(--none-soft);color:var(--none);border-color:#dde1e7}
+  .badge.plain{background:#f3f5f8;color:var(--muted);border-color:var(--line)}
+
+  /* ---------- table ---------- */
+  .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+  thead th{
+    text-align:left;
+    background:#f7f9fb;
+    color:var(--muted);
+    font-weight:600;
+    font-size:12px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  tbody td{
+    padding:11px 12px;
+    border-bottom:1px solid #edf0f4;
+    vertical-align:top;
+    color:var(--muted);
+  }
+  tbody tr:last-child td{border-bottom:0}
+  tbody td:first-child{color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+  tbody td strong{color:var(--ink);font-weight:600}
+  tbody td .mono{
+    font-family:ui-monospace,"Cascadia Code",Consolas,monospace;
+    font-size:12px;
+    color:#3f4b5b;
+    background:#f5f7fa;
+    border-radius:4px;
+    padding:1px 4px;
+    word-break:break-all;
+  }
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .card{
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:15px 16px 16px;
+    background:#fcfcfd;
+  }
+  .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:7px}
+  .card h3{margin:0;font-size:14.5px;line-height:1.4;color:var(--ink)}
+  .card .tagline{font-size:11.5px;color:var(--faint);margin:2px 0 9px}
+  .card ul{margin:8px 0 0;padding-left:17px;color:var(--muted);font-size:12.5px}
+  .card li{margin-bottom:5px}
+  .card .file{
+    font-family:ui-monospace,"Cascadia Code",Consolas,monospace;
+    font-size:11.5px;
+    color:#3f4b5b;
+    background:#f2f4f8;
+    border-radius:4px;
+    padding:1px 4px;
+    word-break:break-all;
+  }
+  .card.warn{border-color:#eedcb9;background:#fffdf8}
+  .card.none{border-color:#dde1e7;background:#fbfbfc}
+
+  /* ---------- differences ---------- */
+  .diff-list{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+  .diff-list li{
+    border-left:3px solid var(--line-strong);
+    padding:2px 0 2px 12px;
+    color:var(--muted);
+    font-size:13px;
+  }
+  .diff-list li b{color:var(--ink);font-weight:600}
+  .diff-list li.strong{border-left-color:var(--accent)}
+  .diff-list li.ok{border-left-color:var(--ok)}
+
+  footer{
+    color:var(--faint);
+    font-size:11.5px;
+    padding:4px 4px 0;
+    line-height:1.7;
+  }
+
+  @media (max-width:980px){
+    .wrap{padding:18px 14px 34px}
+    .hero{grid-template-columns:1fr;padding:20px}
+    h1{font-size:24px}
+    .meta{grid-template-columns:1fr}
+    .cards{grid-template-columns:1fr}
+    section{padding:18px 16px 20px}
+    .section-head h2{font-size:17px}
+  }
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none;padding:0}
+    .nav,.filters{display:none}
+    section{break-inside:avoid;border-color:#ddd}
+    .diagram-shell{overflow:visible}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow">CodeLens v2.0 · 产品现状快照</p>
+      <h1>产品现状架构图</h1>
+      <p class="hero-sub">
+        一句话任务从输入到 <strong>done</strong> 的完整链路、每个模块的真实落地状态，以及已经闭环 / 尚未闭环的改动清单。
+        状态判定以<strong>当前磁盘代码</strong>为准，报告只作实测数据来源；代码领先报告的地方单独标注差异。
+      </p>
+    </div>
+    <div class="meta">
+      <div class="meta-item"><span>快照时间</span><b>2026-11-05（Asia/Shanghai）</b></div>
+      <div class="meta-item"><span>依据来源</span><b>代码 + 报告 §9–§12</b></div>
+      <div class="meta-item"><span>代码范围</span><b>server/src · client/src</b></div>
+      <div class="meta-item"><span>只读声明</span><b>未修改任何源码或配置</b></div>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="章节导航">
+    <a href="#arch">分层架构</a>
+    <a href="#flow">主数据流</a>
+    <a href="#done">已闭环改动</a>
+    <a href="#open">未闭环 / 规划</a>
+    <a href="#diff">差异说明</a>
+  </nav>
+
+  <section id="arch">
+    <div class="section-head">
+      <div>
+        <h2>分层架构</h2>
+        <p>客户端 → 服务端 → 本地存储 / 外部上游。色块表示层，连线表示主调用或数据方向；模块右上角圆点是落地状态，点击可查看判定依据。</p>
+      </div>
+      <span class="section-tag">24 个模块 · 4 层 + 规划区</span>
+    </div>
+
+    <div class="legend" aria-label="状态图例">
+      <span class="legend-item"><span class="legend-dot ok"></span>已实现：代码 + 测试 + 报告实测</span>
+      <span class="legend-item"><span class="legend-dot warn"></span>进行中：代码存在，但未闭环或报告未实测</span>
+      <span class="legend-item"><span class="legend-dot none"></span>未实现：代码中无对应实现</span>
+    </div>
+
+    <div class="filters" role="group" aria-label="按状态筛选模块">
+      <button class="filter" type="button" data-filter="all" aria-pressed="true">全部 <em>24</em></button>
+      <button class="filter" type="button" data-filter="ok" aria-pressed="false">已实现 <em>16</em></button>
+      <button class="filter" type="button" data-filter="warn" aria-pressed="false">进行中 <em>4</em></button>
+      <button class="filter" type="button" data-filter="none" aria-pressed="false">未实现 <em>4</em></button>
+    </div>
+
+    <div class="diagram-shell">
+      <svg viewBox="0 0 1240 1060" role="img" aria-labelledby="archTitle archDesc">
+        <title id="archTitle">CodeLens v2.0 分层架构图</title>
+        <desc id="archDesc">客户端、服务端、存储与外部上游的分层结构，含规划区与模块状态。</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#2f5fd0"></path>
+          </marker>
+          <marker id="arrowMuted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8b95a5"></path>
+          </marker>
+        </defs>
+
+        <!-- CLIENT -->
+        <rect x="20" y="20" width="1200" height="180" rx="14" fill="#f2f6fe" stroke="#dfe5ef"></rect>
+        <text class="band-title" x="40" y="48">客户端 · React 19 / Electron</text>
+        <text class="band-sub" x="40" y="66">同源 SPA，桌面壳内嵌服务端；不含外部资源</text>
+
+        <g class="module" data-module="页面 / 组件" data-status="ok" data-detail="代码：client/src/components/agent/AgentWorkbench.tsx、AgentMessageItem.tsx、RunInspector.tsx。证据：client 9 文件 / 62 用例通过（报告 §12.6）；零配置首跑写入 say.txt 并回读一致（§11.4）。" tabindex="0" role="button" aria-label="页面 / 组件，已实现">
+          <rect x="40" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="52" y="93">页面 / 组件</text>
+          <text class="node-body" x="52" y="113">AgentWorkbench 工作台</text>
+          <text class="node-body" x="52" y="129">消息流 / 工具卡片</text>
+          <text class="node-body" x="52" y="145">RunInspector 运行检视</text>
+          <circle class="dot ok" cx="208" cy="84" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="流处理 stream.ts" data-status="ok" data-detail="代码：client/src/services/stream.ts。读取时先做 CRLF → LF 归一，再按空行分帧；stage 帧分发给 handlers。证据：§11.4 阶段时间轴、§10.4 早事件 26 ms。" tabindex="0" role="button" aria-label="流处理 stream.ts，已实现">
+          <rect x="234" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="246" y="93">流处理 stream.ts</text>
+          <text class="node-body" x="246" y="113">SSE 分帧（先归一 CRLF）</text>
+          <text class="node-body" x="246" y="129">stage / 十类事件分发</text>
+          <text class="node-body" x="246" y="145">abort → /agent/abort</text>
+          <circle class="dot ok" cx="402" cy="84" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="状态 stores" data-status="ok" data-detail="代码：client/src/stores/runStore.ts（stage + acceptedAt）、toolCallStore、approvalStore。证据：§10.3 首 token 空窗文案；RunStageBanner 6 例客户端测试。" tabindex="0" role="button" aria-label="状态 stores，已实现">
+          <rect x="428" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="440" y="93">状态 stores</text>
+          <text class="node-body" x="440" y="113">runStore：stage + acceptedAt</text>
+          <text class="node-body" x="440" y="129">toolCall / approval / settings</text>
+          <text class="node-body" x="440" y="145">zustand 订阅渲染</text>
+          <circle class="dot ok" cx="596" cy="84" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="阶段横幅 RunStageBanner" data-status="ok" data-detail="代码：client/src/components/agent/RunStageBanner.tsx（每秒真实计时、10 s 慢响应提示、真实中止）；AgentMessageItem 首 token 空窗文案随阶段变化。证据：§10.4 早事件 26 ms；§12.3 用户中止 12–13 ms。" tabindex="0" role="button" aria-label="阶段横幅，已实现">
+          <rect x="622" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="634" y="93">阶段横幅</text>
+          <text class="node-body" x="634" y="113">RunStageBanner</text>
+          <text class="node-body" x="634" y="129">每秒计时；≥10 s 慢响应</text>
+          <text class="node-body" x="634" y="145">真实中止 / 无假进度条</text>
+          <circle class="dot ok" cx="790" cy="84" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="设置 Provider 区" data-status="ok" data-detail="代码：client/src/components/settings/ProviderZone.tsx（trialLocked 置灰）、FormControls（disabled + hint）、AppShell 顶部说明。证据：§9.1 真实 NVIDIA 6.68 s 首跑；§11.3 health 三态与失败复探。" tabindex="0" role="button" aria-label="设置 Provider 区，已实现">
+          <rect x="816" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="828" y="93">设置 Provider 区</text>
+          <text class="node-body" x="828" y="113">ProviderZone：试用锁定</text>
+          <text class="node-body" x="828" y="129">置灰 + 说明 + health 三态</text>
+          <text class="node-body" x="828" y="145">BYOK 用户可自由切换</text>
+          <circle class="dot ok" cx="984" cy="84" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="沙箱权限模态" data-status="warn" data-detail="代码：client/src/components/settings/SandboxPermissionModal.tsx；服务端 sandbox-permission.service.ts、path-jail allowDirs、sandbox-permissions.controller.ts。测试：sandbox-permission.test.ts、security-gateway.test.ts。差异：报告 §9–§12 未覆盖运行实测，故按『进行中』。" tabindex="0" role="button" aria-label="沙箱权限模态，进行中">
+          <rect x="1010" y="70" width="182" height="104" rx="10"></rect>
+          <text class="node-title" x="1022" y="93">沙箱权限模态</text>
+          <text class="node-body" x="1022" y="113">allowDirs 白名单</text>
+          <text class="node-body" x="1022" y="129">免审批（sys.exec 除外）</text>
+          <text class="node-body" x="1022" y="145">服务端硬校验 + 持久化</text>
+          <circle class="dot warn" cx="1178" cy="84" r="4.5"></circle>
+        </g>
+
+        <text class="hint" x="40" y="194">调用：POST /api/v1/agent/stream（SSE） · 中止：POST /api/v1/agent/abort · 客户端内部：fetch → 分帧 → stores → 横幅</text>
+
+        <!-- layer links client-server -->
+        <path class="plane-link" d="M250,200 L250,270" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="258" y="241">用户输入 / POST /agent/stream</text>
+        <path class="plane-link" d="M620,270 L620,200" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="628" y="241">SSE：stage / delta / done</text>
+        <path class="plane-link" d="M990,200 L990,270" marker-start="url(#arrow)" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="998" y="241">provider / model / trial-status</text>
+
+        <!-- SERVER -->
+        <rect x="20" y="270" width="820" height="330" rx="14" fill="#f1f8f4" stroke="#d9e9e0"></rect>
+        <text class="band-title" x="40" y="298">服务端 · Node 22 / Express 5（本地单实例）</text>
+        <text class="band-sub" x="40" y="316">同一进程内完成：校验 → 早回执 → 上游流 → 工具 / 审批 → 落盘</text>
+
+        <g class="module" data-module="Agent Controller" data-status="ok" data-detail="代码：server/src/controllers/agent.controller.ts。SSE 头写完后、loop.run 之前立即 emitStage('connecting')，不访问上游。证据：§11.4 connecting 306 ms；上游无响应场景仍 26 ms 到达（§10.4）。" tabindex="0" role="button" aria-label="Agent Controller，已实现">
+          <rect x="40" y="330" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="52" y="353">Agent Controller</text>
+          <text class="node-body" x="52" y="372">校验 → SSE 头 → 早回执</text>
+          <text class="node-body" x="52" y="388">connecting 在 loop.run 之前</text>
+          <text class="node-body" x="52" y="404">POST /agent/abort</text>
+          <circle class="dot ok" cx="272" cy="344" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="Agent Loop" data-status="ok" data-detail="代码：server/src/services/agent/agent-loop.service.ts（resolveTrialTarget、onFirstToken、onResponseStart、快照 capture、预算控制）。证据：§9.1 真实全链路；§11.4 done 6,798 ms。" tabindex="0" role="button" aria-label="Agent Loop，已实现">
+          <rect x="302" y="330" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="314" y="353">Agent Loop</text>
+          <text class="node-body" x="314" y="372">native function calling / ReAct</text>
+          <text class="node-body" x="314" y="388">工具循环 + 预算 + 审批解析</text>
+          <text class="node-body" x="314" y="404">onFirstToken / onResponseStart</text>
+          <circle class="dot ok" cx="534" cy="344" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="Provider Adapter" data-status="ok" data-detail="代码：server/src/providers/openai-compatible.adapter.ts（错误分类、超时、maskKey、probe signal）；channel-router.service.ts（native ↔ react）。证据：§9.3 三类故障 1.09 / 1.29 / 3.92 s；§12.3 超时 2,965 ms。" tabindex="0" role="button" aria-label="Provider Adapter，已实现">
+          <rect x="564" y="330" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="576" y="353">Provider Adapter</text>
+          <text class="node-body" x="576" y="372">OpenAI 兼容流式 + 错误分类</text>
+          <text class="node-body" x="576" y="388">超时 / 重试 / maskKey</text>
+          <text class="node-body" x="576" y="404">ChannelRouter：native ↔ react</text>
+          <circle class="dot ok" cx="796" cy="344" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="SSE Writer" data-status="ok" data-detail="代码：server/src/services/agent/sse-writer.ts（beginRunStage、run 级去重、destroyed 写保护、心跳）。证据：§10.2 阶段表；§10.7 阶段顺序测试；§11.4 阶段时间轴。" tabindex="0" role="button" aria-label="SSE Writer，已实现">
+          <rect x="40" y="418" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="52" y="441">SSE Writer</text>
+          <text class="node-body" x="52" y="460">stage 事件（run 级去重）</text>
+          <text class="node-body" x="52" y="476">心跳 / destroyed 写保护</text>
+          <text class="node-body" x="52" y="492">meta → delta → done</text>
+          <circle class="dot ok" cx="272" cy="432" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="Trial Health" data-status="ok" data-detail="代码：server/src/services/agent/trial-health.service.ts（POST /chat/completions、max_tokens=1、三态、5 min 缓存、失败 20 s 单飞复探）。证据：§10.6 旧 /models 200 vs 新 401；§11.2 ok 1,324 ms / 18 tokens。" tabindex="0" role="button" aria-label="Trial Health，已实现">
+          <rect x="302" y="418" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="314" y="441">Trial Health</text>
+          <text class="node-body" x="314" y="460">POST chat，max_tokens=1</text>
+          <text class="node-body" x="314" y="476">ok / auth_failed / unreachable</text>
+          <text class="node-body" x="314" y="492">5 min 缓存 + 失败复探</text>
+          <circle class="dot ok" cx="534" cy="432" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="审批 + 工具执行" data-status="ok" data-detail="代码：approval.service.ts、tools/executor.service.ts、security-gateway.ts（四档策略、HMAC 令牌、参数摘要）。证据：§11.4 审批 21 ms、tool_result 5,197 ms；§12.3 中止后工具不落库。" tabindex="0" role="button" aria-label="审批 + 工具执行，已实现">
+          <rect x="564" y="418" width="246" height="88" rx="10"></rect>
+          <text class="node-title" x="576" y="441">审批 + 工具执行</text>
+          <text class="node-body" x="576" y="460">none / soft / hard / two_step</text>
+          <text class="node-body" x="576" y="476">fs.write / sys.exec / http</text>
+          <text class="node-body" x="576" y="492">HMAC 令牌 + 参数摘要</text>
+          <circle class="dot ok" cx="796" cy="432" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="Run Cancel / Abort" data-status="ok" data-detail="代码：server/src/services/agent/run-cancel.ts、abort-registry.ts；runtime.close 先 abort。证据：§12.3 用户中止 12–13 ms、超时 2,965 ms、关闭 6 ms；12 例测试。" tabindex="0" role="button" aria-label="Run Cancel，已实现">
+          <rect x="40" y="506" width="246" height="64" rx="10"></rect>
+          <text class="node-title" x="52" y="529">Run Cancel / Abort</text>
+          <text class="node-body" x="52" y="548">RunCancellation 单 signal 贯通</text>
+          <text class="node-body" x="52" y="564">幂等 · 归因 user | timeout | shutdown</text>
+          <circle class="dot ok" cx="272" cy="520" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="Checkpoint + Trace" data-status="warn" data-detail="代码：server/src/services/tx/checkpoint.service.ts（capture / restore、双闸门）、checkpoints.controller.ts、trace.service.ts。状态：CHECKPOINT_ENABLED 默认关闭；客户端只列快照，无回滚按钮；报告未覆盖。" tabindex="0" role="button" aria-label="Checkpoint + Trace，进行中">
+          <rect x="302" y="506" width="246" height="64" rx="10"></rect>
+          <text class="node-title" x="314" y="529">Checkpoint + Trace</text>
+          <text class="node-body" x="314" y="548">capture 前快照 / 双闸门回滚</text>
+          <text class="node-body" x="314" y="564">trace span：act / judge / update</text>
+          <circle class="dot warn" cx="534" cy="520" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="持久化服务" data-status="ok" data-detail="代码：server/src/services/memory/*.repository.ts、repositories/db.ts（node:sqlite）。证据：§11.4 写入 messages 三类 / tool_calls 1 / approvals 1；§9.1 4 条消息持久化。" tabindex="0" role="button" aria-label="持久化服务，已实现">
+          <rect x="564" y="506" width="246" height="64" rx="10"></rect>
+          <text class="node-title" x="576" y="529">持久化服务</text>
+          <text class="node-body" x="576" y="548">sessions / messages / tool_calls</text>
+          <text class="node-body" x="576" y="564">approvals / policy_versions</text>
+          <circle class="dot ok" cx="796" cy="520" r="4.5"></circle>
+        </g>
+
+        <text class="hint" x="40" y="590">阶段语义：connecting → upstream_first_byte → reasoning/content → done（run 级去重；abort / timeout / error 为终局）</text>
+
+        <!-- server to external -->
+        <path class="plane-link" d="M810,354 L856,354" marker-end="url(#arrow)"></path>
+        <text class="hint" x="814" y="346">HTTPS</text>
+
+        <!-- EXTERNAL -->
+        <rect x="860" y="270" width="360" height="330" rx="14" fill="#f6f3fb" stroke="#e6e0f2"></rect>
+        <text class="band-title" x="880" y="298">外部上游</text>
+        <text class="band-sub" x="880" y="316">不属于本服务；只经服务端转发</text>
+
+        <g class="module" data-module="NVIDIA 端点" data-status="ok" data-detail="地址：integrate.api.nvidia.com/v1；模型 nvidia/nemotron-3-ultra-550b-a55b。证据：§9.1 6.68 s 全链路；§11.4 done 6,798 ms；§11.2 自检 1,324 ms。风险：间歇性 120–300 s 长尾（§9.9）。" tabindex="0" role="button" aria-label="NVIDIA 端点，已实现">
+          <rect x="880" y="330" width="320" height="104" rx="10"></rect>
+          <text class="node-title" x="892" y="353">NVIDIA 端点（试用默认）</text>
+          <text class="node-body" x="892" y="372">integrate.api.nvidia.com/v1</text>
+          <text class="node-body" x="892" y="388">nvidia/nemotron-3-ultra-550b-a55b</text>
+          <text class="node-body" x="892" y="404">无 BYOK 时固定上游与模型</text>
+          <circle class="dot ok" cx="1188" cy="344" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="自建网关（可配置）" data-status="warn" data-detail="配置：TRIAL_BASE_URL + provider=custom，默认关闭；relay key 401 归网关侧（§9 头部）。状态：路径可配置，但本轮未成功实测，故『进行中』。R9 已禁止服务端 Key 与请求侧 baseUrl 组合。" tabindex="0" role="button" aria-label="自建网关，进行中">
+          <rect x="880" y="448" width="320" height="104" rx="10"></rect>
+          <text class="node-title" x="892" y="471">自建网关（可配置）</text>
+          <text class="node-body" x="892" y="490">TRIAL_BASE_URL + provider=custom</text>
+          <text class="node-body" x="892" y="506">默认关闭；relay key 401 属网关侧</text>
+          <text class="node-body" x="892" y="522">保留为可配置项，不作为默认</text>
+          <circle class="dot warn" cx="1188" cy="462" r="4.5"></circle>
+        </g>
+
+        <text class="hint" x="880" y="554">HTTPS 直连 · Key 仅经服务端转发</text>
+        <text class="hint" x="880" y="570">不落库 / 不记日志 / 错误文案打码</text>
+
+        <!-- STORAGE -->
+        <rect x="20" y="670" width="1200" height="170" rx="14" fill="#fdf8ee" stroke="#eee1c8"></rect>
+        <text class="band-title" x="40" y="698">存储 / 本地数据面</text>
+        <text class="band-sub" x="40" y="716">单机文件 + SQLite；无远端数据库</text>
+
+        <g class="module" data-module="SQLite" data-status="ok" data-detail="路径：AGENT_DB_PATH，默认 server/data/codelens.db。表：sessions / messages / tool_calls / approvals / policy_versions / checkpoints / traces 等。证据：§11.4 直接读库校验（摘要接口需设备令牌，未声称 200）。" tabindex="0" role="button" aria-label="SQLite，已实现">
+          <rect x="40" y="732" width="372" height="90" rx="10"></rect>
+          <text class="node-title" x="52" y="755">SQLite（node:sqlite）</text>
+          <text class="node-body" x="52" y="774">sessions / messages</text>
+          <text class="node-body" x="52" y="790">tool_calls / approvals / policy_versions</text>
+          <text class="node-body" x="52" y="806">checkpoints / traces / capabilities</text>
+          <circle class="dot ok" cx="400" cy="746" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="沙箱目录 workspace" data-status="ok" data-detail="路径：SANDBOX_ROOT，默认 server/workspace。约束：path-jail + realpath；allowDirs 扩展白名单。证据：§11.4 say.txt 内容 hello-r5；§9.3.1 零配置首跑落盘。" tabindex="0" role="button" aria-label="沙箱目录，已实现">
+          <rect x="430" y="732" width="372" height="90" rx="10"></rect>
+          <text class="node-title" x="442" y="755">沙箱目录 workspace</text>
+          <text class="node-body" x="442" y="774">SANDBOX_ROOT（默认 server/workspace）</text>
+          <text class="node-body" x="442" y="790">path-jail + realpath 判定</text>
+          <text class="node-body" x="442" y="806">allowDirs 扩展白名单</text>
+          <circle class="dot ok" cx="790" cy="746" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="快照 blobRoot / 证据链" data-status="warn" data-detail="快照清单入库、正文存 blob；restore 只写回快照内文件，不删除快照外产物。状态：CHECKPOINT_ENABLED 默认关闭；报告未覆盖。" tabindex="0" role="button" aria-label="快照与证据链，进行中">
+          <rect x="820" y="732" width="372" height="90" rx="10"></rect>
+          <text class="node-title" x="832" y="755">快照 blobRoot / 证据链</text>
+          <text class="node-body" x="832" y="774">checkpoint manifest（sha256 / size）</text>
+          <text class="node-body" x="832" y="790">restore 只写回快照内文件</text>
+          <text class="node-body" x="832" y="806">CHECKPOINT_ENABLED 默认关闭</text>
+          <circle class="dot warn" cx="1180" cy="746" r="4.5"></circle>
+        </g>
+
+        <text class="hint" x="40" y="836">SQLite 默认 server/data/codelens.db · 沙箱默认 server/workspace · 快照正文不入库</text>
+
+        <!-- server to storage -->
+        <path class="plane-link" d="M564,548 C510,620 420,690 226,732" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="470" y="654">消息 / 工具 / 审批落库</text>
+        <path class="plane-link" d="M548,548 C620,620 800,690 1006,732" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="760" y="654">capture / restore</text>
+        <path class="plane-link" d="M562,492 L562,660 L616,732" marker-end="url(#arrow)"></path>
+        <text class="edge-label" x="570" y="620">工具执行 / 落盘</text>
+
+        <!-- PLANNING -->
+        <rect x="20" y="880" width="1200" height="150" rx="14" fill="#f5f6f8" stroke="#d7dce4" stroke-dasharray="6 4"></rect>
+        <text class="band-title" x="40" y="908">规划 / 未落地</text>
+        <text class="band-sub" x="40" y="926">虚线区 = 设计口径存在，但代码中没有用户可见入口或服务端实现</text>
+
+        <g class="module" data-module="复核子代理" data-status="none" data-detail="代码中无独立 reviewer / sub-agent 模块；judge.service.ts 是判据闸（L0 → 深层审查），不是复核代理。报告未提及。设计已定、尚未落地。" tabindex="0" role="button" aria-label="复核子代理，未实现">
+          <rect class="plan-box" x="40" y="942" width="277" height="72" rx="10"></rect>
+          <text class="node-title" x="52" y="965">复核子代理</text>
+          <text class="node-dim" x="52" y="984">独立二次审查 / 结果复核</text>
+          <text class="node-dim" x="52" y="1000">无 reviewer 模块</text>
+          <circle class="plan-dot" cx="305" cy="954" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="RunState 状态机" data-status="none" data-detail="客户端 runStore 只是 UI 运行态；服务端持久化 messages / tool_calls / approvals，没有 run 级状态机。设计已定、尚未落地。" tabindex="0" role="button" aria-label="RunState 状态机，未实现">
+          <rect class="plan-box" x="332" y="942" width="277" height="72" rx="10"></rect>
+          <text class="node-title" x="344" y="965">RunState 状态机</text>
+          <text class="node-dim" x="344" y="984">run 级生命周期 / 可恢复</text>
+          <text class="node-dim" x="344" y="1000">目前只有 UI runStore</text>
+          <circle class="plan-dot" cx="597" cy="954" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="主动运行汇报" data-status="none" data-detail="done 事件只做当次收尾；没有主动汇报推送。设计已定、尚未落地。" tabindex="0" role="button" aria-label="主动运行汇报，未实现">
+          <rect class="plan-box" x="624" y="942" width="277" height="72" rx="10"></rect>
+          <text class="node-title" x="636" y="965">主动运行汇报</text>
+          <text class="node-dim" x="636" y="984">长任务进度 / 完成推送</text>
+          <text class="node-dim" x="636" y="1000">done 只收尾当次运行</text>
+          <circle class="plan-dot" cx="889" cy="954" r="4.5"></circle>
+        </g>
+
+        <g class="module" data-module="撤销结构变更" data-status="none" data-detail="checkpoint 契约明确不支持撤销 rename 产物 / 删除快照外文件；没有独立的撤销结构变更实现。设计已定、尚未落地。" tabindex="0" role="button" aria-label="撤销结构变更，未实现">
+          <rect class="plan-box" x="916" y="942" width="277" height="72" rx="10"></rect>
+          <text class="node-title" x="928" y="965">撤销结构变更</text>
+          <text class="node-dim" x="928" y="984">rename / 删除产物可撤销</text>
+          <text class="node-dim" x="928" y="1000">当前只还原文件内容</text>
+          <circle class="plan-dot" cx="1181" cy="954" r="4.5"></circle>
+        </g>
+
+        <text class="hint" x="40" y="1032">规划区不参与当前运行；未实现项没有可点击入口。</text>
+      </svg>
+    </div>
+    <p class="scroll-hint">窄屏可左右滑动查看完整架构图。</p>
+
+    <div class="detail" id="moduleDetail" aria-live="polite">
+      <span>点击图中任意模块，查看该模块的代码位置、测试 / 实测证据与状态判定依据。</span>
+    </div>
+  </section>
+
+  <section id="flow">
+    <div class="section-head">
+      <div>
+        <h2>主数据流（真实 NVIDIA 实测）</h2>
+        <p>一次任务：用户输入 → connecting 早回执 → 上游首字节 → reasoning → tool_call → 审批 → tool_result → 正文 → done。时间取自报告 §11.4，单位 ms，均为真实测量。</p>
+      </div>
+      <span class="section-tag">总链路 6,798 ms · 1 次审批 · 2 轮上游</span>
+    </div>
+
+    <div class="diagram-shell">
+      <svg viewBox="0 0 1240 330" role="img" aria-labelledby="flowTitle flowDesc">
+        <title id="flowTitle">主数据流与实测时间轴</title>
+        <desc id="flowDesc">从用户输入到 done 的九个节点，标注 connecting 306 ms、first_byte 3,797 ms、done 6,798 ms 等实测值。</desc>
+
+        <line x1="40" y1="122" x2="1200" y2="122" stroke="#e0e5ec" stroke-width="1"></line>
+
+        <g>
+          <rect class="plan-box" x="40" y="88" width="118" height="64" rx="9"></rect>
+          <text class="flow-title" x="52" y="111">用户输入</text>
+          <text class="flow-sub" x="52" y="130">一句话任务</text>
+        </g>
+        <path class="plane-link" d="M158,122 L170,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="175" y="88" width="118" height="64" rx="9" fill="#eef3fd" stroke="#2f5fd0"></rect>
+          <text class="flow-title" x="187" y="111">connecting</text>
+          <text class="flow-sub" x="187" y="130">早回执</text>
+          <text class="flow-time" x="187" y="146">+306 ms</text>
+        </g>
+        <path class="plane-link" d="M293,122 L305,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="310" y="88" width="118" height="64" rx="9" fill="#ffffff" stroke="#dfe4ea"></rect>
+          <text class="flow-title" x="322" y="111">first_byte</text>
+          <text class="flow-sub" x="322" y="130">上游响应头</text>
+          <text class="flow-time" x="322" y="146">+3,797 ms</text>
+        </g>
+        <path class="plane-link" d="M428,122 L440,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="445" y="88" width="118" height="64" rx="9" fill="#ffffff" stroke="#dfe4ea"></rect>
+          <text class="flow-title" x="457" y="111">reasoning</text>
+          <text class="flow-sub" x="457" y="130">推理增量</text>
+          <text class="flow-time" x="457" y="146">+3,797 ms</text>
+        </g>
+        <path class="plane-link" d="M563,122 L575,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="580" y="88" width="118" height="64" rx="9" fill="#ffffff" stroke="#dfe4ea"></rect>
+          <text class="flow-title" x="592" y="111">tool_call</text>
+          <text class="flow-sub" x="592" y="130">进入审批闸</text>
+          <text class="flow-time" x="592" y="146">+4,606 ms</text>
+        </g>
+        <path class="plane-link" d="M698,122 L710,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="715" y="88" width="118" height="64" rx="9" fill="#fdf0e8" stroke="#d9a27f"></rect>
+          <text class="flow-title" x="727" y="111">审批</text>
+          <text class="flow-sub" x="727" y="130">allow_once</text>
+          <text class="flow-time" x="727" y="146">21 ms 往返</text>
+        </g>
+        <path class="plane-link" d="M833,122 L845,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="850" y="88" width="118" height="64" rx="9" fill="#ffffff" stroke="#dfe4ea"></rect>
+          <text class="flow-title" x="862" y="111">tool_result</text>
+          <text class="flow-sub" x="862" y="130">工具 403 ms</text>
+          <text class="flow-time" x="862" y="146">+5,197 ms</text>
+        </g>
+        <path class="plane-link" d="M968,122 L980,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="985" y="88" width="118" height="64" rx="9" fill="#ffffff" stroke="#dfe4ea"></rect>
+          <text class="flow-title" x="997" y="111">首个正文</text>
+          <text class="flow-sub" x="997" y="130">第二轮上游</text>
+          <text class="flow-time" x="997" y="146">+6,584 ms</text>
+        </g>
+        <path class="plane-link" d="M1103,122 L1115,122" marker-end="url(#arrow)"></path>
+
+        <g>
+          <rect x="1120" y="88" width="118" height="64" rx="9" fill="#eef3fd" stroke="#2f5fd0"></rect>
+          <text class="flow-title" x="1132" y="111">done</text>
+          <text class="flow-sub" x="1132" y="130">stop / iter=2</text>
+          <text class="flow-time" x="1132" y="146">+6,798 ms</text>
+        </g>
+
+        <!-- annotation row -->
+        <text class="flow-note" x="175" y="178">服务端请求被接受即发，不访问上游</text>
+        <text class="flow-note" x="310" y="178">上游 HTTP 响应头到达</text>
+        <text class="flow-note" x="445" y="178">推理内容增量累加，不覆盖</text>
+        <text class="flow-note" x="580" y="178">参数摘要 → 审批请求</text>
+        <text class="flow-note" x="715" y="178">可逆审结果 / 不可逆审后果</text>
+        <text class="flow-note" x="850" y="178">say.txt 落盘成功</text>
+        <text class="flow-note" x="985" y="178">delta 首段到达</text>
+        <text class="flow-note" x="1120" y="178">finishReason = stop</text>
+
+        <!-- approval bracket -->
+        <rect x="580" y="200" width="253" height="30" rx="8" fill="#fdf0e8" stroke="#e9c9b6"></rect>
+        <text class="flow-note" x="592" y="220">审批闸：可逆操作审结果 · 不可逆操作审后果</text>
+
+        <text class="flow-note" x="40" y="262">done 载荷：usage 7,907 prompt + 127 completion · iteration 2 · toolCallCount 1 → 运行检视器（已实现）</text>
+        <text class="flow-note" x="40" y="282" fill="#b7791f">主动运行汇报（跨任务推送）：未实现，见未闭环面板</text>
+        <text class="flow-note" x="40" y="308">时间口径：connecting / first_byte / done 为从请求开始累计；审批 21 ms 为审批往返；工具 403 ms 为工具自身执行。均来自报告 §11.4 实测，不作估算。</text>
+      </svg>
+    </div>
+  </section>
+
+  <section id="done">
+    <div class="section-head">
+      <div>
+        <h2>已完成改动清单（按轮次闭环）</h2>
+        <p>每行只保留三件事：问题 → 修法 → 证据。证据优先指向文件与报告中的实测数字；没有实测的项不会被写成已闭环。</p>
+      </div>
+      <span class="section-tag">11 项已闭环</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>问题</th>
+            <th>修法（落点）</th>
+            <th>证据（文件 / 数据）</th>
+            <th>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>01</td>
+            <td><strong>401 根因：兜底只覆盖 Key，不覆盖 provider / model</strong></td>
+            <td>服务端 <span class="mono">resolveTrialTarget</span> 在无 BYOK 时强制覆盖 provider / model / baseUrl；前端显式置灰并说明。</td>
+            <td>报告 §9.1；<span class="mono">trial-resilience.test.ts</span> 15 例；真实 NVIDIA 首跑 6.68 s。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>02</td>
+            <td><strong>推理内容被覆盖，只显示最后一段</strong></td>
+            <td>前端改为增量累加；<span class="mono">ReasoningBlock</span> 独立展示流式推理。</td>
+            <td><span class="mono">client/src/components/agent/AgentMessageItem.tsx</span>；§4 偏差 1：首推理 2,190 ms。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>03</td>
+            <td><strong>首 token 前白屏 / 无进度反馈</strong></td>
+            <td>服务端阶段事件 + 前端阶段横幅 + 推理预览 + 空窗文案随阶段变化。</td>
+            <td><span class="mono">RunStageBanner.tsx</span>、<span class="mono">agent-loop</span> onFirstToken；§10.4 早事件 26 ms。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>04</td>
+            <td><strong>字体资源死链与包体过大</strong></td>
+            <td>字体引入从 CSS 移到 JS 入口；CSP 放行；Noto Sans SC 由 3 档降为 2 档。</td>
+            <td><span class="mono">client/src/main.tsx</span>；16.76 MB → 10.73 MB，588 → 396 个字体文件。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>05</td>
+            <td><strong>上游 CRLF 分帧导致流式拆不开</strong></td>
+            <td>读取时先做 <span class="mono">\r\n → \n</span> 归一，再按空行分帧。</td>
+            <td><span class="mono">client/src/services/stream.ts</span>；§10 / §11 流式帧逐条到达。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>06</td>
+            <td><strong>兜底态可能把服务端 Key 发往请求侧 baseUrl</strong></td>
+            <td>兜底态 baseUrl 只取服务端 <span class="mono">lock.baseUrl</span>，忽略请求侧自定义地址。</td>
+            <td><span class="mono">agent-loop.resolveTrialTarget</span>；R9 闭环；15/15 用例通过。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>07</td>
+            <td><strong>阶段事件缺失 / 多轮重复发送</strong></td>
+            <td>controller 在 loop.run 前发 connecting；SSE writer 做 run 级去重；统一五阶段语义。</td>
+            <td>§11.4 connecting 306 ms；§10.7 阶段顺序；3 轮仅 4 个 stage。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>08</td>
+            <td><strong>中止按钮只改 UI，服务端不停</strong></td>
+            <td><span class="mono">RunCancellation</span> 单 signal 贯通 controller / adapter / probe；runtime.close 先 abort。</td>
+            <td>§12.3 用户中止 12–13 ms、关闭 6 ms；§12.4 12 例测试。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>09</td>
+            <td><strong>自检失败结果永久缓存（陈旧假绿）</strong></td>
+            <td>失败态 20 s 后单飞复探；成功态缓存 5 min；<span class="mono">refreshIfStaleFailure</span>。</td>
+            <td>1,945 ms 后 401 → ok；健康检查 3 例测试。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><strong>GET /models 自检假绿（200 但 Key 无效）</strong></td>
+            <td>改为真实最小 chat：<span class="mono">max_tokens=1</span>、非流式、10–15 s 超时。</td>
+            <td><span class="mono">trial-health.service.ts</span>；旧 /models 200 vs 新 401；ok 1,324 ms / 18 tokens。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td><strong>窄屏 / 无障碍细节（对比度、置灰语义）</strong></td>
+            <td>置灰态补 aria-disabled 与说明文案；对比度提升；错误提示带配置入口。</td>
+            <td>§12.5；client 9 文件 / 62 用例通过（§12.6）。</td>
+            <td><span class="badge ok">已闭环</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="open">
+    <div class="section-head">
+      <div>
+        <h2>未完成 / 规划中</h2>
+        <p>"设计已定、尚未落地"不等于"已实现"。这里把代码中已有的部分与真正缺失的部分分开写，避免把半成品算成闭环。</p>
+      </div>
+      <span class="section-tag">5 项 · 2 项部分落地</span>
+    </div>
+
+    <div class="cards">
+      <div class="card warn">
+        <div class="card-head">
+          <div>
+            <h3>可恢复性优先的证据链与撤销</h3>
+            <div class="tagline">后端部分落地 · 前端未闭环</div>
+          </div>
+          <span class="badge warn">进行中</span>
+        </div>
+        <ul>
+          <li>已有：<span class="file">services/tx/checkpoint.service.ts</span> 的 capture / restore，<span class="file">checkpoints.controller.ts</span> 双闸门（409 / x-codelens-confirm）。</li>
+          <li>已有：trace span 记录 act / judge / update，快照清单入 SQLite、正文入 blobRoot。</li>
+          <li>缺口：<span class="file">CHECKPOINT_ENABLED</span> 默认关闭；客户端只列快照，没有回滚按钮；不能撤销 rename 产物；sys.exec / MCP 不在快照范围。</li>
+          <li>报告 §9–§12 未覆盖，故不写成"已闭环"。</li>
+        </ul>
+      </div>
+
+      <div class="card warn">
+        <div class="card-head">
+          <div>
+            <h3>按目录授权</h3>
+            <div class="tagline">代码 + 单测已落地 · 缺报告实测</div>
+          </div>
+          <span class="badge warn">进行中</span>
+        </div>
+        <ul>
+          <li>代码：<span class="file">server/src/services/tools/sandbox-permission.ts</span>、<span class="file">sandbox-permission.service.ts</span>、<span class="file">path-jail.ts</span> 的 allowDirs。</li>
+          <li>入口：<span class="file">client/src/components/settings/SandboxPermissionModal.tsx</span>；serve 端硬校验后持久化。</li>
+          <li>测试：<span class="file">sandbox-permission.test.ts</span>、<span class="file">security-gateway.test.ts</span>；拒绝敏感目录、沙箱祖先/子孙、symlink 逃逸。</li>
+          <li>差异：报告未记录运行实测，故按判定规则放在"进行中"，不算已实现。</li>
+        </ul>
+      </div>
+
+      <div class="card warn">
+        <div class="card-head">
+          <div>
+            <h3>敏感路径黑名单</h3>
+            <div class="tagline">部分实现 · 只覆盖 allowDir 校验</div>
+          </div>
+          <span class="badge warn">进行中</span>
+        </div>
+        <ul>
+          <li>已有：<span class="file">sandbox-permission.ts</span> 的 <span class="file">RESTRICTED_DIR_PREFIXES</span>，用于拒绝把系统敏感目录加入白名单。</li>
+          <li>缺口：工具执行侧没有独立的"敏感路径总黑名单"；<span class="file">sys.exec</span> / MCP 不受这层约束。</li>
+          <li>因此不能把"按目录授权"当成完整的敏感路径防护。</li>
+        </ul>
+      </div>
+
+      <div class="card none">
+        <div class="card-head">
+          <div>
+            <h3>复核子代理</h3>
+            <div class="tagline">设计已定、尚未落地</div>
+          </div>
+          <span class="badge none">未实现</span>
+        </div>
+        <ul>
+          <li>代码中没有独立 reviewer / sub-agent / 二次审查模块。</li>
+          <li>现有的 <span class="file">judge.service.ts</span> 是判据闸（L0 → 深层审查），职责是"是否通过"，不是"独立复核另一个代理的产出"。</li>
+          <li>没有对应的用户可见入口，也没有报告实测。</li>
+        </ul>
+      </div>
+
+      <div class="card none">
+        <div class="card-head">
+          <div>
+            <h3>RunState 与主动汇报</h3>
+            <div class="tagline">设计已定、尚未落地</div>
+          </div>
+          <span class="badge none">未实现</span>
+        </div>
+        <ul>
+          <li>客户端 <span class="file">runStore.ts</span> 只是 UI 运行态（stage + acceptedAt），不是可恢复的服务端状态机。</li>
+          <li>服务端持久化的是 sessions / messages / tool_calls / approvals，没有 run 级状态。</li>
+          <li>done 事件只做当次收尾；没有跨任务进度或完成推送。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="diff">
+    <div class="section-head">
+      <div>
+        <h2>差异说明与判定口径</h2>
+        <p>本图优先相信磁盘上的代码；报告与代码不一致时，以代码为准并把差异写在这里。</p>
+      </div>
+      <span class="section-tag">快照 2026-11-05</span>
+    </div>
+
+    <ul class="diff-list">
+      <li class="strong"><b>报告章节范围：</b>当前 Markdown 与 round2 HTML 报告都到 §12，<b>没有 §13</b>。本图只引用 §9–§12，不虚构 §13 的内容。</li>
+      <li class="strong"><b>代码领先报告：</b>checkpoint 与 sandbox-permission 已在工作树中存在服务、控制器、路由、客户端入口与测试，但报告未记录。图中把它们标为"进行中"而非"已实现"，因为缺少报告中的运行实测。</li>
+      <li><b>状态判定规则：</b>已实现 = 代码存在 + 测试存在 + 报告有实测数据；只有代码 / 测试、缺报告实测 → 进行中；无对应实现 → 未实现。</li>
+      <li><b>运行状态 vs 持久化：</b>服务端持久化会话消息、工具调用与审批，不持久化 RunState；客户端 runStore 只是界面状态。图中将两者拆开。</li>
+      <li><b>默认开关：</b><span class="mono">CHECKPOINT_ENABLED</span> 空值 = 关闭；自建网关默认不启用；无 BYOK 时试用固定 NVIDIA 端点与模型；<span class="mono">TRIAL_MODE_ENABLED</span> 需服务端显式开启。</li>
+      <li><b>并发改动：</b>生成期间另一会话可能继续改代码；本图是 2026-11-05 的只读快照。若代码再变，应以新快照重跑，而不是沿用本图结论。</li>
+    </ul>
+  </section>
+
+  <footer>
+    自包含单文件：无 CDN、无外链字体、无 &lt;script src&gt;、无外部图片；所有样式 / 脚本 / 图形均内联。<br>
+    数据来源：<span class="mono">docs/review-20261105/evaluation-report-2026-11-05.md</span> §9–§12；代码事实来自 <span class="mono">server/src</span> 与 <span class="mono">client/src</span> 的当前磁盘版本。
+  </footer>
+</div>
+
+<script>
+(function () {
+  var modules = Array.prototype.slice.call(document.querySelectorAll('g.module[data-module]'));
+  var panel = document.getElementById('moduleDetail');
+  var filters = Array.prototype.slice.call(document.querySelectorAll('.filter'));
+
+  var statusText = { ok: '已实现', warn: '进行中', none: '未实现' };
+  var statusClass = { ok: 'badge ok', warn: 'badge warn', none: 'badge none' };
+
+  function selectModule(el) {
+    modules.forEach(function (m) { m.classList.remove('selected'); });
+    el.classList.add('selected');
+    var name = el.getAttribute('data-module') || '未命名模块';
+    var status = el.getAttribute('data-status') || 'none';
+    var detail = el.getAttribute('data-detail') || '暂无判定依据。';
+    panel.innerHTML = '';
+    var head = document.createElement('div');
+    head.className = 'detail-title';
+    var title = document.createElement('strong');
+    title.textContent = name;
+    var badge = document.createElement('span');
+    badge.className = statusClass[status] || statusClass.none;
+    badge.textContent = statusText[status] || statusText.none;
+    head.appendChild(title);
+    head.appendChild(badge);
+    var body = document.createElement('div');
+    body.textContent = detail;
+    panel.appendChild(head);
+    panel.appendChild(body);
+  }
+
+  modules.forEach(function (el) {
+    el.addEventListener('click', function () { selectModule(el); });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectModule(el);
+      }
+    });
+  });
+
+  filters.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var filter = btn.getAttribute('data-filter') || 'all';
+      filters.forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+      btn.setAttribute('aria-pressed', 'true');
+      modules.forEach(function (m) {
+        var match = filter === 'all' || m.getAttribute('data-status') === filter;
+        m.classList.toggle('dim', !match);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

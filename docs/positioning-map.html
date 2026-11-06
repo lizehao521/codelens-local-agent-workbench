@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeLens 定位可视化 One-Pager</title>
+<style>
+  :root{
+    --ink:#1f2933;
+    --ink-soft:#52606d;
+    --muted:#9aa5b1;
+    --line:#e4e7eb;
+    --bg:#f5f7fa;
+    --accent:#0d9488;       /* CodeLens teal */
+    --accent-soft:#e6f7f3;
+    --comp:#94a3b8;         /* competitor gray */
+    --warn:#b45309;
+    --warn-soft:#fef3c7;
+    --ok-soft:#ecfdf5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:36px 24px 72px;}
+
+  /* ---------- Hero / 定位句 ---------- */
+  .hero{
+    background:#fff;
+    border:1px solid var(--line);
+    border-top:4px solid var(--accent);
+    border-radius:12px;
+    padding:28px 30px 24px;
+    margin-bottom:28px;
+  }
+  .hero .tag{
+    display:inline-block;
+    font-size:12px;letter-spacing:.08em;
+    color:var(--accent);
+    background:var(--accent-soft);
+    padding:3px 10px;border-radius:999px;
+    margin-bottom:14px;font-weight:600;
+  }
+  .hero h1{
+    font-size:23px;line-height:1.5;margin:0 0 12px;font-weight:700;
+  }
+  .hero h1 strong{color:var(--accent);}
+  .hero .lede{font-size:15px;color:var(--ink-soft);margin:0 0 14px;}
+  .hero .lede strong{color:var(--ink);}
+  .hero .meta{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:12px;}
+
+  /* ---------- Section ---------- */
+  .block{
+    background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:24px 28px;margin-bottom:24px;
+  }
+  .block h2{
+    font-size:18px;margin:0 0 6px;font-weight:700;
+    display:flex;align-items:center;gap:8px;
+  }
+  .block h2::before{
+    content:"";width:6px;height:18px;background:var(--accent);
+    border-radius:3px;display:inline-block;
+  }
+  .block .sub{font-size:13.5px;color:var(--ink-soft);margin:0 0 18px;}
+  .note{font-size:12.5px;color:var(--muted);margin:16px 0 0;line-height:1.6;
+        background:#fafbfc;border:1px solid var(--line);border-radius:8px;padding:12px 14px;}
+  .note b{color:var(--ink-soft);}
+
+  /* ---------- Quadrant ---------- */
+  .quad-wrap{width:100%;overflow-x:auto;}
+  svg.quad{width:100%;max-width:760px;height:auto;display:block;margin:0 auto;}
+  .ax-t,.ax-b{font-size:14px;font-weight:600;fill:var(--ink-soft);}
+  .ax-l,.ax-r{font-size:14px;font-weight:600;fill:var(--ink-soft);}
+  .lbl-comp{font-size:12.5px;fill:#64748b;}
+  .lbl-code{font-size:14px;font-weight:700;fill:var(--accent);}
+  .callout-title{font-size:13px;font-weight:700;fill:var(--accent);}
+  .callout-li{font-size:12px;fill:var(--ink-soft);}
+  .legend{font-size:12px;fill:var(--ink-soft);}
+
+  /* ---------- Persona cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:760px){.cards{grid-template-columns:1fr;}}
+  .card{
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    display:flex;flex-direction:column;
+  }
+  .card .head{
+    padding:14px 16px;color:#fff;
+  }
+  .card.a .head{background:#0d9488;}
+  .card.b .head{background:#2563eb;}
+  .card.c .head{background:#7c3aed;}
+  .card .head .who{font-size:16px;font-weight:700;}
+  .card .head .role{font-size:12.5px;opacity:.9;margin-top:2px;}
+  .card .body{padding:14px 16px;font-size:13px;}
+  .card .body .row{margin-bottom:12px;}
+  .card .body .row:last-child{margin-bottom:0;}
+  .card .body .k{
+    font-size:11.5px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;
+  }
+  .card .body .v{color:var(--ink);}
+  .card .body .vs{color:var(--ink-soft);font-size:12.5px;}
+  .card .body .factor{
+    background:var(--accent-soft);border-radius:8px;padding:8px 10px;
+    color:var(--ink);font-weight:600;font-size:12.5px;line-height:1.5;
+  }
+  .card.a .body .factor{background:#e6f7f3;}
+  .card.b .body .factor{background:#e8f0fe;}
+  .card.c .body .factor{background:#f1ecfe;}
+
+  /* ---------- Diff bars ---------- */
+  .diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:760px){.diff-grid{grid-template-columns:1fr;}}
+  .diff-col h3{font-size:14px;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid var(--line);}
+  .diff-col.true h3{color:var(--accent);border-color:var(--accent);}
+  .diff-col.caut h3{color:var(--warn);border-color:var(--warn);}
+  .bar{
+    border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin-bottom:11px;
+    font-size:13px;
+  }
+  .diff-col.true .bar{background:var(--ok-soft);border-color:#bbf0d8;}
+  .diff-col.caut .bar{background:var(--warn-soft);border-color:#fde68a;}
+  .bar .num{font-weight:700;margin-right:6px;}
+  .diff-col.true .bar .num{color:var(--accent);}
+  .diff-col.caut .bar .num{color:var(--warn);}
+  .bar .src{display:block;font-size:11.5px;color:var(--muted);margin-top:5px;}
+
+  /* ---------- Footer ---------- */
+  .foot{font-size:12px;color:var(--muted);text-align:center;margin-top:8px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 0. 锐化定位句 ============ -->
+  <header class="hero">
+    <span class="tag">CodeLens · 产品定位 One-Pager</span>
+    <h1>CodeLens 是一个<strong>本地优先、BYOK</strong> 的通用 Agent 工作台</h1>
+    <p class="lede">你用一句话交代任务，它在你自己的机器上自主调用工具、每步可见、按风险分级请你拍板；外壳是一个让你随手换上游、密钥不出本机的「插件时代 host」——<strong>你为「省心可控」买单，内核在后台默默变强</strong>。</p>
+    <div class="meta">面向：产品 / 市场 / 投资人 · 依据：产品定位澄清文档 §0 锐化定位句 · §1 受众 · §2 差异化</div>
+  </header>
+
+  <!-- ============ 1. 竞品定位象限图 ============ -->
+  <section class="block">
+    <h2>竞品定位象限</h2>
+    <p class="sub">横轴看「数据 / 运行在哪」，纵轴看「怎么用」。CodeLens 独占「网页 GUI · 本地优先」这一无人区——本地优先的工具几乎都绑终端 / IDE，网页 GUI 的工具几乎都是云端托管。</p>
+    <div class="quad-wrap">
+      <svg class="quad" viewBox="0 0 760 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CodeLens 竞品定位象限图">
+        <!-- 象限底色 -->
+        <rect x="120" y="70"  width="290" height="220" fill="#f6f8fa"/>
+        <rect x="410" y="70"  width="290" height="220" fill="#f6f8fa"/>
+        <rect x="120" y="290" width="290" height="220" fill="#e6f7f3"/>
+        <rect x="410" y="290" width="290" height="220" fill="#f6f8fa"/>
+        <!-- 外框 -->
+        <rect x="120" y="70" width="580" height="440" fill="none" stroke="#d0d7de"/>
+        <!-- 轴线 -->
+        <line x1="120" y1="290" x2="700" y2="290" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="410" y1="70" x2="410" y2="510" stroke="#94a3b8" stroke-width="1.5"/>
+        <!-- 轴标签 -->
+        <text x="70"  y="300" transform="rotate(-90 70 300)"  text-anchor="middle" class="ax-l">本地优先</text>
+        <text x="752" y="300" transform="rotate(90 752 300)"   text-anchor="middle" class="ax-r">云端托管</text>
+        <text x="410" y="48"  text-anchor="middle" class="ax-t">终端 / IDE 绑定</text>
+        <text x="410" y="548" text-anchor="middle" class="ax-b">网页 GUI · 零安装</text>
+
+        <!-- 竞品点 -->
+        <g>
+          <circle cx="240" cy="160" r="7" fill="#94a3b8"/>
+          <text x="240" y="146" text-anchor="middle" class="lbl-comp">Cline</text>
+        </g>
+        <g>
+          <circle cx="312" cy="135" r="7" fill="#94a3b8"/>
+          <text x="312" y="121" text-anchor="middle" class="lbl-comp">Roo Code</text>
+        </g>
+        <g>
+          <circle cx="275" cy="200" r="7" fill="#94a3b8"/>
+          <text x="275" y="218" text-anchor="middle" class="lbl-comp">OpenCode</text>
+        </g>
+        <g>
+          <circle cx="565" cy="145" r="7" fill="#94a3b8"/>
+          <text x="565" y="131" text-anchor="middle" class="lbl-comp">Cursor</text>
+        </g>
+        <g>
+          <circle cx="515" cy="185" r="7" fill="#94a3b8"/>
+          <text x="515" y="203" text-anchor="middle" class="lbl-comp">Claude Code</text>
+        </g>
+        <g>
+          <circle cx="545" cy="410" r="7" fill="#94a3b8"/>
+          <text x="545" y="428" text-anchor="middle" class="lbl-comp">Dify</text>
+        </g>
+        <g>
+          <circle cx="615" cy="445" r="7" fill="#94a3b8"/>
+          <text x="615" y="463" text-anchor="middle" class="lbl-comp">n8n</text>
+        </g>
+        <g>
+          <circle cx="645" cy="375" r="7" fill="#94a3b8"/>
+          <text x="645" y="363" text-anchor="middle" class="lbl-comp">通用聊天窗</text>
+        </g>
+
+        <!-- CodeLens 高亮 -->
+        <g>
+          <circle cx="185" cy="415" r="11" fill="#0d9488"/>
+          <circle cx="185" cy="415" r="19" fill="none" stroke="#0d9488" stroke-width="1.5" stroke-dasharray="3 3"/>
+          <text x="185" y="448" text-anchor="middle" class="lbl-code">CodeLens</text>
+        </g>
+
+        <!-- CodeLens 真差异 callout -->
+        <g>
+          <line x1="200" y1="412" x2="216" y2="398" stroke="#0d9488" stroke-width="1.3"/>
+          <rect x="215" y="335" width="180" height="150" rx="9" fill="#ffffff" stroke="#0d9488" stroke-width="1.6"/>
+          <text x="229" y="358" class="callout-title">CodeLens 真差异</text>
+          <text x="229" y="382" class="callout-li">• 网页 GUI 零安装</text>
+          <text x="229" y="404" class="callout-li">• 过程逐条可视化</text>
+          <text x="229" y="426" class="callout-li">• 跨浏览器恢复码</text>
+          <text x="229" y="448" class="callout-li">• GUI 三档审批闸</text>
+          <text x="229" y="470" class="callout-li" style="fill:#9aa5b1">（vs OpenCode 差异）</text>
+        </g>
+
+        <!-- 图例 -->
+        <g>
+          <circle cx="430" cy="578" r="7" fill="#0d9488"/>
+          <text x="443" y="582" class="legend">CodeLens（本地优先 · 网页 GUI）</text>
+          <circle cx="648" cy="578" r="7" fill="#94a3b8"/>
+          <text x="661" y="582" class="legend">竞品</text>
+        </g>
+      </svg>
+    </div>
+    <p class="note"><b>落点依据：</b>§2.1-1「Cline / Roo / Claude Code / <b>OpenCode</b> 均需终端或 IDE 环境；Dify / n8n 需部署容器；CodeLens 浏览器打开即用，不绑 IDE / 终端 / 项目配置」。§2.2-4「OpenCode 本地 / 开源 / BYOK / 终端驱动，与 CodeLens 几乎同轴，CodeLens 相对它的真差异只剩<b>网页 GUI + 过程可视化 + 跨浏览器恢复 + GUI 审批闸</b>」。竞品位置为基于公开形态的定位归类，非量化坐标。</p>
+  </section>
+
+  <!-- ============ 2. 受众画像卡 ============ -->
+  <section class="block">
+    <h2>三类技术受众画像</h2>
+    <p class="sub">当前真实受众是技术用户（§1 前提）：从「入门可见性」到「深度工具调用」再到「私域生态接入」，区分度充分，无需第 4 个技术 persona。</p>
+    <div class="cards">
+
+      <!-- 小林 -->
+      <div class="card a">
+        <div class="head">
+          <div class="who">小林</div>
+          <div class="role">入门 / 自学技术用户 · 量最大、深度最低</div>
+        </div>
+        <div class="body">
+          <div class="row">
+            <div class="k">核心痛点</div>
+            <div class="v">装不动 Dify（6 容器）、搞不定 n8n（节点表达式）、不敢装 IDE 插件怕污染环境；问「弱智问题」有心理压力；学新技术信息永远攒不齐（文档→博客→SO→试错，每步手动切）。</div>
+          </div>
+          <div class="row">
+            <div class="k">为何选 CodeLens · vs 谁</div>
+            <div class="vs">vs Cursor/Cline/Roo/Claude Code：IDE / 终端绑定、要配环境，小林「装不动 / 不敢装」；vs 通用聊天窗：摸不到文件 / 接口 / 数据，还要自己脱敏；vs Dify/n8n：编排学习成本过高。</div>
+          </div>
+          <div class="row">
+            <div class="k">关键决策因子</div>
+            <div class="factor">零安装开浏览器即用 · 免注册 · <b>看得见它每一步在干什么</b>（否则不敢放手）· 便宜国产 API</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 阿豪 -->
+      <div class="card b">
+        <div class="head">
+          <div class="who">阿豪</div>
+          <div class="role">后端工程师 · 核心用户、工具调用深度最高</div>
+        </div>
+        <div class="body">
+          <div class="row">
+            <div class="k">核心痛点</div>
+            <div class="v">查跨服务链路要在终端 / 日志 / IDE 间来回切、每次重建 mental model；通用聊天窗不知道内网接口长啥样；公司代码不能贴强账号体系第三方；不信任订阅额度透明（Cursor 2025-06 定价风波）。</div>
+          </div>
+          <div class="row">
+            <div class="k">为何选 CodeLens · vs 谁</div>
+            <div class="vs">vs Cursor/Copilot：订阅不透明 + 合规过不去；vs Cline/Roo/Claude Code：绑 VS Code / 终端 / 项目配置，换环境重配，且逐步弹窗审批疲劳；vs 通用聊天窗：摸不到内网、读不到本地日志。</div>
+          </div>
+          <div class="row">
+            <div class="k">关键决策因子</div>
+            <div class="factor">同时调内网 HTTP + 读本地日志 + 算聚合 · <b>高危写操作先问过他（三档风险分级审批）</b> · Key 自己充钱成本可见 · 数据不出本机</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 老周 -->
+      <div class="card c">
+        <div class="head">
+          <div class="who">老周</div>
+          <div class="role">独立全栈 / 小团队 · 生态用户、MCP 主要受益方</div>
+        </div>
+        <div class="body">
+          <div class="row">
+            <div class="k">核心痛点</div>
+            <div class="v">订阅费叠加肉疼；IDE 插件越装越重、换台机器重配；自己的 MCP Server 只能在这些 IDE 插件里用，团队其他人用不上。</div>
+          </div>
+          <div class="row">
+            <div class="k">为何选 CodeLens · vs 谁</div>
+            <div class="vs">vs Cline/Roo/Continue：绑 VS Code，MCP server 锁死 IDE；vs Cursor/Copilot：订阅制 + 不支持接私域 server；vs 官方 MCP 市场：仅 7 个在维护，不可信目录是负资产。</div>
+          </div>
+          <div class="row">
+            <div class="k">关键决策因子</div>
+            <div class="factor">网页版能<b>接上已有 MCP Server（本机 stdio，不改现有 server）</b> · BYOK 成本透明 · 零安装 · 数据不出本机（客户私有化部署，模型走可配置内网端点）</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ 3. 真差异 vs 自嗨 ============ -->
+  <section class="block">
+    <h2>真差异 vs 自嗨</h2>
+    <p class="sub">左为「有文档 / 架构事实支撑、竞品确实未同时满足」的真差异（§2.1）；右为「仓库自身已设限或证据不足」、需谨慎对外的项（§2.2）。</p>
+    <div class="diff-grid">
+
+      <div class="diff-col true">
+        <h3>✓ 真差异（可对外承诺）</h3>
+        <div class="bar"><span class="num">1</span>网页零安装 + 本地可跑：浏览器打开即用，不绑 IDE / 终端 / 项目配置。<span class="src">依据 §2.1-1</span></div>
+        <div class="bar"><span class="num">2</span>过程逐条透明 + 三档风险分级审批 + 会话级记住授权，直击 Cline / Roo「逐步弹窗、审批疲劳」反模式。<span class="src">依据 §2.1-2</span></div>
+        <div class="bar"><span class="num">3</span>跨浏览器恢复码（8 位 + 单次使用 + 5 次失败锁 15 分钟），本地 SQLite 持久化 + 换机找回。<span class="src">依据 §2.1-3</span></div>
+        <div class="bar"><span class="num">4</span>BYOK 多上游 + 一键切换 + 成本自控，Key 仅存浏览器、服务端只代理不落库。<span class="src">依据 §2.1-4</span></div>
+        <div class="bar"><span class="num">5</span>MCP 作一等公民接「用户已有私域 server」，差异不在官方市场而在「接你已有的」。<span class="src">依据 §2.1-5</span></div>
+      </div>
+
+      <div class="diff-col caut">
+        <h3>⚠ 需谨慎 / 不自嗨</h3>
+        <div class="bar"><span class="num">1</span>「强化内核 / 自我改进闭环」<b>不可作对外卖点</b>：README 已声明不对外承诺；审计显示 §6 工具纪律三条机器闸未实现。<span class="src">依据 §2.2-1（收敛为内部引擎）</span></div>
+        <div class="bar"><span class="num">2</span>「比通用聊天窗更懂代码」已被 Claude Code / Cline 覆盖，非独占差异，只算相对纯聊天窗的相对优势。<span class="src">依据 §2.2-2</span></div>
+        <div class="bar"><span class="num">3</span>「非开发者也能用」无 persona 证据，当前三 persona 全技术，属 aspirational，不应进对外定位。<span class="src">依据 §2.2-3</span></div>
+        <div class="bar"><span class="num">4</span>竞品分析遗漏 OpenCode：须补齐差异化论证，否则「本地 BYOK」被误认独占卖点。<span class="src">依据 §2.2-4</span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <p class="foot">本页为第 2 阶段 B 交付物：把澄清后的定位与受众做成可预览的可视化 one-pager（仅此文件，未改动其他文件）。<br>所有结论可追溯至《CodeLens 产品定位与目标受众澄清（Phase 1）》§0 / §1 / §2 / §3。竞品位置为基于公开形态的定位归类，非量化坐标。</p>
+
+</div>
+</body>
+</html>

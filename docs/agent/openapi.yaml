@@ -1,0 +1,1272 @@
+openapi: 3.0.3
+
+info:
+  title: CodeLens Agent 工具调用平台 API
+  version: 2.1.0
+  description: |
+    通用 Agent 对话工作台的服务端契约（Spec v2.0 / 架构 v2.1）。
+
+    三条硬约束：
+    1. 统一前缀 `/api/v1`（`/api/health` 除外）。
+    2. 统一错误格式 `{ "error": { "code", "message" } }`。
+    3. `POST /api/v1/agent/stream` 为 SSE 长连接端点：写响应头之前失败走 HTTP 4xx JSON；
+       写响应头之后的一切失败（含 MISSING_API_KEY）走 SSE `error` 事件，HTTP 状态保持 200。
+
+    本期不实现：`POST /api/v1/events`、`GET /api/v1/events`（Spec §3：埋点走前端本地日志，
+    服务端不落库，`local_events` 表不建）。本文件不定义这两个路径。
+
+servers:
+  - url: http://localhost:8080
+    description: 本地单端口部署（Express 静态托管前端 + API 同源）
+
+tags:
+  - name: health
+  - name: providers
+  - name: sessions
+  - name: agent
+  - name: approvals
+  - name: tools
+  - name: mcp
+
+paths:
+
+  /api/health:
+    get:
+      tags: [health]
+      summary: 健康检查（含 db/mcp 状态）
+      operationId: getHealth
+      responses:
+        '200':
+          description: 服务可用；DB 不可用时 status=degraded 且 db.ok=false
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/providers:
+    get:
+      tags: [providers]
+      summary: provider 与模型列表（含静态能力字段）
+      operationId: listProviders
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/Provider' }
+
+  /api/v1/providers/capabilities:
+    get:
+      tags: [providers]
+      summary: function calling 能力探测结果（按 provider+model 粒度，不每轮试探）
+      operationId: listCapabilities
+      responses:
+        '200':
+          description: 只返回已探测过的 (provider, model)；未探测的不出现
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capabilities]
+                properties:
+                  capabilities:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProviderCapability' }
+
+  /api/v1/sessions:
+    get:
+      tags: [sessions]
+      summary: 会话列表
+      operationId: listSessions
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema: { type: string }
+          description: 设备令牌；带上时按 device_token_hash 过滤
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset, hasMore]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SessionSummary' }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  hasMore: { type: boolean }
+    post:
+      tags: [sessions]
+      summary: 新建会话（首次返回 8 位恢复码，只此一次明文）
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSessionRequest' }
+      responses:
+        '201':
+          description: 已创建。recoveryCode 与 deviceToken 各只明文返回一次
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, recoveryCode, deviceToken]
+                properties:
+                  session: { $ref: '#/components/schemas/Session' }
+                  recoveryCode:
+                    type: string
+                    pattern: '^[A-HJ-NP-Z2-9]{8}$'
+                    example: A7K2M9QX
+                  deviceToken: { type: string, example: 'dt_9f2c1a...' }
+        '400': { $ref: '#/components/responses/ValidationError'
+
+  /api/v1/sessions/recover:
+    post:
+      tags: [sessions]
+      summary: 恢复码跨浏览器恢复（单次使用；连错 5 次锁 15 分钟）
+      operationId: recoverSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecoverSessionRequest' }
+      responses:
+        '200':
+          description: 恢复成功，返回新设备令牌
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, deviceToken]
+                properties:
+                  session: { $ref: '#/components/schemas/Session' }
+                  deviceToken: { type: string }
+        '404':
+          description: RECOVERY_CODE_INVALID（不区分「不存在」与「已使用」，统一文案）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '423':
+          description: RECOVERY_LOCKED（连续 5 次失败，锁定 15 分钟）
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      retryAfterMs: { type: integer, example: 900000 }
+
+  /api/v1/sessions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [sessions]
+      summary: 会话详情（含消息与工具调用）
+      operationId: getSession
+      responses:
+        '200':
+          description: OK。绝不返回 recoveryCode / *_hash 任何一项
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [sessions]
+      summary: 重命名 / 改模型（改模型会触发该 (provider,model) 的能力探测）
+      operationId: updateSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSessionRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session]
+                properties:
+                  session: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [sessions]
+      summary: 删除会话（级联删 messages / tool_calls / tool_results / approvals）
+      operationId: deleteSession
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, id]
+                properties:
+                  deleted: { type: boolean, example: true }
+                  id: { type: string, format: uuid }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/sessions/{id}/recovery-code:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [sessions]
+      summary: 重新生成恢复码（旧码立即失效，失败计数与锁定一并重置）
+      operationId: regenerateRecoveryCode
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCode]
+                properties:
+                  recoveryCode:
+                    type: string
+                    pattern: '^[A-HJ-NP-Z2-9]{8}$'
+                    example: R3T8V2ZP
+                  expiresNote:
+                    type: string
+                    example: 旧恢复码已立即失效
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/agent/stream:
+    post:
+      tags: [agent]
+      summary: Agent 主端点（SSE）—— 多轮工具调用循环
+      operationId: streamAgent
+      description: |
+        SSE 事件流。帧格式 `event: <name>\ndata: <单行 JSON>\n\n`；15s 心跳 `: ping`。
+        事件名统一下划线。`meta` 必为第一帧（通道/供应商降级时可再发一个，前端以后到的为准）；
+        `done` 与 `error` 互斥且各最多一个，必为最后一帧。
+
+        x-sse-events 列出全部 10 个事件的 payload schema。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentRequest' }
+      responses:
+        '200':
+          description: SSE 流。写头之后的错误（含 MISSING_API_KEY）以 `error` 事件承载
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  逐帧文本。每帧 `event: <name>` + `data: <json>`。
+                  事件 payload 见 components/schemas 下的 Sse* 定义。
+              example: |
+                event: meta
+                data: {"sessionId":"b7c1e2f0","messageId":"m_01","channel":"native"}
+
+                event: delta
+                data: {"text":"我先读取文件。"}
+          headers:
+            Cache-Control: { schema: { type: string }, description: 'no-cache, no-transform' }
+            X-Accel-Buffering: { schema: { type: string }, description: 'no' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '413':
+          description: PAYLOAD_TOO_LARGE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: AGENT_BUSY（按 IP 并发超限）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+      x-sse-events:
+        - $ref: '#/components/schemas/SseMeta'
+        - $ref: '#/components/schemas/SseDelta'
+        - $ref: '#/components/schemas/SseReasoning'
+        - $ref: '#/components/schemas/SseToolCall'
+        - $ref: '#/components/schemas/SseToolProgress'
+        - $ref: '#/components/schemas/SseToolResult'
+        - $ref: '#/components/schemas/SseToolApprovalRequired'
+        - $ref: '#/components/schemas/SseContextNotice'
+        - $ref: '#/components/schemas/SseDone'
+        - $ref: '#/components/schemas/SseError'
+
+  /api/v1/agent/abort:
+    post:
+      tags: [agent]
+      summary: 主动中止（浏览器 abort 为主，此端点为备选；幂等）
+      operationId: abortAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId]
+              properties:
+                sessionId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: aborted=false 表示未找到运行中的任务（不报错）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, aborted]
+                properties:
+                  ok: { type: boolean, example: true }
+                  aborted: { type: boolean }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/approvals/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: 'ap_9f2c' }
+        description: 挑战 ID（来自 tool_approval_required 事件的 approvalId）
+    post:
+      tags: [approvals]
+      summary: 提交审批决定（独立端点，不走 SSE 同流；服务端只接受决定，不接受工具调用内容）
+      operationId: submitApproval
+      description: |
+        服务端持有原则：参数由服务端从 `approvals` / `tool_calls` 表自取，客户端只回传决定。
+        body 为 strict schema —— 出现 arguments / toolName 等其它键一律 400。
+
+        校验链：存在 → status=pending → 未过期 → 令牌哈希匹配 → 参数摘要复核 → 写入决定（一次性）。
+        令牌或摘要不匹配 → 409 + 异常审计（mismatch_count+1）；累计 3 次 → 挑战置 aborted。
+
+        决定后服务端在原 SSE 流上推送 `tool_result`，本端点不返回工具结果本身。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApprovalDecisionRequest' }
+      responses:
+        '200':
+          description: |
+            已受理。`status` 两值：
+            executed 已放行并在原流继续执行；rejected 用户拒绝。
+            （改参数重试的返回态见 `/api/v1/approvals/{id}/revise`）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, approvalId, decision, status, toolCallId]
+                properties:
+                  ok: { type: boolean, example: true }
+                  approvalId: { type: string, example: 'ap_9f2c' }
+                  decision: { type: string, enum: [allow_once, allow_session, reject] }
+                  status: { type: string, enum: [executed, rejected] }
+                  toolCallId: { type: string, example: 'tc_02' }
+                  nextApproval:
+                    type: object
+                    description: 仅 status=reapproval_required 时出现
+                    properties:
+                      approvalId: { type: string, example: 'ap_9f2c_r1' }
+                      approvalToken: { type: string }
+                      expiresAt: { type: integer }
+                      reviseDepth: { type: integer, example: 1 }
+                  nextToolCall:
+                    type: object
+                    description: 仅 status=reapproval_required / executed_directly 时出现
+                    properties:
+                      toolCallId: { type: string, example: 'tc_02_r1' }
+                      callId: { type: string }
+                      arguments: { type: object }
+                      risk: { type: string, enum: [low, medium, high] }
+                      approvalMode: { type: string, enum: [none, soft, hard, two_step] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404':
+          description: APPROVAL_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            APPROVAL_ALREADY_DECIDED（重复提交）／
+            APPROVAL_TOKEN_MISMATCH（令牌哈希不匹配，AC-04 第三攻击场景）／
+            APPROVAL_ARGS_MISMATCH（参数摘要与服务端持有值不符）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '410':
+          description: APPROVAL_EXPIRED（令牌 5 分钟过期）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/approvals/{id}/revise:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: 'ap_9f2c' }
+        description: 待改参数的挑战 ID（原 approvalId）
+    post:
+      tags: [approvals]
+      summary: AC-10 改参数重试——用新参数重提待确认的工具调用
+      operationId: reviseApproval
+      description: |
+        与审批决定端点刻意分离（端点总数 22）。**本端点允许 `arguments`**，但仍 `.strict()`
+        拒收其它未知键（`toolName` / `decision` / `callId` 等一律 400）。
+
+        服务端行为（顺序不可颠倒）：
+        1. 校验链复用决定端点：存在 → `status='pending'` 且 `decision IS NULL` → 未过期 →
+           令牌哈希恒定时间比较匹配 → 参数摘要复核
+        2. `tool_calls.status` 必须为 `pending`（尚未开始执行）
+        3. `revise_depth < 3`
+        4. 新参数过工具 `inputSchema`（zod，字段级错误）
+        5. 新参数**重跑安全网关**（SSRF / 路径 jail / 计算边界）——用户编辑的参数不享有豁免
+        6. 作废旧审批：`UPDATE approvals SET decision='revised', status='revised'
+           WHERE id=? AND decision IS NULL`，**必须断言影响行数 = 1**
+           （触发器 `trg_approvals_decision_once` 只对「改写已有 decision」兜底，
+           对「WHERE 未命中导致的静默 no-op」无效——应用层断言是唯一防线）
+        7. 旧 `tool_calls` 置 `status='skipped'` + `error_kind='revised'`
+        8. 新建 `tool_calls` 行 + 新建 `approvals` 行（`revised_from_id` 指回旧挑战，
+           `revise_depth = 旧值 + 1`，新令牌、新 `expires_at`）
+        9. 重新判定运行期风险：
+           - `approvalMode != 'none'` → 在原 SSE 流推送**新的 `tool_approval_required`**
+             （新 approvalId / approvalToken / expiresAt），响应 `status='reapproval_required'`
+           - `approvalMode == 'none'` → 直接执行，走 `tool_result`，响应 `status='executed_directly'`
+
+        审计保留两行：改参数恰恰最需要「模型最初请求的参数」与「用户实际批准的参数」都在
+        （模型请求删 A、用户改成删 B，只留一行会丢掉模型原始意图）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ApprovalReviseRequest' }
+      responses:
+        '200':
+          description: |
+            已受理。`status` 三值：
+            reapproval_required 已签发新挑战，响应带 nextApproval / nextToolCall，
+            服务端同时在原 SSE 流推送新的 tool_approval_required；
+            executed_directly 新参数风险降级到 approvalMode='none'，无需再确认，已直接执行；
+            rejected 新参数未过安全网关，已作失败结果回喂 LLM（确认条应转为失败卡片）。
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, approvalId, status]
+                properties:
+                  ok: { type: boolean, example: true }
+                  approvalId: { type: string, example: 'ap_9f2c', description: 被作废的原挑战 ID }
+                  status:
+                    type: string
+                    enum: [reapproval_required, executed_directly, rejected]
+                  toolCallId: { type: string, example: 'tc_02', description: 被作废的原调用 ID }
+                  nextApproval:
+                    type: object
+                    description: 仅 status=reapproval_required 时出现
+                    properties:
+                      approvalId: { type: string, example: 'ap_9f2c_r1' }
+                      approvalToken: { type: string }
+                      expiresAt: { type: integer }
+                      reviseDepth: { type: integer, example: 1 }
+                  nextToolCall:
+                    type: object
+                    description: 仅 status=reapproval_required / executed_directly 时出现
+                    properties:
+                      toolCallId: { type: string, example: 'tc_02_r1' }
+                      callId: { type: string }
+                      arguments: { type: object }
+                      risk: { type: string, enum: [low, medium, high] }
+                      approvalMode: { type: string, enum: [none, soft, hard, two_step] }
+                  error: { $ref: '#/components/schemas/SseToolResultError' }
+        '400':
+          description: VALIDATION_ERROR（含新参数未过 inputSchema 的字段级明细）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: APPROVAL_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            APPROVAL_ALREADY_DECIDED（已决定，不可改参数）／
+            APPROVAL_TOKEN_MISMATCH（令牌哈希不匹配 + 异常审计）／
+            APPROVAL_ARGS_MISMATCH（参数摘要与服务端持有值不符 + 异常审计）／
+            APPROVAL_NOT_REVISABLE（调用已开始执行或已完成）／
+            APPROVAL_REVISE_LIMIT（已达 3 次上限）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '410':
+          description: APPROVAL_EXPIRED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/tools:
+    get:
+      tags: [tools]
+      summary: 工具注册表列表（不含 handler；risk/approvalMode 为基线值）
+      operationId: listTools
+      parameters:
+        - name: source
+          in: query
+          schema: { type: string, enum: [builtin, mcp] }
+        - name: risk
+          in: query
+          schema: { type: string, enum: [low, medium, high] }
+        - name: category
+          in: query
+          schema: { type: string, enum: [http, file, compute, mcp] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tools, grouped]
+                properties:
+                  tools:
+                    type: array
+                    items: { $ref: '#/components/schemas/ToolDefinitionPublic' }
+                  grouped:
+                    type: object
+                    properties:
+                      low: { type: array, items: { type: string } }
+                      medium: { type: array, items: { type: string } }
+                      high: { type: array, items: { type: string } }
+
+  /api/v1/tools/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema: { type: string, example: 'fs.write' }
+        description: 规范名（点号），匹配 ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$
+    patch:
+      tags: [tools]
+      summary: 启用 / 禁用工具（禁用的工具不进入下发给模型的工具清单）
+      operationId: setToolEnabled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [name, enabled]
+                properties:
+                  name: { type: string, example: 'fs.write' }
+                  enabled: { type: boolean }
+        '404':
+          description: TOOL_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/mcp/servers:
+    get:
+      tags: [mcp]
+      summary: MCP Server 配置列表（不返回 env 的任何值）
+      operationId: listMcpServers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [servers]
+                properties:
+                  servers:
+                    type: array
+                    items: { $ref: '#/components/schemas/McpServer' }
+    post:
+      tags: [mcp]
+      summary: 添加 MCP Server（新建默认 enabled=false，需显式开启再连接）
+      operationId: createMcpServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMcpServerRequest' }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server]
+                properties:
+                  server: { $ref: '#/components/schemas/McpServer' }
+        '400':
+          description: VALIDATION_ERROR / MCP_COMMAND_INVALID（command 含 shell 元字符或 cwd 不存在）
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: id 重复
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/mcp/servers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: 'filesystem' }
+    patch:
+      tags: [mcp]
+      summary: 改配置 / 启禁用（enabled=false 会断开并把其工具从注册表摘除）
+      operationId: updateMcpServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMcpServerRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server]
+                properties:
+                  server: { $ref: '#/components/schemas/McpServer' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404':
+          description: MCP_SERVER_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [mcp]
+      summary: 删除 MCP Server（先 close transport 并终止子进程，再摘除工具）
+      operationId: deleteMcpServer
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, id]
+                properties:
+                  deleted: { type: boolean, example: true }
+                  id: { type: string }
+        '404':
+          description: MCP_SERVER_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/mcp/servers/{id}/connect:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: 'filesystem' }
+    post:
+      tags: [mcp]
+      summary: 手动连接 / 重连（按需启动 → listTools → 以 mcp.<serverId>.<tool> 规范名注册）
+      operationId: connectMcpServer
+      responses:
+        '200':
+          description: 已连接。连接失败绝不影响内置工具（AC-12 / S-5）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server]
+                properties:
+                  server: { $ref: '#/components/schemas/McpServer' }
+        '404':
+          description: MCP_SERVER_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '502':
+          description: MCP_CONNECT_FAILED
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/v1/mcp/servers/{id}/disconnect:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, example: 'filesystem' }
+    post:
+      tags: [mcp]
+      summary: 手动断开（close + 终止子进程 + 从注册表摘除工具）
+      operationId: disconnectMcpServer
+      responses:
+        '200':
+          description: 已断开
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server]
+                properties:
+                  server: { $ref: '#/components/schemas/McpServer' }
+        '404':
+          description: MCP_SERVER_NOT_FOUND
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+
+  responses:
+    ValidationError:
+      description: VALIDATION_ERROR（zod 校验失败，message 含字段级明细）
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: NOT_FOUND / SESSION_NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: 见架构细化文档 §3.2 错误码总表
+              example: APPROVAL_TOKEN_MISMATCH
+            message:
+              type: string
+              example: 审批令牌不匹配，该请求已被拒绝并记录异常审计
+
+    HealthResponse:
+      type: object
+      required: [status, uptime, db, mcp]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        uptime: { type: integer, description: 秒 }
+        version: { type: string, example: '2.1.0' }
+        db:
+          type: object
+          required: [ok]
+          properties:
+            ok: { type: boolean }
+            sizeBytes: { type: integer }
+            degraded: { type: boolean }
+            tables: { type: integer, example: 7 }
+        mcp:
+          type: object
+          properties:
+            servers: { type: integer }
+            healthy: { type: integer }
+        sandbox:
+          type: object
+          properties:
+            rootConfigured: { type: boolean }
+            writable: { type: boolean }
+
+    ProviderCapabilitiesBlock:
+      type: object
+      properties:
+        nativeTools: { type: boolean }
+        toolChoiceValues:
+          type: array
+          items: { type: string, enum: [auto, none, required, named] }
+        contextWindow: { type: integer, example: 65536 }
+        retainReasoningContent: { type: boolean }
+        requireToolStreamFlag: { type: boolean }
+        explicitParallelToolCalls: { type: boolean }
+
+    Provider:
+      type: object
+      required: [id, name, baseUrl, models, capabilities]
+      properties:
+        id: { type: string, example: deepseek }
+        name: { type: string, example: DeepSeek }
+        baseUrl: { type: string, example: 'https://api.deepseek.com' }
+        models: { type: array, items: { type: string } }
+        defaultModel: { type: string, example: deepseek-v4-pro }
+        docsUrl: { type: string }
+        capabilities: { $ref: '#/components/schemas/ProviderCapabilitiesBlock' }
+
+    ProviderCapability:
+      type: object
+      required: [provider, model, probeStatus]
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        supportsFunctionCalling:
+          { type: boolean, nullable: true, description: '1 支持 / 0 不支持 / null 未知' }
+        probeStatus:
+          { type: string, enum: [unknown, supported, unsupported, failed] }
+        contextWindow: { type: integer, nullable: true }
+        lightweightModel: { type: string, nullable: true }
+        toolChoiceValues: { type: array, items: { type: string } }
+        probedAt: { type: integer, nullable: true, description: 'epoch ms' }
+        notes: { type: string, nullable: true }
+
+    Session:
+      type: object
+      required: [id, title, provider, model]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        channelMode: { type: string, enum: [auto, native, react] }
+        degraded: { type: boolean }
+        messageCount: { type: integer }
+        totalTokens: { type: integer }
+        createdAt: { type: integer }
+        updatedAt: { type: integer }
+
+    SessionSummary:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+
+    MessageSegment:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [text, tool] }
+        text: { type: string }
+        callId: { type: string }
+
+    Message:
+      type: object
+      required: [id, seq, role, content]
+      properties:
+        id: { type: string }
+        seq: { type: integer }
+        role: { type: string, enum: [user, assistant, system, tool] }
+        content: { type: string, description: 纯文本，便于检索与摘要 }
+        segments:
+          type: array
+          items: { $ref: '#/components/schemas/MessageSegment' }
+        reasoningContent: { type: string, nullable: true }
+        toolCallsJson: { type: string, nullable: true }
+        toolCallId: { type: string, nullable: true }
+        finishReason: { type: string, nullable: true }
+        usageJson: { type: string, nullable: true }
+        tokens: { type: integer }
+        isSummary: { type: boolean }
+        createdAt: { type: integer }
+
+    ToolCall:
+      type: object
+      required: [id, callId, toolName, status]
+      properties:
+        id: { type: string }
+        callId: { type: string }
+        toolName: { type: string, example: 'fs.read', description: 规范名（点号） }
+        displayName: { type: string }
+        category: { type: string, enum: [http, file, compute, mcp] }
+        source: { type: string, enum: [builtin, mcp] }
+        risk: { type: string, enum: [low, medium, high] }
+        approvalMode: { type: string, enum: [none, soft, hard, two_step] }
+        channel: { type: string, enum: [native, react] }
+        iteration: { type: integer }
+        arguments: { type: object }
+        status:
+          type: string
+          enum: [pending, running, success, failed, timeout, rejected, skipped]
+        resultSummary: { type: string, nullable: true }
+        resultRef: { type: string, nullable: true }
+        durationMs: { type: integer }
+        truncated: { type: boolean }
+        startedAt: { type: integer, nullable: true }
+        endedAt: { type: integer, nullable: true }
+
+    ApprovalSummary:
+      type: object
+      required: [id, toolCallId, status]
+      properties:
+        id: { type: string, example: 'ap_9f2c' }
+        toolCallId: { type: string }
+        toolName: { type: string }
+        status: { type: string, enum: [pending, decided, expired, aborted] }
+        decision:
+          { type: string, nullable: true, enum: [allow_once, allow_session, reject] }
+        reason: { type: string, nullable: true }
+        decidedAt: { type: integer, nullable: true }
+
+    SessionDetail:
+      type: object
+      required: [session, messages, toolCalls]
+      properties:
+        session: { $ref: '#/components/schemas/Session' }
+        messages: { type: array, items: { $ref: '#/components/schemas/Message' } }
+        toolCalls: { type: array, items: { $ref: '#/components/schemas/ToolCall' } }
+        approvals: { type: array, items: { $ref: '#/components/schemas/ApprovalSummary' } }
+
+    CreateSessionRequest:
+      type: object
+      required: [provider, model]
+      properties:
+        provider: { type: string, minLength: 1, maxLength: 64 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        title: { type: string, maxLength: 200 }
+
+    UpdateSessionRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        provider: { type: string, minLength: 1, maxLength: 64 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+
+    RecoverSessionRequest:
+      type: object
+      required: [recoveryCode]
+      properties:
+        recoveryCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{8}$'
+          example: A7K2M9QX
+        deviceToken:
+          type: string
+          description: 可选；不传则服务端新发一个
+
+    ToolDefinitionPublic:
+      type: object
+      required: [name, wireName, displayName, category, risk, approvalMode, source]
+      properties:
+        name: { type: string, example: 'http.request', description: 规范名（点号） }
+        wireName: { type: string, example: 'http_request', description: 线上名（下划线，只下发给 LLM） }
+        displayName: { type: string, example: 'HTTP 请求' }
+        category: { type: string, enum: [http, file, compute, mcp] }
+        description: { type: string }
+        inputSchema: { type: object, description: 'draft-07 子集' }
+        risk: { type: string, enum: [low, medium, high], description: 基线值 }
+        approvalMode: { type: string, enum: [none, soft, hard, two_step], description: 基线值 }
+        enabled: { type: boolean }
+        source: { type: string, enum: [builtin, mcp] }
+        timeoutMs: { type: integer }
+        mcpServerId: { type: string, nullable: true }
+
+    AgentRequest:
+      type: object
+      required: [provider, model, message]
+      properties:
+        sessionId:
+          { type: string, format: uuid, description: '不传则新建会话，新 id 随 meta 事件回传' }
+        provider: { type: string, minLength: 1, maxLength: 64 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        apiKey:
+          { type: string, minLength: 1, maxLength: 512, description: 'BYOK；缺失则回落 env，两者都无 → SSE error MISSING_API_KEY' }
+        customBaseUrl:
+          { type: string, minLength: 1, maxLength: 512, description: '仅 provider=custom 时必填：自定义 OpenAI 兼容端点 Base URL（spec.md Key 双模式规则）；其余 provider 忽略。2026-10-24 修复：此前 schema 漏声明，zod 默认 strip 导致 custom provider 必崩' }
+        message: { type: string, minLength: 1, maxLength: 32000 }
+        tools:
+          type: array
+          maxItems: 64
+          items: { type: string }
+          description: 本次允许使用的工具名白名单（规范名）；不传 = 全部已启用
+        channelMode: { type: string, enum: [auto, native, react], default: auto }
+        maxIterations: { type: integer, minimum: 5, maximum: 30, default: 12 }
+        temperature: { type: number, minimum: 0, maximum: 2, default: 0.3 }
+        maxTokens: { type: integer, minimum: 64, maximum: 8192, default: 2048 }
+
+    ApprovalDecisionRequest:
+      description: |
+        服务端持有原则：**只接受决定，不接受工具调用内容**。参数由服务端从
+        approvals / tool_calls 自取。
+
+        `.strict()`：出现 token / decision / reason 之外的任何键（尤其 `arguments` /
+        `toolName` / `args`）一律 400 VALIDATION_ERROR。
+
+        需要改参数时**不走本端点**，走 `POST /api/v1/approvals/{id}/revise`
+        （AC-10 改参数重试，端点总数 23）。两个端点刻意使用不同 schema：
+        本端点严格拒收 arguments，revise 端点放开 arguments 但仍拒收其它未知键。
+      type: object
+      required: [token, decision]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 512 }
+        decision: { type: string, enum: [allow_once, allow_session, reject] }
+        reason: { type: string, maxLength: 500, description: '仅 reject 时有意义' }
+
+    ApprovalReviseRequest:
+      description: |
+        AC-10「改参数重试」。与审批决定端点刻意分离：**本端点允许 `arguments`**，
+        但仍 `.strict()` 拒收其它未知键（尤其 `toolName` / `decision` / `callId`）。
+
+        `arguments` 是新的**完整参数对象**，不是增量 patch。
+      type: object
+      required: [token, arguments]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 512 }
+        arguments: { type: object, description: '新的完整参数对象（非增量 patch）' }
+
+    McpServer:
+      type: object
+      required: [id, name, command, status]
+      properties:
+        id: { type: string, example: filesystem }
+        name: { type: string }
+        command: { type: string, example: npx }
+        args: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        status: { type: string, enum: [disconnected, connecting, connected, failed] }
+        tools: { type: array, items: { type: string }, description: 已注册的规范名 }
+        lastError: { type: string, nullable: true }
+        connectedAt: { type: integer, nullable: true }
+
+    CreateMcpServerRequest:
+      type: object
+      required: [name, command, args]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        command:
+          { type: string, minLength: 1, maxLength: 256, description: '禁止含 shell 元字符 ; | & $ ` > <' }
+        args: { type: array, maxItems: 32, items: { type: string, maxLength: 512 } }
+        env:
+          type: object
+          additionalProperties: { type: string, maxLength: 512 }
+          description: '键名不得命中 apiKey|token|secret|password|authorization|cookie'
+        cwd: { type: string, description: 必须是已存在目录 }
+
+    UpdateMcpServerRequest:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 64 }
+        command: { type: string, minLength: 1, maxLength: 256 }
+        args: { type: array, maxItems: 32, items: { type: string, maxLength: 512 } }
+        env: { type: object, additionalProperties: { type: string, maxLength: 512 } }
+        cwd: { type: string }
+        enabled: { type: boolean }
+
+    # ── SSE 事件 payload（事件名统一下划线）────────────────
+
+    SseMeta:
+      title: meta
+      description: 循环开始时发一次；供应商/通道降级时可再发一个（前端以后到的为准）
+      type: object
+      required: [sessionId, provider, model, channel, iteration, maxIterations]
+      properties:
+        sessionId: { type: string }
+        messageId: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        channel: { type: string, enum: [native, react] }
+        degraded: { type: boolean }
+        degradedReason: { type: string, nullable: true }
+        iteration: { type: integer }
+        maxIterations: { type: integer }
+        contextWindow: { type: integer }
+        estimatedPromptTokens: { type: integer }
+        toolCount: { type: integer }
+        switchedFrom: { type: string, nullable: true }
+        switchReason: { type: string, nullable: true }
+
+    SseDelta:
+      title: delta
+      description: LLM 可见文本增量（前端 50ms 节流）
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+
+    SseReasoning:
+      title: reasoning
+      description: 思考模式思维链增量（默认折叠展示）
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+
+    SseToolCall:
+      title: tool_call
+      description: 解析出工具调用后、执行前发；参数是完整对象（上游分片由服务端累积，不下发半截 JSON）
+      type: object
+      required: [callId, name, arguments, risk, approvalMode, iteration, status]
+      properties:
+        callId: { type: string }
+        name: { type: string, example: 'fs.read', description: 规范名 }
+        displayName: { type: string }
+        category: { type: string, enum: [http, file, compute, mcp] }
+        arguments: { type: object }
+        risk:
+          { type: string, enum: [low, medium, high], description: 运行期判定结果，前端不推断 }
+        approvalMode: { type: string, enum: [none, soft, hard, two_step] }
+        source: { type: string, enum: [builtin, mcp] }
+        iteration: { type: integer }
+        status: { type: string, enum: [pending] }
+
+    SseToolProgress:
+      title: tool_progress
+      description: 可选事件，由 handler 的 ctx.reportProgress 驱动
+      type: object
+      required: [callId, stage]
+      properties:
+        callId: { type: string }
+        stage: { type: string, example: reading }
+        message: { type: string }
+        at: { type: integer }
+
+    SseToolResultError:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, example: TOOL_TIMEOUT }
+        kind:
+          type: string
+          description: |
+            错误分类（前端按此查表渲染「分类标签 + 语义色 + 恢复动作」）。未知 kind 必须
+            走兜底（`执行失败` + danger + `[重试]`），不得崩。
+
+            invalid_args   参数不合法        danger   不可重试（恢复动作：改参数重试）
+            not_found      工具或目标不存在  warning  不可重试
+            security       被安全策略拒绝    danger   不可重试，且同一目标本任务内封禁
+            timeout        执行超时          warning  可重试
+            rate_limit     上游限流          warning  可重试（退避 + jitter）
+            network        网络不可达        warning  可重试
+            upstream       上游服务错误      danger   可重试（5xx）/ 不可重试（401·403）
+            mcp            MCP 服务异常      warning  可重试（800ms 后 1 次）
+            circuit_open   工具已熔断        neutral  不可重试（不触发 LLM 调用）
+            internal       内部错误          danger   不可重试
+
+            注：`revised` 只出现在 DB 的 tool_calls.error_kind（被改参数重提的作废行），
+            **不出现在 SSE 载荷**；`payload_too_large` 不属本枚举——结果超限走
+            `tool_result.truncated=true` 标志位，请求体过大是 HTTP 413。
+          enum: [invalid_args, not_found, security, timeout, rate_limit,
+                 network, upstream, mcp, circuit_open, internal]
+        message: { type: string }
+        suggestion: { type: string }
+        retryable: { type: boolean }
+
+    SseToolResult:
+      title: tool_result
+      description: |
+        工具执行结束。七种状态共用此事件，靠 status 区分（不设 tool_rejected / tool_skipped 单独事件）。
+        审批决定后由服务端在原 SSE 流上推送此事件。
+      type: object
+      required: [callId, name, status]
+      properties:
+        callId: { type: string }
+        name: { type: string }
+        status:
+          type: string
+          enum: [pending, running, success, failed, timeout, rejected, skipped]
+          description: |
+            pending 待调度/待审批 | running 执行中 | success 成功 | failed 失败 |
+            timeout 超时（warning 色，与 failed 区分）| rejected 用户拒绝（中性色，不染红）|
+            skipped 被重跑跳过（最弱色，不计入失败数）
+        summary: { type: string }
+        data: { type: object, nullable: true }
+        truncated: { type: boolean }
+        durationMs: { type: integer }
+        resultId: { type: string, description: '→ tool_results.id，供回查完整结果' }
+        error: { $ref: '#/components/schemas/SseToolResultError' }
+
+    SseToolApprovalRequired:
+      title: tool_approval_required
+      description: |
+        服务端已先把待执行调用落库（approvals 表 + 内存挂起句柄）并签发令牌后才发此事件。
+        客户端凭 approvalId + approvalToken 调 POST /api/v1/approvals/{id}，只回传决定。
+        渲染形态是 inline 确认条，不弹窗。
+      type: object
+      required: [callId, name, arguments, risk, approvalMode, reason, approvalId, approvalToken, expiresAt]
+      properties:
+        callId: { type: string }
+        name: { type: string, example: 'fs.write' }
+        displayName: { type: string }
+        arguments: { type: object }
+        risk: { type: string, enum: [low, medium, high] }
+        approvalMode: { type: string, enum: [soft, hard, two_step] }
+        reason: { type: string }
+        approvalId: { type: string, example: 'ap_9f2c' }
+        approvalToken: { type: string, example: 't_7d1e9f2c...' }
+        expiresAt: { type: integer, description: '签发 + 300000（5 分钟）' }
+
+    SseContextNotice:
+      title: context_notice
+      description: 上下文占用 >75% 触发裁剪/压缩时；压缩自检失败时
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          { type: string, enum: [compacted, compaction_failed, tool_result_compressed, truncated] }
+        removedMessages: { type: integer }
+        estimatedTokensBefore: { type: integer }
+        estimatedTokensAfter: { type: integer }
+        summaryPreview: { type: string }
+
+    SseDone:
+      title: done
+      description: |
+        循环终止。T-1~T-5 五种终止条件全部以 done 结束 —— T-2/T-3/T-5 不是错误，
+        前端不得显示为红色错误。
+      type: object
+      required: [finishReason, iteration, toolCallCount, messageId]
+      properties:
+        finishReason:
+          type: string
+          enum: [stop, max_iterations, budget_exhausted, aborted, circuit_open, stream_interrupted]
+        iteration: { type: integer }
+        toolCallCount: { type: integer }
+        usage:
+          type: object
+          properties:
+            promptTokens: { type: integer }
+            completionTokens: { type: integer }
+        messageId: { type: string }
+
+    SseError:
+      title: error
+      description: 致命且不可恢复（含 MISSING_API_KEY、上游不可达且无法降级）
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          { type: string, example: MISSING_API_KEY, description: '见架构细化文档 §3.2 错误码总表' }
+        message: { type: string }
+        retryable: { type: boolean }
