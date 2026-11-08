@@ -79,7 +79,10 @@ const TASKS = [
 
 const baseArgs = {
   provider: 'custom',
-  model: 'deepseek-chat',
+  // 网关的档位模型：极速 / 极速-any / 旗舰 / 旗舰-any / 推理 / 平衡。
+  // 用「平衡」：原生 tool calling 稳定、响应 2-3s、无冗长推理链，
+  // token 消耗可控 —— 这一点对 RSI 很关键：budget_efficiency 必须真的能变好。
+  model: '平衡',
   customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
   channelMode: 'native',
