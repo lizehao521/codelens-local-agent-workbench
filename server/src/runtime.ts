@@ -59,6 +59,7 @@ import { SandboxGrantService } from './services/tools/sandbox-grant.service.js';
 import { SandboxGrantsController } from './controllers/sandbox-grants.controller.js';
 import { RunsController } from './controllers/runs.controller.js';
 import { probeSandboxWritable } from './utils/sandbox-probe.js';
+import { RsiBridgeService } from './services/rsi/rsi-bridge.service.js';
 
 export interface Runtime {
   db: Db;
@@ -78,6 +79,7 @@ export interface Runtime {
   judgeController: JudgeController;
   judge: JudgeService;
   policy: UpdateService;
+  rsi?: RsiBridgeService;
   modelSync: ModelSyncService;
   /** 可观测面（只读）：能力开关目录 / 运行轨迹 / 技能库。 */
   capabilityRegistry: CapabilityRegistryService;
@@ -201,6 +203,12 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
       injected: row.injected,
     })),
   );
+  // RSI L1 旁路对账：从 agentDbPath 的目录推导账本存储位置。
+  // 内存库（:memory:）无目录，RSI bridge 跳过 —— 它的账本文件本来就无处可放。
+  const dbDir = path.dirname(dbPath);
+  const rsi = dbPath !== ':memory:'
+    ? new RsiBridgeService({ db, dbDir, krsiPath: process.env.KRSI_BIN_PATH })
+    : undefined;
   // 运行轨迹服务（可观测面）：构造顺序上必须早于 loop —— loop 要往里写 span。
   const traceService = new TraceService({ db, enabled: config.observabilityEnabled });
   // 独立复核：不可逆调用同步等结论，可逆调用并行回填；每次调用记录真实 token/耗时。
@@ -257,6 +265,9 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     // 强化内核闭环：π（版本化策略）+ Judge（产 r）+ Update（r → π'）。
     policy,
     judge,
+    // RSI 旁路对账（L1 机械桥）：消费同一批 verdicts，生成跨代四态 verdict；
+    // 双轨并存，不阻断现有闭环。内存库时 rsi=undefined，loop 跳过。
+    rsi,
     // 沙箱权限：持久化配置（放开沙箱外目录 + 审批豁免），运行时实时读取。
     sandboxPermissions,
     // 运行轨迹：loop 在 act / judge / update 三处埋点；未启用时整条链路自动退化为不埋点。
@@ -396,6 +407,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     judgeController,
     judge,
     policy,
+    rsi,
     modelSync,
     capabilityRegistry,
     capabilitiesController,

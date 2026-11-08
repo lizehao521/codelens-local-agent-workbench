@@ -271,6 +271,33 @@ CREATE TABLE IF NOT EXISTS policy_injections (
 CREATE INDEX IF NOT EXISTS idx_policy_injections_lesson  ON policy_injections(lesson, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_policy_injections_session ON policy_injections(session_id);
 
+-- ── RSI 对账旁路（L1 机械桥）───────────────────────────────────────────────
+-- Agent 的 Judge 判据塔 verdicts → RSI Manifest → krsi 跨代对比。
+-- 双轨并存：UpdateService 照常写 π 增量，RSI verdict 只落审计表供事后复盘。
+-- verdict 六态中 skipped 是「无可对比的上一代」，error 是桥接自身故障，
+-- 两者都不是 RSI 的判定结果（improved/not_improved/refused/undecidable）。
+CREATE TABLE IF NOT EXISTS policy_rsi_runs (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  judge_run_id      INTEGER NOT NULL,
+  session_id        TEXT    NOT NULL,
+  generation        INTEGER NOT NULL,
+  prev_generation   INTEGER,
+  verdict           TEXT    NOT NULL
+                              CHECK (verdict IN ('improved', 'not_improved', 'refused',
+                                                  'undecidable', 'skipped', 'error')),
+  exit_code         INTEGER,
+  reasons_json      TEXT,
+  metrics_json      TEXT,
+  prev_readings_json  TEXT,
+  next_readings_json  TEXT,
+  ledger_path       TEXT,
+  created_at        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_session ON policy_rsi_runs(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_generation ON policy_rsi_runs(session_id, generation DESC);
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_judge ON policy_rsi_runs(judge_run_id);
+
 -- ── 可观测面：工作区快照 / 运行轨迹 / 技能库 ──────────────────────────────
 -- 三张表对应「能力洞察」观测层的三个支柱：可回滚（checkpoint）、可回放（trace）、
 -- 可复用（skills）。全部默认关闭，由 env 开关控制；关闭时 API 返回 enabled:false。
@@ -416,7 +443,7 @@ INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 VALUES (1, '001-initial-agent-schema', 1761234567890);
 `;
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * 增量迁移（幂等）。`SCHEMA_SQL` 只管「从零建表」，已有库的列变更必须走这里 ——
@@ -503,6 +530,21 @@ export function applyMigrations(db: MigrationDb): number[] {
       [Date.now()],
     );
     applied.push(4);
+  }
+
+  // ── 005：RSI 对账旁路（policy_rsi_runs）──────────────────────────────────
+  // 新表已由 SCHEMA_SQL 里的 CREATE TABLE IF NOT EXISTS 幂等建出（L1 旁路审计）。
+  // 这里显式保证索引 + 版本记账，旧库升上来后不会漏。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_session ON policy_rsi_runs(session_id, created_at DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_generation ON policy_rsi_runs(session_id, generation DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_judge ON policy_rsi_runs(judge_run_id)');
+  const v5 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 5');
+  if ((v5?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (5, '005-rsi-bridge-l1', ?)`,
+      [Date.now()],
+    );
+    applied.push(5);
   }
 
   return applied;

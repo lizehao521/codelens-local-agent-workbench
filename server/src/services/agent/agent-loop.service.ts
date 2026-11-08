@@ -114,6 +114,17 @@ export interface AgentLoopDeps {
    */
   judge?: JudgeService;
   /**
+   * RSI 跨代对账（可选，L1 机械桥）。提供时，任务收尾会在 Judge 判决 + Update 写 π 之后，
+   * 再走一次 RSI bridge：把当前 run 的 verdicts 转成 RSI Manifest，查上一代 manifest，
+   * 调 krsi CLI 做四态对比。
+   *
+   * 双轨并存：RSI verdict **不**阻断现有闭环，UpdateService 照常写 π 增量。
+   * RSI 只落 policy_rsi_runs 审计表供事后复盘。
+   *
+   * 不提供时完全跳过（零影响，向后兼容）。
+   */
+  rsi?: import('../rsi/rsi-bridge.service.js').RsiBridgeService;
+  /**
    * 沙箱权限服务（可选）：提供 allowDirs（沙箱外白名单）与 autoApprove（审批豁免）。
    * 提供时，运行时 gateway / executor 实时读取最新配置（PUT 后立即生效，无需重启）。
    * 不提供时退化为历史行为（无白名单、审批条照常弹出），向后兼容。
@@ -1300,6 +1311,11 @@ export class AgentLoopService {
             detail: `更新后经验共 ${nextPolicy.lessons.length} 条`,
           });
         }
+        // ── RSI 旁路对账（L1 机械桥）─────────────────────────────────────────
+        // 双轨并存：不阻断现有闭环，只在 Update 跑完之后再补一次跨代对比。
+        // RSI bridge 自己 catch 所有异常返回 error/skipped；这里再套一层 try，
+        // 确保 bridge 故障不会把 Judge/Update 这步也拖下水。
+        void this.runRsiBridge(session.id, run, traceId ?? null);
       } catch (err) {
         // 判决与更新是旁路能力：它失败不应连累任务收尾与用户可见结果。
         // 但绝不静默 —— 留下可诊断的告警，且自证面板的 totalRuns 能看出它没在跑。
@@ -1322,5 +1338,44 @@ export class AgentLoopService {
       },
       `tool_outcome:${corrective.length}:${finishReason}`,
     );
+  }
+
+  /**
+   * RSI 旁路对账：消费同一次 Judge 判决，生成跨代四态 verdict 并落审计表。
+   *
+   * 为什么是 async + void：spawn krsi 有 IO + subprocess 成本，放 run 收尾的同步路径
+   * 里会让 SSE done 事件卡一下。fire-and-forget，靠 RsiBridgeService 内部 catch。
+   *
+   * 跳过条件（返回空 promise）：
+   *   - rsi 没注入（内存库 / 没开 L1）
+   *   - 本轮 verdict 没有 runId（Judge 自己判成 inconclusive 但没写行 —— 不应该发生，
+   *     以防万一还是跳）
+   */
+  private runRsiBridge(
+    sessionId: string,
+    run: { verdicts: import('../judge/types.js').CriterionVerdict[]; runId?: number },
+    traceId: string | null,
+  ): void {
+    if (!this.deps.rsi) return;
+    if (!run.runId || run.runId <= 0) return;
+    if (!this.deps.policy) return; // 没 π 就没有代际锚点
+
+    const generation = this.deps.policy.currentVersion();
+    void this.deps.rsi
+      .compare(sessionId, generation, run.verdicts, run.runId)
+      .then((result) => {
+        // 轨迹里记一笔：improved=ok，其他状态也 ok（都是有效判定，不区分 ok/error）
+        // 但 error 单独标 error —— 它表示桥接自身故障，不是 RSI 判定结果
+        this.recordSpan(traceId, {
+          kind: 'judge', // 复用 judge span kind（它也是判决类行为）
+          name: `RSI 对账（第 ${generation} 代）`,
+          status: result.state === 'error' ? 'error' : 'ok',
+          detail: `verdict=${result.state}${result.exitCode !== null ? ` exit=${result.exitCode}` : ''}`,
+        });
+      })
+      .catch((err) => {
+        // 理论上 RsiBridgeService 内部已经 catch 了，但万一构造函数抛了
+        console.warn('[rsi-bridge] 未预期异常（主路径兜底）:', err instanceof Error ? err.message : err);
+      });
   }
 }
