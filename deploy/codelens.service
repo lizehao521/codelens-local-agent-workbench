@@ -1,0 +1,22 @@
+[Unit]
+Description=CodeLens local agent workbench (competition demo)
+After=network-online.target api-relay.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/codelens
+EnvironmentFile=/root/codelens/.env
+Environment=NODE_OPTIONS=--max-old-space-size=384
+# 占位绝对路径：install-server.sh 会用探测到的 node 路径覆盖本行
+ExecStart=/usr/local/bin/node server/dist/app.js
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+MemoryMax=700M
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
