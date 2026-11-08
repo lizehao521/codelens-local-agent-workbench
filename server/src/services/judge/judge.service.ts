@@ -405,8 +405,56 @@ export class JudgeService {
       return { ...base, status: 'unexec', runId: null, failure: 'run_not_found', reasons: ['run_not_found'] };
     }
 
-    const snapshot = parseContextSnapshot(row.context_json);
-    if (!snapshot || snapshot.coverageVersion !== COVERAGE_VERSION || !snapshot.semantic) {
+    const rawCtx = row.context_json;
+    let snapshot = parseContextSnapshot(rawCtx);
+    const snapshotValid =
+      !!snapshot && snapshot.coverageVersion === COVERAGE_VERSION && !!snapshot.semantic;
+    // 宽松兜底：种子 / 迁移前的判决可能没有完整快照结构（coverageVersion 缺失 / 旧版），
+    // 但只要能抽出 { goal, finalAnswer } 就足以跑 L2 深判（这是 L2 的最小证据集）。
+    if (!snapshotValid) {
+      try {
+        const obj: Record<string, unknown> = rawCtx ? JSON.parse(rawCtx) : {};
+        const flatNested = (obj.semantic as Record<string, unknown> | undefined) ?? {};
+        // 两种扁平结构都吃：`{ goal, finalAnswer }` 或 `{ semantic: { goal, finalAnswer } }`。
+        const goal =
+          typeof flatNested.goal === 'string' ? flatNested.goal
+          : typeof obj.goal === 'string' ? obj.goal
+          : null;
+        const finalAnswer =
+          typeof flatNested.finalAnswer === 'string' ? flatNested.finalAnswer
+          : typeof obj.finalAnswer === 'string' ? obj.finalAnswer
+          : null;
+        if (goal && finalAnswer) {
+          snapshot = {
+            coverageVersion: COVERAGE_VERSION,
+            judgeVersion: { coverageVersion: COVERAGE_VERSION, rulesVersion: 0 },
+            profiles: [],
+            unavailableLayers: [],
+            towerCoverage: 0,
+            circuitOpened: false,
+            canary: { status: 'pass' as const, goodScore: 0, badScore: 0 },
+            evidence: { toolCalls: [], approvals: [], truncated: false },
+            semantic: {
+              assessorId: 'seed-fallback-semantic',
+              evidence: {
+                goal,
+                finalAnswer,
+                assistantTurns: typeof flatNested.assistantTurns === 'number' ? flatNested.assistantTurns : 1,
+                toolSummary:
+                  (flatNested.toolSummary as { total?: number; success?: number; failed?: number } | undefined) ??
+                  { total: 0, success: 0, failed: 0 },
+                finishReason:
+                  typeof flatNested.finishReason === 'string' ? flatNested.finishReason
+                  : typeof obj.finishReason === 'string' ? obj.finishReason
+                  : 'unknown',
+              },
+            },
+            evidenceDigest: '',
+          } as unknown as JudgeRunContextSnapshot;
+        }
+      } catch { /* parse 失败就继续走 not_eligible */ }
+    }
+    if (!snapshotValid) {
       // v1 判决 / 无快照 / 规则层没留下语义证据：不是「失败」，是「不可深判」。
       return {
         ...base,

@@ -72,7 +72,7 @@ async function seed() {
     const pv = db.run('INSERT INTO policy_versions (version, policy_json, parent_version, source_judgment, created_at) VALUES (?,?,?,?,?)',
       [g, JSON.stringify({ gen: g, rules_count: 2 + g, experience: 5 + g * 3 }), g > 1 ? g - 1 : null, `demo-seed-g${g}`, now + g * 60]);
 
-    // judge_run 汇总
+    // judge_run 汇总（带 context_json，让 L2 深判可抽取 SemanticEvidence）
     const avgScore = ((scores.s + (1 - scores.f) + (1 - scores.e)) / 3).toFixed(4);
     let jv: 'pass' | 'fail' | 'inconclusive';
     if (g >= 4) jv = 'pass';
@@ -80,8 +80,36 @@ async function seed() {
     else if (g === 2) jv = 'inconclusive';
     else jv = 'fail';
 
-    const jr = db.run('INSERT INTO judge_runs (session_id, verdict, score, coverage, executed, total, created_at) VALUES (?,?,?,?,?,?,?)',
-      [SESSION_ID, jv, Number(avgScore), 1.0, 5, 5, now + g * 60 + 5]);
+    const semanticEvidence = {
+      goal: `在 /tmp/demo/g${g}/ 下搜索含 "TODO" 的 .ts 文件并汇总行数`,
+      finalAnswer:
+        g === 1 ? '只找到 1 个文件，漏掉了 src 目录下的 5 个；部分行数字段是空。'
+        : g === 2 ? '找到 3 个文件，但 /src 路径被错拼成 /sr/c。'
+        : g === 3 ? '正确找到 6 个 .ts 文件并汇总；但排序字段没按要求输出。'
+        : g === 4 ? '完整输出 6 个文件 + 行数 + 路径；但 JSON 格式里混入了 markdown 代码块。'
+        : g === 5 ? '完整、正确、JSON 格式干净；但遗漏了 .test.ts 文件。'
+        : '完整覆盖所有 .ts + .test.ts，JSON 格式正确，排序按行数降序。',
+      assistantTurns: 4 + Math.floor(g / 2),
+      toolSummary: { total: 4 + g, success: Math.min(4 + g, 8 + g), failed: g === 2 ? 1 : 0 },
+      finishReason: g <= 2 ? 'tool_limit_reached' : 'stop',
+      toolCalls: [
+        { name: 'fs-read', ok: true },
+        { name: 'sys.exec', ok: g !== 2 },
+        { name: 'fs-write', ok: g >= 4 },
+      ],
+    };
+    const contextJson = JSON.stringify({
+      sessionId: SESSION_ID,
+      generation: g,
+      semantic: semanticEvidence,
+      // 留位置给 L0 判决汇总（看板用）
+      summary: { avgScore, verdict: jv, criteria: verdicts },
+    });
+
+    const jr = db.run(
+      'INSERT INTO judge_runs (session_id, verdict, score, coverage, executed, total, context_json, created_at) VALUES (?,?,?,?,?,?,?,?)',
+      [SESSION_ID, jv, Number(avgScore), 1.0, 5, 5, contextJson, now + g * 60 + 5],
+    );
     judgeIds.push(Number(jr.lastInsertRowid));
 
     // judge_verdicts — 5 条
