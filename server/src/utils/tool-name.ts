@@ -41,9 +41,13 @@ export function normalizeWireName(wire: string): string {
 export function buildReverseIndex(defs: readonly { name: string; wireName: string }[]): Map<string, string> {
   const index = new Map<string, string>();
   for (const def of defs) {
-    const key = normalizeWireName(def.wireName);
-    // First registration wins: later conflicts were already suffixed at registration.
-    if (!index.has(key)) index.set(key, def.name);
+    // 双轨注册：canonical 点号名（平台内部用）+ wire 下划线名（外部 provider 用）
+    // 模型可能发 `fs.list`（canonical）也可能发 `fs_list`（wire），两条都要能 resolve。
+    for (const rawKey of [def.name, def.wireName]) {
+      const key = normalizeWireName(rawKey);
+      // First registration wins: later conflicts were already suffixed at registration.
+      if (!index.has(key)) index.set(key, def.name);
+    }
   }
   return index;
 }
