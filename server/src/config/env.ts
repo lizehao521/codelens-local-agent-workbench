@@ -18,6 +18,10 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   ALLOWED_ORIGINS: z.string().default(''),
   LLM_SERVER_API_KEY: z.string().default(''),
+  // ── L2 深判专用（会话 provider/model 不命中时用这些兜底） ──
+  DEEP_ASSESSOR_BASE_URL: z.string().default(''),
+  DEEP_ASSESSOR_MODEL: z.string().default(''),
+  DEEP_ASSESSOR_PROVIDER: z.string().default(''),
   TRUST_PROXY: z.string().default(''),
   CLIENT_DIST_DIR: z.string().default(''),
   // Agent platform additions
@@ -142,6 +146,10 @@ export interface AppConfig {
   nodeEnv: 'development' | 'production' | 'test';
   allowedOrigins: string[];
   serverApiKey: string;
+  /** L2 深判兜底 provider/model/baseUrl（会话不命中时用）。 */
+  deepAssessorProvider: string;
+  deepAssessorModel: string;
+  deepAssessorBaseUrl: string;
   trustProxy: boolean;
   /** Static client build directory served by Express (SPA fallback). */
   clientDistDir: string;
@@ -305,6 +313,9 @@ function buildConfig(source: NodeJS.ProcessEnv): AppConfig {
     nodeEnv: env.NODE_ENV,
     allowedOrigins: parseAllowedOrigins(env.ALLOWED_ORIGINS),
     serverApiKey: env.LLM_SERVER_API_KEY.trim(),
+    deepAssessorProvider: env.DEEP_ASSESSOR_PROVIDER.trim(),
+    deepAssessorModel: env.DEEP_ASSESSOR_MODEL.trim(),
+    deepAssessorBaseUrl: env.DEEP_ASSESSOR_BASE_URL.trim(),
     trustProxy: env.TRUST_PROXY.trim().toLowerCase() === 'true',
     clientDistDir: env.CLIENT_DIST_DIR ? path.resolve(env.CLIENT_DIST_DIR) : defaultClientDistDir(),
     agentDbPath: env.AGENT_DB_PATH

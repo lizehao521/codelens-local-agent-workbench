@@ -82,6 +82,13 @@ export interface JudgeDeps {
    * 这里刻意只存值不存来源，来源由调用方声明（keySource）。
    */
   serverApiKey?: string;
+  /**
+   * 深判 L2 专用兜底配置（会话 provider/model 不命中时用）。
+   * 对应环境变量 DEEP_ASSESSOR_BASE_URL / _MODEL / _PROVIDER。
+   */
+  deepAssessorBaseUrl?: string;
+  deepAssessorModel?: string;
+  deepAssessorProvider?: string;
 }
 
 /** 判据塔自证报告：回答「我现在还有没有资格判断别人」。 */
@@ -482,15 +489,32 @@ export class JudgeService {
       };
     }
 
-    // ── provider / model / baseUrl ──────────────────────────────────────────
+    // ── provider / model / baseUrl（会话优先，env 兜底） ─────────────────────
     const session = this.deps.db.get<{ provider: string; model: string }>(
       `SELECT provider, model FROM sessions WHERE id = ?`,
       [row.session_id],
     );
-    const providerId = (opts.provider ?? '').trim() || (session?.provider ?? '').trim();
-    const model = (opts.model ?? '').trim() || (session?.model ?? '').trim();
-    const modelSource: DeepModelSource = (opts.model ?? '').trim() ? 'request' : 'session';
-    const baseUrl = (opts.baseUrl ?? '').trim() || (providerId ? resolveBaseUrl(providerId) : '');
+    // 会话里的 provider 可能是 demo/placeholder（演示 / 内存库），用 env 兜底。
+    const providerId =
+      (opts.provider ?? '').trim() ||
+      (session?.provider && session.provider !== 'demo' ? session.provider.trim() : '') ||
+      this.deps.deepAssessorProvider?.trim() ||
+      '';
+    const model =
+      (opts.model ?? '').trim() ||
+      (session?.model && session.model !== 'demo-model' ? session.model.trim() : '') ||
+      this.deps.deepAssessorModel?.trim() ||
+      '';
+    const modelSource: DeepModelSource =
+      (opts.model ?? '').trim()
+        ? 'request'
+        : session?.model && session.model !== 'demo-model'
+          ? 'session'
+          : 'env';
+    let baseUrl = (opts.baseUrl ?? '').trim() || this.deps.deepAssessorBaseUrl?.trim() || '';
+    if (!baseUrl && providerId) {
+      try { baseUrl = resolveBaseUrl(providerId); } catch { /* provider 不在目录，继续走 custom 兜底 */ }
+    }
 
     if (!providerId || !model) {
       return { ...base, status: 'unexec', runId: null, deep: null, failure: 'not_configured', reason: 'no_provider_or_model', reasons: ['no_provider_or_model'] };

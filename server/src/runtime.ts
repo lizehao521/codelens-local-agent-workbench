@@ -185,6 +185,10 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     semantic: ruleSemanticAssessor,
     // 事后深判拿不到当时的请求上下文，只能用服务端兜底凭证（客户端可在请求体里覆盖）。
     serverApiKey: config.serverApiKey,
+    // L2 专用兜底：会话 provider/model 是 demo/placeholder 时直接用 env 配的网关。
+    deepAssessorBaseUrl: config.deepAssessorBaseUrl,
+    deepAssessorModel: config.deepAssessorModel,
+    deepAssessorProvider: config.deepAssessorProvider,
   });
   const policy = new UpdateService(db, judge.repository);
   judge.setThresholdsProvider(() => policy.getPolicy().thresholds);
