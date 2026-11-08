@@ -6,7 +6,7 @@
  * provider capability table. probeToolSupport() implements AC-01 detection.
  */
 
-import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
+import { Agent, EnvHttpProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import { AppError, ErrorCode } from '../utils/errors.js';
 import type {
   NormalizedToolCall,
@@ -65,7 +65,20 @@ export interface AdapterOptions {
 const DEFAULT_TIMEOUT_MS = 60_000;
 // 长流式超时放宽：550B 等慢模型在思考期常长时间不吐 chunk，Node 内置 fetch（undici）默认
 // bodyTimeout=300s 会误断长连接。单连接 body 超时放宽到 30 分钟；首字节仍由 headersTimeout(300s) 兜底。
-const LONG_STREAM_DISPATCHER: Dispatcher = new Agent({ bodyTimeout: 30 * 60 * 1000, headersTimeout: 300_000 });
+//
+// 代理：Node 的 fetch 不读 HTTP_PROXY/HTTPS_PROXY 环境变量（Python/curl 会读），
+// 在需要经 egress 代理出网的沙箱/企业网络下会表现为「直接连不上上游」。
+// 存在代理变量时改用 EnvHttpProxyAgent（自动遵循 NO_PROXY），否则保持直连 Agent。
+const DISPATCHER_OPTIONS = { bodyTimeout: 30 * 60 * 1000, headersTimeout: 300_000 };
+const PROXY_ENV = [
+  process.env.HTTPS_PROXY,
+  process.env.https_proxy,
+  process.env.HTTP_PROXY,
+  process.env.http_proxy,
+].find((v) => typeof v === 'string' && v.trim() !== '');
+const LONG_STREAM_DISPATCHER: Dispatcher = PROXY_ENV
+  ? (new EnvHttpProxyAgent(DISPATCHER_OPTIONS) as Dispatcher)
+  : new Agent(DISPATCHER_OPTIONS);
 const ERROR_BODY_MAX_CHARS = 500;
 
 export type ProbeOutcome =
