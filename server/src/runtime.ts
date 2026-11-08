@@ -272,6 +272,11 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     // RSI 旁路对账（L1 机械桥）：消费同一批 verdicts，生成跨代四态 verdict；
     // 双轨并存，不阻断现有闭环。内存库时 rsi=undefined，loop 跳过。
     rsi,
+    // RSI 归因器 LLM 凭证：krsi 判 not_improved / refused 时触发 LLM 归因，
+    // 归因经验直接写 policy_injections 作为 π'。未配凭证时只跑对账不跑归因。
+    rsiAttributorApiKey: config.serverApiKey || undefined,
+    rsiAttributorBaseUrl: config.deepAssessorBaseUrl || undefined,
+    rsiAttributorModel: config.deepAssessorModel || undefined,
     // 沙箱权限：持久化配置（放开沙箱外目录 + 审批豁免），运行时实时读取。
     sandboxPermissions,
     // 运行轨迹：loop 在 act / judge / update 三处埋点；未启用时整条链路自动退化为不埋点。

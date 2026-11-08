@@ -125,6 +125,14 @@ export interface AgentLoopDeps {
    */
   rsi?: import('../rsi/rsi-bridge.service.js').RsiBridgeService;
   /**
+   * RSI 归因器 LLM 凭证（可选）。提供时：krsi 判 not_improved / refused 后，
+   * 会调 LLM 归因并把归因经验写回 policy_injections 作为 π'。
+   * 不提供时跳过归因，RSI 只有旁路对账（零影响，向后兼容）。
+   */
+  rsiAttributorApiKey?: string;
+  rsiAttributorBaseUrl?: string;
+  rsiAttributorModel?: string;
+  /**
    * 沙箱权限服务（可选）：提供 allowDirs（沙箱外白名单）与 autoApprove（审批豁免）。
    * 提供时，运行时 gateway / executor 实时读取最新配置（PUT 后立即生效，无需重启）。
    * 不提供时退化为历史行为（无白名单、审批条照常弹出），向后兼容。
@@ -1361,9 +1369,10 @@ export class AgentLoopService {
     if (!this.deps.policy) return; // 没 π 就没有代际锚点
 
     const generation = this.deps.policy.currentVersion();
+    const db = (this.deps as { db?: import('../../repositories/db.js').Db }).db;
     void this.deps.rsi
       .compare(sessionId, generation, run.verdicts, run.runId)
-      .then((result) => {
+      .then(async (result) => {
         // 轨迹里记一笔：improved=ok，其他状态也 ok（都是有效判定，不区分 ok/error）
         // 但 error 单独标 error —— 它表示桥接自身故障，不是 RSI 判定结果
         this.recordSpan(traceId, {
@@ -1372,6 +1381,41 @@ export class AgentLoopService {
           status: result.state === 'error' ? 'error' : 'ok',
           detail: `verdict=${result.state}${result.exitCode !== null ? ` exit=${result.exitCode}` : ''}`,
         });
+
+        // ── LLM 归因：not_improved / refused 时触发 ──────────────────────────
+        // 归因经验直接写 policy_injections 作为 π'，下一轮 run 会被 getInjectableView() 喂进 prompt。
+        // 归因失败 catch 住不阻断主流程。
+        const needsAttribution = result.state === 'not_improved' || result.state === 'refused';
+        const hasCreds =
+          !!this.deps.rsiAttributorApiKey &&
+          !!this.deps.rsiAttributorBaseUrl &&
+          !!this.deps.rsiAttributorModel;
+        if (needsAttribution && hasCreds && db) {
+          try {
+            const { attributeDegradation } = await import('../rsi/rsi-attributor.js');
+            const attrOut = await attributeDegradation({
+              db,
+              sessionId,
+              generation,
+              runVerdicts: run.verdicts,
+              rsiResult: result,
+              apiKey: this.deps.rsiAttributorApiKey!,
+              baseUrl: this.deps.rsiAttributorBaseUrl!,
+              model: this.deps.rsiAttributorModel!,
+            });
+            // 轨迹里再记一笔归因结果
+            this.recordSpan(traceId, {
+              kind: 'update',
+              name: `RSI 归因（g${generation}）`,
+              status: attrOut.wroteRow ? 'ok' : (attrOut.failure ? 'error' : 'ok'),
+              detail: attrOut.wroteRow
+                ? `归因已落库: ${attrOut.lesson?.slice(0, 60) ?? ''}`
+                : attrOut.failure ?? '无输出',
+            });
+          } catch (err) {
+            console.warn('[rsi-attributor] 归因异常:', err instanceof Error ? err.message : err);
+          }
+        }
       })
       .catch((err) => {
         // 理论上 RsiBridgeService 内部已经 catch 了，但万一构造函数抛了
