@@ -12,6 +12,8 @@
 
 import http from 'node:http';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 
@@ -88,33 +90,34 @@ const TASKS = [
  *   只允许在 tests/ 下新建文件，绝不修改 src/。
  */
 const SELF_RULES = `严格按 3 步执行，不要发散：
-第 1 步：读下面点名的 2 个源文件的**前 60 行**；
-第 2 步：立刻用 fs.write 创建指定测试文件（内容一次写完，不要分片）；
+第 1 步：读下面点名的源文件（**每个最多读前 80 行**，最多读 4 个文件）；
+第 2 步：立刻用 fs.write 一次性写完目标文件（不要分片、不要先列目录）；
 第 3 步：回答"已创建 <文件名>"。
-禁止读第 3 个文件，禁止读 path-jail / types / package.json / 现有测试当模板。
-只允许新建 tests/ 下的这一个文件，绝不修改 src/ 下任何文件。`;
+只允许新建/覆盖本次点名的这一个目标文件；绝不修改 src/ 下任何文件。
+不要读 package.json、dist、node_modules、现有测试当模板。`;
 
 const SELF_TASKS = [
-  `为 http.request 与 calc.evaluate 两个工具补测试。${SELF_RULES}
-源文件：src/tools/builtin/http-request.tool.ts、src/tools/builtin/calc-evaluate.tool.ts
-目标文件：tests/tools-http-calc.test.ts
-内容要求：vitest；用 vi.stubGlobal('fetch') 模拟成功与 HTTP 500 两条路径；calc.evaluate 断言基础运算结果。`,
-  `为 fs.read 与 fs.list 两个工具补测试。${SELF_RULES}
-源文件：src/tools/builtin/fs-read.tool.ts、src/tools/builtin/fs-list.tool.ts
-目标文件：tests/tools-fs-read.test.ts
-内容要求：在 os.tmpdir() 建临时目录，验证读写列的真实行为，含不存在路径的报错。`,
-  `为 fs.write 与 json.format 两个工具补测试。${SELF_RULES}
-源文件：src/tools/builtin/fs-write.tool.ts、src/tools/builtin/json-format.tool.ts
-目标文件：tests/tools-fs-write.test.ts
-内容要求：在 os.tmpdir() 验证 fs.write 创建/覆盖；json.format 断言格式化结果。`,
-  `为 text.diff 与 time.now 两个工具补测试。${SELF_RULES}
-源文件：src/tools/builtin/text-diff.tool.ts、src/tools/builtin/time-now.tool.ts
-目标文件：tests/tools-text-time.test.ts
-内容要求：为两个工具各写真实断言。`,
-  `为 uuid.generate 与 sys.exec 白名单策略补测试。${SELF_RULES}
-源文件：src/tools/builtin/uuid-generate.tool.ts、src/tools/builtin/sys-exec.policy.ts
-目标文件：tests/tools-uuid-policy.test.ts
-内容要求：断言 uuid 输出格式；断言命令白名单允许 git/node、拒绝 rm -rf。不要真的执行命令。`,
+  // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
+  `帮你自己写一份能力清单文档。${SELF_RULES}
+源文件：src/tools/builtin/index.ts（以及它导出的每个 *.tool.ts 的头部 60 行）
+目标文件：docs/tools.md
+内容要求：表格列出 10 个内置工具：name / wireName / 类别 / 风险 / 审批模式 / 一句话用途。`,
+  `帮你自己写一份判据塔文档。${SELF_RULES}
+源文件：src/services/judge/criteria.ts、src/services/judge/types.ts
+目标文件：docs/judge-criteria.md
+内容要求：说明 L0-L3 分层、每条 L0 判据的通过条件与阈值、unexec 与 pass 的区别、覆盖率口径。`,
+  `帮你自己写一份 RSI 闭环文档。${SELF_RULES}
+源文件：src/services/rsi/manifest-builder.ts、src/services/rsi/rsi-bridge.service.ts（各读前 80 行）
+目标文件：docs/rsi-loop.md
+内容要求：画出 Improve(π)=π→Act→τ→Judge→r→Update→π' 的链路，说明 krsi 四态 exit code、R1-R6 判据、anchor 哈希链、证据原像。`,
+  `帮你自己的工具测试做一次自证修复。${SELF_RULES}
+源文件：src/tools/builtin/calc-evaluate.tool.ts、src/tools/builtin/fs-read.tool.ts
+目标文件：tests/tools-http-calc.test.ts（改到能通过）
+内容要求：只用 vitest（describe/it/expect），不要用 node:test；断言必须与工具的**真实**返回结构一致，先读源码确认字段名。`,
+  `帮你自己的测试统一到 vitest 写法。${SELF_RULES}
+源文件：tests/tools-fs-read.test.ts、tests/tools-fs-write.test.ts、tests/tools-text-time.test.ts
+目标文件：tests/tools-fs-read.test.ts（重写这一个即可）
+内容要求：把 node:test / node:assert 改成 vitest 的 describe/it/expect，保持原有断言语义。`,
 ];
 
 const baseArgs = {
@@ -122,7 +125,7 @@ const baseArgs = {
   // 网关的档位模型：极速 / 极速-any / 旗舰 / 旗舰-any / 推理 / 平衡。
   // 用「平衡」：原生 tool calling 稳定、响应 2-3s、无冗长推理链，
   // token 消耗可控 —— 这一点对 RSI 很关键：budget_efficiency 必须真的能变好。
-  model: '平衡',
+  model: '旗舰',
   customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
   channelMode: 'native',
@@ -189,6 +192,79 @@ async function postStreamWithRetry(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+/**
+ * 自改进模式的自动验收：真正跑一遍 Agent 改过的测试，而不是只信写闸的字符串匹配。
+ *
+ * 反馈闭环：失败摘要会被拼到下一轮任务前面，逼 Agent 先修好再往下做 ——
+ * 这是「Agent 自己测试自己」的关键一环（它没有 shell，跑不了 vitest，
+ * 所以由 harness 代跑，把结果回灌给它）。
+ */
+function runVitest(files: string[]): { ok: boolean; summary: string } {
+  if (files.length === 0) return { ok: true, summary: '（暂无测试文件）' };
+  try {
+    execFileSync('npx', ['vitest', 'run', ...files, '--reporter=dot'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 180_000,
+      stdio: 'pipe',
+    });
+    return { ok: true, summary: '全部通过' };
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string };
+    const out = `${err.stdout ?? ''}\n${err.stderr ?? ''}`.trim();
+    const tail = out
+      .split('\n')
+      .filter((l) => /FAIL|AssertionError|Expected|Received|Error:|✗|×/.test(l))
+      .slice(0, 14)
+      .join('\n');
+    return { ok: false, summary: tail || out.slice(-900) };
+  }
+}
+
+/** PUT JSON（用于开跑前把沙箱权限调成无头可用）。 */
+async function putJSON(p: string, body: unknown): Promise<void> {
+  const data = JSON.stringify(body);
+  await new Promise<void>((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: 8080,
+        path: p,
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => resolve());
+      },
+    );
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+/**
+ * 无头写入豁免。
+ *
+ * fs.write 覆盖已有文件会被安全网关动态判成 hard 审批（「覆盖不可逆」），
+ * 无人值守时永远卡在 pending —— 这是 Agent 明明想改测试却五轮都改不动的真因。
+ * 沙箱权限里的 autoApprove.fsDestructive 就是官方提供的降级开关：
+ * 打开后网关把这类写入降为 none，Agent 才能自己落盘。
+ */
+async function enableHeadlessWrites(): Promise<void> {
+  try {
+    const cfg = await getJSON('/api/v1/sandbox-permissions');
+    await putJSON('/api/v1/sandbox-permissions', {
+      allowDirs: cfg.allowDirs ?? [],
+      autoApprove: { ...(cfg.autoApprove ?? {}), fsDestructive: true },
+    });
+    console.log('🔓 已开启无头写入（autoApprove.fsDestructive=true）');
+  } catch (e) {
+    console.warn(`⚠ 开启无头写入失败（继续）: ${(e as Error).message}`);
+  }
+}
+
 async function getJSON(p: string): Promise<any> {
   return new Promise((resolve, reject) => {
     http.get(BASE + p, (res) => {
@@ -228,9 +304,40 @@ async function main() {
   let sessionId: string | null = null;
   const starts: number[] = [];
   const db = createDb(DB_PATH);
+  /** 上一轮测试失败的摘要 —— 拼到下一轮任务前面，形成「修好再往下」的闭环。 */
+  let feedback = '';
+
+  if (selfMode) await enableHeadlessWrites();
+
+  // 开跑前先做一次基线验收：把「当前就红的测试」作为第 1 轮任务，
+  // 而不是让 Agent 先做新任务、把红灯一直拖到最后一轮。
+  if (selfMode) {
+    const initial = readdirSync(path.join(ROOT, 'tests'))
+      .filter((f) => f.startsWith('tools-') && f.endsWith('.test.ts'))
+      .map((f) => `tests/${f}`);
+    const check = runVitest(initial);
+    if (!check.ok) {
+      console.log(`\n⚠ 开跑前基线验收：${initial.length} 个测试文件存在失败，第 1 轮直接进入修复`);
+      feedback = check.summary;
+    } else {
+      console.log(`\n✅ 开跑前基线验收：${initial.length} 个测试文件全绿`);
+    }
+  }
 
   for (let i = 0; i < target; i++) {
-    const task = tasks[i % tasks.length];
+    const baseTask = tasks[i % tasks.length];
+    // 有红灯时，本轮**唯一**任务就是修测试 —— 不再叠加原任务。
+    // 之前把「先修好」和「再做下一件事」拼在一起，模型会按自己点名的
+    // 目标文件规则只写新文件，永远不去改红灯（实测 5 轮全红）。
+    const task = feedback
+      ? `本轮唯一目标：让测试跑绿。允许修改 tests/ 下任何 .test.ts（仍然禁止改 src/）。
+只用 vitest 的 describe/it/expect，不要用 node:test / node:assert。
+只读「失败摘要里点名的那一个测试文件」+「它 import 的那一个工具源码」，
+不要读其它测试文件、不要读 package.json / dist / node_modules。
+确认返回结构后用 fs.write 覆盖修复，然后立刻回答"已修复 <文件名>"。
+
+${feedback}`
+      : baseTask;
     const start = Date.now();
     starts.push(start);
 
@@ -265,6 +372,21 @@ async function main() {
     // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），
     // 同时给上游留出限流窗口：连续 12 轮密集请求很容易触发网关熔断。
     await new Promise((r) => setTimeout(r, 6000));
+
+    // ── 自动验收：Agent 写完，由 harness 真跑一遍测试并把失败回灌下一轮 ──────
+    if (selfMode) {
+      const testFiles = readdirSync(path.join(ROOT, 'tests'))
+        .filter((f) => f.startsWith('tools-') && f.endsWith('.test.ts'))
+        .map((f) => `tests/${f}`);
+      const check = runVitest(testFiles);
+      if (check.ok) {
+        console.log(`  ✅ 自动验收：${testFiles.length} 个测试文件全部通过`);
+        feedback = '';
+      } else {
+        console.log(`  ❌ 自动验收：测试失败 → 已回灌到下一轮`);
+        feedback = `【上一轮自动验收失败】你上一轮写的测试跑不过，本轮必须先修好它，再执行下面的任务。失败摘要：\n${check.summary}`;
+      }
+    }
 
     // ── 隔离测量上下文 ────────────────────────────────────────────────────────
     // 每一代都要在**干净的上下文**里评测，否则会话历史逐轮累积，

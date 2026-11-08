@@ -19,7 +19,7 @@
  *   - 静态时代闸 2 常态是 unexec（C4：UNEXEC ≠ PASS），不假装通过。
  */
 
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUILTIN_TOOLS } from '../../tools/builtin/index.js';
@@ -70,7 +70,7 @@ function getCoverageFiles(): Map<string, string> {
     // 排除闸自身——否则闸的注释里提到工具名就把自己喂饱了，变成永真闸（C3 警告）
     if (file.endsWith(DISCIPLINE_SELF)) continue;
     try {
-      all.set(file, require('node:fs').readFileSync(file, 'utf8'));
+      all.set(file, readFileSync(file, 'utf8'));
     } catch { /* 读不了就跳过，这条闸降级成 unexec */ }
   }
   return all;
@@ -151,7 +151,7 @@ export function lessonPairingGate(evidence: JudgeEvidence): CriterionVerdict {
   const srcFiles = collectTsFiles(srcDir);
   const dynamicWrites = srcFiles.filter((f) => {
     try {
-      return require('node:fs').readFileSync(f, 'utf8').includes('tmp/tools');
+      return readFileSync(f, 'utf8').includes('tmp/tools');
     } catch { return false; }
   });
 
@@ -170,7 +170,7 @@ export function lessonPairingGate(evidence: JudgeEvidence): CriterionVerdict {
   let hasLessonPairing = false;
   for (const f of srcFiles) {
     try {
-      const body = require('node:fs').readFileSync(f, 'utf8');
+      const body = readFileSync(f, 'utf8');
       if (body.includes('tool_created') && body.includes('tool_removed')) hasLifecycleEvents = true;
       if (/tool_removed[\s\S]{0,400}lesson|lesson[\s\S]{0,400}tool_removed/.test(body)) hasLessonPairing = true;
     } catch { /* skip */ }
