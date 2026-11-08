@@ -45,11 +45,6 @@
   header .logo .dot { color: var(--magenta); }
   header .logo .rsi { color: var(--cyan); }
   header .session-title { font-size: 14px; color: var(--gray-3); margin-bottom: 3px; }
-  /* 默认折叠会话信息，避免刷屏 */
-  header .session-meta, header .session-title { display: none; }
-  header.show-session .session-title, header.show-session .session-meta { display: block; }
-  header .toggle-session { color: var(--gray-2); font-size: 11px; cursor: pointer; user-select: none; letter-spacing: 1px; margin-left: 10px; }
-  header .toggle-session:hover { color: var(--cyan); }
   header .sub { font-size: 11px; color: var(--gray-2); }
 
   .badges { display: flex; gap: 8px; margin-left: auto; align-items: center; }
@@ -170,7 +165,7 @@
 
   <header id="hdr">
     <div>
-      <div class="logo"><span class="rsi">RSI</span><span class="dot">·</span>SELF-AUTO<span class="toggle-session" id="toggle-session" title="展开/折叠会话信息">⌄</span></div>
+      <div class="logo"><span class="rsi">RSI</span><span class="dot">·</span>SELF-AUTO</div>
       <div class="session-title" id="session-title">——</div>
       <div class="sub" id="session-meta">加载中…</div>
     </div>
@@ -378,13 +373,6 @@
          <span>${run.verdict}</span>
          <span class="sv" style="margin-left:auto">score ${(run.score*100).toFixed(1)}%</span>
        </div>`);
-  });
-  // ── 会话折叠/展开 ──
-  document.getElementById('toggle-session')?.addEventListener('click', () => {
-    const h = document.getElementById('hdr')!;
-    h.classList.toggle('show-session');
-    document.getElementById('toggle-session')!.textContent =
-      h.classList.contains('show-session') ? '⌃' : '⌄';
   });
 })();
 </script>

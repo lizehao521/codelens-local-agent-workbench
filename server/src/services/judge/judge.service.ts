@@ -407,7 +407,7 @@ export class JudgeService {
 
     const rawCtx = row.context_json;
     let snapshot = parseContextSnapshot(rawCtx);
-    const snapshotValid =
+    let snapshotValid =
       !!snapshot && snapshot.coverageVersion === COVERAGE_VERSION && !!snapshot.semantic;
     // 宽松兜底：种子 / 迁移前的判决可能没有完整快照结构（coverageVersion 缺失 / 旧版），
     // 但只要能抽出 { goal, finalAnswer } 就足以跑 L2 深判（这是 L2 的最小证据集）。
@@ -415,7 +415,6 @@ export class JudgeService {
       try {
         const obj: Record<string, unknown> = rawCtx ? JSON.parse(rawCtx) : {};
         const flatNested = (obj.semantic as Record<string, unknown> | undefined) ?? {};
-        // 两种扁平结构都吃：`{ goal, finalAnswer }` 或 `{ semantic: { goal, finalAnswer } }`。
         const goal =
           typeof flatNested.goal === 'string' ? flatNested.goal
           : typeof obj.goal === 'string' ? obj.goal
@@ -451,10 +450,11 @@ export class JudgeService {
             },
             evidenceDigest: '',
           } as unknown as JudgeRunContextSnapshot;
+          snapshotValid = true;
         }
       } catch { /* parse 失败就继续走 not_eligible */ }
     }
-    if (!snapshotValid) {
+    if (!snapshotValid || !snapshot) {
       // v1 判决 / 无快照 / 规则层没留下语义证据：不是「失败」，是「不可深判」。
       return {
         ...base,
