@@ -22,6 +22,7 @@ import type { ToolCallRepository } from '../memory/tool-call.repository.js';
 import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
 import { L0_CRITERIA, resolveThresholds, type L0Thresholds } from './criteria.js';
 import { runCanary, type CanaryOutcome } from './canary.js';
+import { runToolDisciplineGates } from './tool-discipline.js';
 import { buildSemanticEvidence, type SemanticAssessor, type SemanticEvidence } from './semantic.js';
 import { summarize } from './summarize.js';
 import { encodeSnapshot } from './snapshot-codec.js';
@@ -305,7 +306,8 @@ export class JudgeService {
       ? adversarialClaimEvidence(evidence, semanticEvidence)
       : unwiredL3();
 
-    const verdicts: CriterionVerdict[] = [...l0, canary.verdict, l2, l3];
+    const discipline = runToolDisciplineGates(evidence);
+    const verdicts: CriterionVerdict[] = [...l0, canary.verdict, ...discipline, l2, l3];
     const summary = summarize(verdicts, profiles);
 
     // 复算所需的证据摘要：超限时只留 digest，但 digest 本身照样算全量，

@@ -68,9 +68,13 @@ async function seed() {
     const scores = GENS[g - 1];
     const verdicts = gVerdicts(scores);
 
-    // policy_version
+    // policy_version — 必须是 Policy 接口格式：{ lessons: string[], thresholds: {} }
+    const policy = {
+      lessons: Array.from({ length: g }, (_, i) => `gen${g}: 第 ${i + 1} 轮 — 把 fs-read 优先放前面`),
+      thresholds: { 'tool.success_rate': 0.6, 'approval.friction': 0.4 },
+    };
     const pv = db.run('INSERT INTO policy_versions (version, policy_json, parent_version, source_judgment, created_at) VALUES (?,?,?,?,?)',
-      [g, JSON.stringify({ gen: g, rules_count: 2 + g, experience: 5 + g * 3 }), g > 1 ? g - 1 : null, `demo-seed-g${g}`, now + g * 60]);
+      [g, JSON.stringify(policy), g > 1 ? g - 1 : null, `demo-seed-g${g}`, now + g * 60]);
 
     // judge_run 汇总（带 context_json，让 L2 深判可抽取 SemanticEvidence）
     const avgScore = ((scores.s + (1 - scores.f) + (1 - scores.e)) / 3).toFixed(4);

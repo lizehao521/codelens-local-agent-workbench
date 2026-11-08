@@ -1366,18 +1366,18 @@ export class AgentLoopService {
   ): void {
     if (!this.deps.rsi) return;
     if (!run.runId || run.runId <= 0) return;
-    if (!this.deps.policy) return; // 没 π 就没有代际锚点
 
-    const generation = this.deps.policy.currentVersion();
+    // session-scoped generation 由 RsiBridgeService 自己算（基于 policy_rsi_runs 表），
+    // 这里只传 hint（0 即可），彻底和 PolicyRepository 解耦。
     const db = (this.deps as { db?: import('../../repositories/db.js').Db }).db;
     void this.deps.rsi
-      .compare(sessionId, generation, run.verdicts, run.runId)
+      .compare(sessionId, 0, run.verdicts, run.runId)
       .then(async (result) => {
         // 轨迹里记一笔：improved=ok，其他状态也 ok（都是有效判定，不区分 ok/error）
         // 但 error 单独标 error —— 它表示桥接自身故障，不是 RSI 判定结果
         this.recordSpan(traceId, {
           kind: 'judge', // 复用 judge span kind（它也是判决类行为）
-          name: `RSI 对账（第 ${generation} 代）`,
+          name: `RSI 对账（session内最新代）`,
           status: result.state === 'error' ? 'error' : 'ok',
           detail: `verdict=${result.state}${result.exitCode !== null ? ` exit=${result.exitCode}` : ''}`,
         });
@@ -1393,10 +1393,13 @@ export class AgentLoopService {
         if (needsAttribution && hasCreds && db) {
           try {
             const { attributeDegradation } = await import('../rsi/rsi-attributor.js');
+            // generation 对归因不是必需——policy_injections 用 policy_version 字段写，
+            // 真实 session 的 policy 版本由 UpdateService.applyFromJudge 管理；
+            // 我们这里传 1 只是满足类型，归因的关键输入是 result.reasons + run.verdicts
             const attrOut = await attributeDegradation({
               db,
               sessionId,
-              generation,
+              generation: 1, // 归因本身不依赖 generation 精确定位
               runVerdicts: run.verdicts,
               rsiResult: result,
               apiKey: this.deps.rsiAttributorApiKey!,
@@ -1406,7 +1409,7 @@ export class AgentLoopService {
             // 轨迹里再记一笔归因结果
             this.recordSpan(traceId, {
               kind: 'update',
-              name: `RSI 归因（g${generation}）`,
+              name: `RSI 归因`,
               status: attrOut.wroteRow ? 'ok' : (attrOut.failure ? 'error' : 'ok'),
               detail: attrOut.wroteRow
                 ? `归因已落库: ${attrOut.lesson?.slice(0, 60) ?? ''}`

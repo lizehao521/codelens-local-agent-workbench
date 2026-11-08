@@ -22,8 +22,9 @@
  */
 
 import { spawn } from 'node:child_process';
-import { writeFile, mkdir, rm } from 'node:fs/promises';
+import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import type { Db } from '../../repositories/db.js';
 import { buildManifest, type RsiManifest } from './manifest-builder.js';
 import type { CriterionVerdict } from '../judge/types.js';
@@ -85,35 +86,66 @@ export class RsiBridgeService {
   /**
    * 主入口：对当前 run 做跨代对比。
    *
-   * @param sessionId 当前会话 id —— 用来查上一轮判决 + 隔离账本
-   * @param generation policy_versions 当前最大 version —— 代际锚点
-   * @param runVerdicts 本轮判决的 verdicts（CriterionVerdict[]）
-   * @param judgeRunId 本轮判决在 judge_runs 里的行 id（用于审计回溯）
+   * generation 由 **session 内已有的 policy_rsi_runs 数量 + 1** 自动决定，
+   * 彻底隔离 seed session 和真实 session —— 每个 session 的 RSI 代序独立计数。
+   * 不需要外部（PolicyRepository）传 generation，消除 session 间串扰。
    */
   async compare(
     sessionId: string,
-    generation: number,
+    _generationHint: number,
     runVerdicts: CriterionVerdict[],
     judgeRunId: number,
   ): Promise<RsiBridgeResult> {
+    // ── 自动决定 session-scoped generation ────────────────────────────────────
+    const prevGenRow = this.deps.db.get<{ generation: number }>(
+      `SELECT generation FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation DESC LIMIT 1`,
+      [sessionId],
+    );
+    const prevGeneration = prevGenRow?.generation ?? 0;
+    const generation = prevGeneration + 1;
+
     const ledgerPath = path.join(this.rsiDir, `${safe(sessionId)}.jsonl`);
     const reportPath = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}.txt`);
-    const prevPath = path.join(this.rsiDir, `${safe(sessionId)}-prev-gen${generation - 1}.json`);
+    const prevPath = path.join(this.rsiDir, `${safe(sessionId)}-prev-gen${prevGeneration}.json`);
     const nextPath = path.join(this.rsiDir, `${safe(sessionId)}-next-gen${generation}.json`);
 
     try {
       await mkdir(this.rsiDir, { recursive: true });
 
+      // ── 把 L2 深判子行也喂进来（如果有） ────────────────────────────────────
+      // 深判是 post-hoc 触发的，它在 judge_runs 里是 parent_run=本轮 runId 的子行。
+      // 这里查一下，有深判行就把它作为一个额外的 semantic.completion verdict
+      // 喂进 manifest（basis=2 Relayed），让 krsi 跨代能判语义评分严格变好。
+      let enrichedVerdicts = runVerdicts;
+      const deepRow = this.deps.db.get<{ verdict: string; score: number }>(
+        `SELECT verdict, score FROM judge_runs WHERE parent_run = ? LIMIT 1`,
+        [judgeRunId],
+      );
+      if (deepRow && ['pass', 'fail', 'inconclusive'].includes(deepRow.verdict)) {
+        enrichedVerdicts = [
+          ...runVerdicts,
+          {
+            layer: 'L2',
+            criterion: 'semantic.completion',
+            status: deepRow.verdict === 'pass' ? 'pass' : 'fail',
+            score: deepRow.score,
+            detail: `深判 score=${deepRow.score.toFixed(3)}`,
+          },
+        ];
+      }
+
       // ── 1. 构建 next Manifest ────────────────────────────────────────────────
       const nextManifest = buildManifest({
         producer: this.producer,
         generation,
-        verdicts: runVerdicts,
+        verdicts: enrichedVerdicts,
       });
       await writeFile(nextPath, JSON.stringify(nextManifest, null, 2));
 
       // ── 2. 查 prev：同一 session 的上一次判决 ────────────────────────────────
-      const prevManifest = await this.fetchPrevManifest(sessionId, generation - 1);
+      const prevManifest = prevGeneration > 0
+        ? await this.fetchPrevManifest(sessionId, prevGeneration)
+        : null;
       if (!prevManifest) {
         const skipped: RsiBridgeResult = {
           state: 'skipped',
@@ -130,6 +162,12 @@ export class RsiBridgeService {
       // ── 3. spawn krsi ────────────────────────────────────────────────────────
       const result = await this.spawnKrsi(prevPath, nextPath, reportPath, ledgerPath);
       await this.recordRun(judgeRunId, sessionId, generation, result, prevManifest, nextManifest);
+
+      // ── 4. Anchor 落链 ───────────────────────────────────────────────────────
+      // 给 ledger 追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
+      // 下一代 compare() 会读这一行的 anchor_hash 作为 prev_anchor_hash，
+      // microkernel-rsi 的 R6 判据下次可以直接校验链完整性。
+      await this.appendAnchor(ledgerPath, generation, nextManifest, result);
 
       // 清理临时 manifest（账本 JSONL 保留）
       await Promise.allSettled([rm(prevPath, { force: true }), rm(nextPath, { force: true })]);
@@ -195,6 +233,73 @@ export class RsiBridgeService {
       generation: Math.max(1, prevGeneration),
       verdicts,
     });
+  }
+
+  /**
+   * 给 ledger 追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
+   *
+   * 链式结构：
+   *   anchor(generation=g).hash = sha256(prev_anchor_hash || '' + manifest_hash + verdict + generation + ts)
+   *   anchor(generation=g).prev_anchor_hash = anchor(generation=g-1).anchor_hash
+   *
+   * microkernel-rsi 的 R6 判据下次可以直接校验链完整性：任一环的 manifest 被篡改
+   * 都会导致 anchor_hash 对不上，整条链变红。
+   *
+   * 失败不抛：Anchor 是 P3 增强，不是主流程必要项。ledger 写坏了就写坏了，
+   * 不能因此让 bridge 自身 verdict 变成 error。
+   */
+  private async appendAnchor(
+    ledgerPath: string,
+    generation: number,
+    manifest: RsiManifest,
+    result: RsiBridgeResult,
+  ): Promise<void> {
+    try {
+      const manifestHash = createHash('sha256')
+        .update(JSON.stringify(manifest))
+        .digest('hex');
+
+      // 读上一个 anchor_hash（作为 prev_anchor_hash），形成链
+      let prevAnchorHash: string | null = null;
+      try {
+        const content = await readFile(ledgerPath, 'utf-8');
+        const lastLine = content.trim().split('\n').pop();
+        if (lastLine) {
+          const last = JSON.parse(lastLine) as { type?: string; anchor_hash?: string };
+          // krsi 本身也会往 ledger 写 metric 行——只取 type='anchor' 的才是上一个锚点
+          if (last.type === 'anchor' && last.anchor_hash) {
+            prevAnchorHash = last.anchor_hash;
+          }
+        }
+      } catch {
+        // ledger 还没内容（首次运行）或格式不对 → prev=null，链头从 null 开始
+      }
+
+      const ts = Date.now();
+      const anchorInput = JSON.stringify({
+        prev_anchor: prevAnchorHash,
+        manifest_hash: manifestHash,
+        verdict: result.state,
+        exit_code: result.exitCode,
+        generation,
+        timestamp: ts,
+      });
+      const anchorHash = createHash('sha256').update(anchorInput).digest('hex');
+
+      const anchor = {
+        type: 'anchor' as const,
+        generation,
+        anchor_hash: anchorHash,
+        prev_anchor_hash: prevAnchorHash,
+        manifest_hash: manifestHash,
+        verdict: result.state,
+        exit_code: result.exitCode,
+        timestamp: ts,
+      };
+      await appendFile(ledgerPath, JSON.stringify(anchor) + '\n');
+    } catch {
+      // Anchor 落链失败不阻断主流程——P3 是增强不是必要项
+    }
   }
 
   /** spawn krsi，等待结果，解析报告。 */

@@ -122,7 +122,12 @@ export function createApp(options: AppOptions = {}): Express {
                                      reasons_json, prev_readings_json, next_readings_json
                               FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);
 
-      res.json({ session, judgeRuns, verdictsByRun, rsiRuns });
+      // 归因经验（policy_injections）—— 每条 π' 的增量
+      const attributions = db.all(`SELECT id, policy_version, lesson, created_at
+                                   FROM policy_injections WHERE session_id = ?
+                                   ORDER BY id DESC LIMIT 20`, [sessionId]);
+
+      res.json({ session, judgeRuns, verdictsByRun, rsiRuns, attributions });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
     }

@@ -68,6 +68,15 @@ const METRIC_MAP: Record<
     direction: 'up',
     basis: BASIS.Measured,
   },
+  // ── L2 深判（LLM 语义裁判）──
+  // basis=2 Relayed：来自固定 prompt + 固定模型 + temperature=0 的 LLM 判定，
+  // 同一输入复跑会得到相同分数，本质上是"relayed from a known process"，
+  // 不是瞎猜的 model_says（basis=4）。
+  'semantic.completion': {
+    metric: 'semantic_completion',
+    direction: 'up',
+    basis: BASIS.Relayed,
+  },
 };
 
 /** Agent 判据名 → RSI metric 的反向查表（供测试断言用）。 */
