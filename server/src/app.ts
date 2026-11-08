@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import express, { type Express, type Request, Response } from 'express';
 import helmet from 'helmet';
@@ -33,13 +34,12 @@ export interface AppOptions {
 
 const CSP_DIRECTIVES: Record<string, string[]> = {
   'default-src': ["'self'"],
-  'script-src': ["'self'"],
-  'style-src': ["'self'", "'unsafe-inline'"],
-  'img-src': ["'self'", 'data:'],
-  'connect-src': ["'self'"],
-  // font-src 需放行 data:：构建期小于内联阈值的 woff2 子集会被 Vite 内联成 data: URL，
-  // 只允许 'self' 时这些字体会被 CSP 拦掉（控制台报 data:font 拒绝，部分字形回退系统字体）。
-  'font-src': ["'self'", 'data:'],
+  // RSI 看板用 CDN ECharts / Tailwind / Lucide —— 开发态看板，放行知名 CDN
+  'script-src': ["'self'", 'cdn.jsdelivr.net', 'cdn.tailwindcss.com', 'unpkg.com'],
+  'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],
+  'img-src': ["'self'", 'data:', 'cdn.jsdelivr.net'],
+  'connect-src': ["'self'", 'cdn.jsdelivr.net'],
+  'font-src': ["'self'", 'data:', 'fonts.gstatic.com'],
 };
 
 export function createApp(options: AppOptions = {}): Express {
@@ -95,6 +95,47 @@ export function createApp(options: AppOptions = {}): Express {
       runs: runtime.runsController,
     }),
   );
+
+  // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程
+  app.get('/api/rsi/overview', (req, res) => {
+    try {
+      const sessionId = typeof req.query.session === 'string' ? req.query.session : null;
+      if (!sessionId) { res.status(400).json({ error: '?session=xxx required' }); return; }
+      const db = runtime.db;
+
+      const session = db.get(`SELECT id, title, provider, model, created_at FROM sessions WHERE id = ?`, [sessionId]);
+      if (!session) { res.status(404).json({ error: 'session not found' }); return; }
+
+      // 每代 judge_run 汇总 + 其 verdicts
+      const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at
+                                FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);
+      const verdictsByRun = new Map<number, any[]>();
+      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail
+                                  FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);
+      for (const v of allVerdicts) {
+        if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);
+        verdictsByRun.get(v.run_id)!.push(v);
+      }
+
+      // 每代 RSI 对比（prev → next）
+      const rsiRuns = db.all(`SELECT generation, prev_generation, verdict, exit_code,
+                                     reasons_json, prev_readings_json, next_readings_json
+                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);
+
+      res.json({ session, judgeRuns, verdictsByRun, rsiRuns });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
+    }
+  });
+
+  // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到
+  app.get('/rsi', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    // cwd 在 dev (tsx) 和 build (node dist/app.js) 都是 server 根目录
+    const htmlPath = path.join(process.cwd(), 'public', 'rsi-dashboard.html');
+    if (existsSync(htmlPath)) { res.sendFile(htmlPath); return; }
+    res.status(404).send('rsi dashboard not found at ' + htmlPath);
+  });
 
   app.use(notFoundHandler);
 
