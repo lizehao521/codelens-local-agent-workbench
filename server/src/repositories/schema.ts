@@ -290,6 +290,10 @@ CREATE TABLE IF NOT EXISTS policy_rsi_runs (
   metrics_json      TEXT,
   prev_readings_json  TEXT,
   next_readings_json  TEXT,
+  -- 本代 manifest 的**原文**。下一代做 prev 时必须复用它，不能从 verdicts 重建：
+  -- krsi 的 R6 会比对链上已记录的同一代 manifest，重建出的字节只要有一处不同
+  -- 就会被判「同一代有两份 manifest」而整代拒收。
+  next_manifest_json  TEXT,
   ledger_path       TEXT,
   created_at        INTEGER NOT NULL
 );
@@ -538,6 +542,20 @@ export function applyMigrations(db: MigrationDb): number[] {
   db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_session ON policy_rsi_runs(session_id, created_at DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_generation ON policy_rsi_runs(session_id, generation DESC)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_judge ON policy_rsi_runs(judge_run_id)');
+  // 006：policy_rsi_runs.next_manifest_json —— 复用上一代 manifest 原文
+  // （CREATE IF NOT EXISTS 不会给旧表补列，必须显式 ADD）
+  const rsiColumns = db.all<{ name: string }>('PRAGMA table_info(policy_rsi_runs)');
+  if (rsiColumns.length > 0 && !rsiColumns.some((c) => c.name === 'next_manifest_json')) {
+    db.exec('ALTER TABLE policy_rsi_runs ADD COLUMN next_manifest_json TEXT');
+  }
+  const v6 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 6');
+  if ((v6?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (6, '006-rsi-manifest-reuse', ?)`,
+      [Date.now()],
+    );
+    applied.push(6);
+  }
   const v5 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 5');
   if ((v5?.n ?? 0) === 0) {
     db.run(

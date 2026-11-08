@@ -26,7 +26,7 @@ import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Db } from '../../repositories/db.js';
-import { buildManifest, type RsiManifest } from './manifest-builder.js';
+import { buildManifest, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
 import type { CriterionVerdict } from '../judge/types.js';
 
 export type RsiVerdictState = 'improved' | 'not_improved' | 'refused' | 'undecidable' | 'skipped' | 'error';
@@ -97,8 +97,9 @@ export class RsiBridgeService {
     judgeRunId: number,
   ): Promise<RsiBridgeResult> {
     // ── 自动决定 session-scoped generation ────────────────────────────────────
-    const prevGenRow = this.deps.db.get<{ generation: number }>(
-      `SELECT generation FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation DESC LIMIT 1`,
+    const prevGenRow = this.deps.db.get<{ generation: number; next_manifest_json: string | null }>(
+      `SELECT generation, next_manifest_json FROM policy_rsi_runs
+        WHERE session_id = ? ORDER BY generation DESC LIMIT 1`,
       [sessionId],
     );
     const prevGeneration = prevGenRow?.generation ?? 0;
@@ -134,17 +135,56 @@ export class RsiBridgeService {
         ];
       }
 
+      // ── 0. 钉住本轮判决的证据原像 ─────────────────────────────────────────────
+      // krsi 的 R4「可锚」判据要的不是一个 64 位占位串，而是
+      // 「这个 manifest 指着一个真实存在、内容哈希对得上的证据文件」。
+      // 所以每代都把判决证据（judgeRunId + 全部 verdicts + 采集时间）落盘，
+      // 用文件内容的真 sha256 + 真字节数作为 artifacts。
+      // 证据文件永久保留（不随临时 manifest 一起删），下一代/审计都能回查。
+      const evidencePath = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}-evidence.json`);
+      const evidenceBody = JSON.stringify(
+        {
+          sessionId,
+          generation,
+          judgeRunId,
+          capturedAt: new Date().toISOString(),
+          verdicts: enrichedVerdicts,
+        },
+        null,
+        2,
+      );
+      await writeFile(evidencePath, evidenceBody);
+      const evidenceSha256 = createHash('sha256').update(evidenceBody, 'utf8').digest('hex');
+      const evidenceBytes = Buffer.byteLength(evidenceBody, 'utf8');
+
       // ── 1. 构建 next Manifest ────────────────────────────────────────────────
       const nextManifest = buildManifest({
         producer: this.producer,
         generation,
         verdicts: enrichedVerdicts,
+        artifacts: [
+          {
+            path: path.relative(this.dbDir, evidencePath),
+            sha256: evidenceSha256,
+            bytes: evidenceBytes,
+          },
+        ],
       });
       await writeFile(nextPath, JSON.stringify(nextManifest, null, 2));
 
-      // ── 2. 查 prev：同一 session 的上一次判决 ────────────────────────────────
+      // ── 2. 取 prev：优先复用上一代**落库的 manifest 原文** ───────────────────
+      // 为什么必须复用原文、不能从 judge_verdicts 重建：
+      //   krsi 的 R6 会比对「链上已记录的某一代 manifest」，重建只要有一个字节不同
+      //   （字段顺序、L2 深判行是否已落库、证据产物的哈希……）就会被判
+      //   「同一代存在两份不同 manifest」而整代拒收。
+      // 重建只作为旧数据的兜底（列还没写过的历史行）。
       const prevManifest = prevGeneration > 0
-        ? await this.fetchPrevManifest(sessionId, prevGeneration)
+        ? await this.loadPrevManifest(
+            sessionId,
+            prevGeneration,
+            prevGenRow?.next_manifest_json ?? null,
+            judgeRunId,
+          )
         : null;
       if (!prevManifest) {
         const skipped: RsiBridgeResult = {
@@ -154,9 +194,16 @@ export class RsiBridgeService {
           reportRaw: '',
           ledgerPath,
         };
-        await this.recordRun(judgeRunId, sessionId, generation, skipped, null, null);
+        // 首次运行也要把本代 manifest 落库：否则下一代取 prev 时读到 NULL，
+        // 会退回「从 judge_runs 重建」，而重建取到的是**当前轮**的判决，
+        // 于是 prev 与 next 读数永远相同（R5 恒判没变好）。这是整条链的起点，
+        // 第一代不存 = 第二代必错。
+        await this.recordRun(judgeRunId, sessionId, generation, skipped, null, nextManifest);
         return skipped;
       }
+      // 缩进必须与 nextPath 完全一致：prev 复用的是上一代落库原文，
+      // 若这一侧用紧凑 JSON 写盘、那一侧用 2 空格缩进，同一个对象会得到不同字节，
+      // R6 的「同一代 manifest 必须逐字节一致」就会误报。统一 2 空格。
       await writeFile(prevPath, JSON.stringify(prevManifest, null, 2));
 
       // ── 3. spawn krsi ────────────────────────────────────────────────────────
@@ -164,10 +211,13 @@ export class RsiBridgeService {
       await this.recordRun(judgeRunId, sessionId, generation, result, prevManifest, nextManifest);
 
       // ── 4. Anchor 落链 ───────────────────────────────────────────────────────
-      // 给 ledger 追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
-      // 下一代 compare() 会读这一行的 anchor_hash 作为 prev_anchor_hash，
-      // microkernel-rsi 的 R6 判据下次可以直接校验链完整性。
-      await this.appendAnchor(ledgerPath, generation, nextManifest, result);
+      // 给**独立的**锚链文件追加一条带 manifest sha256 的 Anchor 行。
+      //
+      // 绝不能写进 krsi 自己的 ledger：那张账本是 krsi 的私有格式
+      // （seq/actor/payload_b64/prev_hash 链），混入外来行后它的 R6 账本校验
+      // 无法解析，从下一代起会直接 precheck 拒收（exit 2、连报告都不写）。
+      // 实测症状：g1→g2 正常，g3 起全部 refused。
+      await this.appendAnchor(this.anchorPath(sessionId), generation, nextManifest, result);
 
       // 清理临时 manifest（账本 JSONL 保留）
       await Promise.allSettled([rm(prevPath, { force: true }), rm(nextPath, { force: true })]);
@@ -189,20 +239,48 @@ export class RsiBridgeService {
   // ── 内部 ──────────────────────────────────────────────────────────────────
 
   /**
+   * 取上一代 Manifest：落库原文优先，缺失时才从判决重建。
+   *
+   * 复用原文是 R6 能连续通过的前提（见 compare() 里的说明）。
+   */
+  private async loadPrevManifest(
+    sessionId: string,
+    prevGeneration: number,
+    storedJson: string | null,
+    judgeRunId: number,
+  ): Promise<RsiManifest | null> {
+    if (storedJson) {
+      try {
+        return JSON.parse(storedJson) as RsiManifest;
+      } catch {
+        // 原文损坏 → 退回重建，至少不阻断
+      }
+    }
+    return this.fetchPrevManifest(sessionId, prevGeneration, judgeRunId);
+  }
+
+  /**
    * 从上一次 Agent 判决重建 prev Manifest。
    *
-   * 实现：查 judge_runs 找 session 上一次判决（excluding 当前 run 还没写进去，
-   * 所以直接按 created_at DESC LIMIT 1 就够），读其 verdicts，重建 buildManifest。
+   * 实现：查 judge_runs 找 session **当前 run 之前**的最近一次判决，
+   * 读其 verdicts，重建 buildManifest。
+   *
+   * 必须显式排除当前 run（id < currentRunId）：当前判决此时已经落库，
+   * 只按 created_at DESC 取第一条会取到自己，prev 与 next 读数就永远相同。
    *
    * 返回 null 表示"没有上一代"（首次运行 / session 没有历史判决）。
    */
-  private async fetchPrevManifest(sessionId: string, prevGeneration: number): Promise<RsiManifest | null> {
+  private async fetchPrevManifest(
+    sessionId: string,
+    prevGeneration: number,
+    excludeRunId: number,
+  ): Promise<RsiManifest | null> {
     const prevRun = this.deps.db
       .get<{ id: number; context_json: string | null }>(
         `SELECT id, context_json FROM judge_runs
-         WHERE session_id = ? AND verdict IS NOT NULL
-         ORDER BY created_at DESC LIMIT 1`,
-        [sessionId],
+         WHERE session_id = ? AND verdict IS NOT NULL AND id < ?
+         ORDER BY id DESC LIMIT 1`,
+        [sessionId, excludeRunId],
       );
     if (!prevRun) return null;
 
@@ -228,15 +306,49 @@ export class RsiBridgeService {
       detail: r.detail ?? undefined,
     }));
 
+    // 上一代的证据原像若还在盘上，就用真实文件重算哈希/字节数；
+    // 这样 prev 与 next 两侧的 artifacts 口径一致，都是"可回查的真文件"，
+    // 而不是一边真一边占位。
+    const artifacts = await this.readEvidenceArtifact(sessionId, Math.max(1, prevGeneration));
+
     return buildManifest({
       producer: this.producer,
       generation: Math.max(1, prevGeneration),
       verdicts,
+      artifacts,
     });
   }
 
   /**
-   * 给 ledger 追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
+   * 读某代的证据原像文件，返回可校验的 artifact 描述。
+   * 文件不存在（历史遗留代 / 首次运行）→ undefined，由 buildManifest 走 readings 兜底。
+   */
+  private async readEvidenceArtifact(
+    sessionId: string,
+    generation: number,
+  ): Promise<RsiArtifact[] | undefined> {
+    const p = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}-evidence.json`);
+    try {
+      const body = await readFile(p);
+      return [
+        {
+          path: path.relative(this.dbDir, p),
+          sha256: createHash('sha256').update(body).digest('hex'),
+          bytes: body.byteLength,
+        },
+      ];
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** 锚链文件（与 krsi 的私有账本严格分离，见 compare() 里的说明）。 */
+  private anchorPath(sessionId: string): string {
+    return path.join(this.rsiDir, `${safe(sessionId)}-anchors.jsonl`);
+  }
+
+  /**
+   * 给锚链文件追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
    *
    * 链式结构：
    *   anchor(generation=g).hash = sha256(prev_anchor_hash || '' + manifest_hash + verdict + generation + ts)
@@ -375,8 +487,9 @@ export class RsiBridgeService {
       `INSERT INTO policy_rsi_runs
          (judge_run_id, session_id, generation, prev_generation,
           verdict, exit_code, reasons_json, metrics_json,
-          prev_readings_json, next_readings_json, ledger_path, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          prev_readings_json, next_readings_json, next_manifest_json,
+          ledger_path, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         judgeRunId,
         sessionId,
@@ -388,6 +501,8 @@ export class RsiBridgeService {
         metrics,
         prevManifest ? JSON.stringify(prevManifest.readings) : null,
         nextManifest ? JSON.stringify(nextManifest.readings) : null,
+        // 原文落库：下一代直接复用，保证与链上记录逐字节一致
+        nextManifest ? JSON.stringify(nextManifest) : null,
         result.ledgerPath,
         Date.now(),
       ],

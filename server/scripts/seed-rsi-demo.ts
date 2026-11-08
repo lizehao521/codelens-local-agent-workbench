@@ -9,7 +9,7 @@
 import { createDb } from '../src/repositories/db.js';
 import { SCHEMA_SQL } from '../src/repositories/schema.js';
 import path from 'node:path';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { buildManifest } from '../src/services/rsi/manifest-builder.js';
 import { spawn } from 'node:child_process';
 
@@ -142,6 +142,10 @@ async function seed() {
   }
 
   // ── 跨代 krsi 对比 ──
+  // 账本目录必须每次清空：krsi 的 R6 会拒绝「同一代在链上已有不同 manifest」。
+  // 残留的旧账本 + 新的（真实哈希）manifest 正好触发这条判据，
+  // 看起来像 seed 失败，其实是锚定完整性检测在正常工作。
+  await rm('/tmp/rsi-seed', { recursive: true, force: true });
   await mkdir('/tmp/rsi-seed', { recursive: true });
 
   for (let i = 1; i < 6; i++) {

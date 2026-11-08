@@ -15,7 +15,9 @@
  * 本模块是纯函数，无副作用，无 DB 依赖 —— 可以单测钉死。
  */
 
+import { createHash } from 'node:crypto';
 import type { CriterionVerdict } from '../judge/types.js';
+import { DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js';
 
 // ── RSI Manifest 类型镜像（与 microkernel-rsi/risk 包同构）────────────────
 
@@ -81,6 +83,41 @@ const METRIC_MAP: Record<
 
 /** Agent 判据名 → RSI metric 的反向查表（供测试断言用）。 */
 export const KNOWN_CRITERIA = Object.keys(METRIC_MAP);
+
+/**
+ * 判据集指纹 —— 对整座判据塔的**定义**做真实 sha256。
+ *
+ * 为什么要真实指纹而不是固定常量：krsi 的 R2 判据靠 criteria_sha256 判断
+ * 「这一代有没有偷偷改判据」。如果指纹是固定假值，那么无论判据被放宽、
+ * 被删、被替换成永真闸，krsi 都看不出来 —— 自证体系当场失效。
+ *
+ * 指纹覆盖：每条判据的名字 / 对应 metric / 方向 / basis + 生效阈值。
+ * 判据集不变 → 指纹逐代稳定（不会误报改判据）；任一判据或阈值变动 → 指纹变，
+ * 跨代 diff 就能被 krsi 抓到。
+ */
+export function criteriaFingerprint(
+  thresholds?: Record<string, number>,
+): string {
+  const effective = thresholds ?? (DEFAULT_L0_THRESHOLDS as unknown as Record<string, number>);
+  const descriptor = {
+    version: 2,
+    metrics: Object.entries(METRIC_MAP)
+      .map(([criterion, c]) => ({
+        criterion,
+        metric: c.metric,
+        direction: c.direction,
+        basis: c.basis,
+      }))
+      .sort((a, b) => a.criterion.localeCompare(b.criterion)),
+    thresholds: Object.keys(effective)
+      .sort()
+      .map((k) => [k, (effective as Record<string, number>)[k]]),
+  };
+  return sha256Hex(JSON.stringify(descriptor));
+}
+
+/** 当前判据集指纹（模块加载时算一次，供默认值使用）。 */
+export const CRITERIA_FINGERPRINT = criteriaFingerprint();
 
 // ── RSI Manifest 类型 ── 必须与 microkernel-rsi/risk.go 的 JSON 形状对齐
 
@@ -176,50 +213,51 @@ export function verdictsToReadings(verdicts: CriterionVerdict[]): RsiReading[] {
 /**
  * 构建完整 RSI Manifest。
  *
- * criteria_sha256：L1 判据集固定（L0_CRITERIA + task.terminal + loop.health），
- *   所以填固定值就够 —— 等判据集扩了再算真实 sha256。
- * criteria_diff：L1 判据集不变，空数组。
- * artifacts：L1 可选；不传时给一个固定 artifact 占位（含空 path + 固定 sha256），
- *   保证 RSI R1 不会因为产物清单为空而拒收。L2 会校验指纹变化。
+ * criteria_sha256：对判据集定义 + 生效阈值做真实 sha256（criteriaFingerprint）。
+ *   判据不变则逐代稳定；任一判据/阈值变动则跨代可见 —— 这是 R2 能抓「偷改判据」的前提。
+ * criteria_diff：本代相对上代的判据变更（当前由桥接层填，默认空数组）。
+ * artifacts：调用方传真实原像（path + 真 sha256 + 真字节数）。不传时对 readings
+ *   JSON 做真 sha256 兜底 —— 绝不使用固定占位串，否则 R4「可锚」形同虚设。
  */
 export function buildManifest(input: BuildManifestInput): RsiManifest {
   const readings = verdictsToReadings(input.verdicts);
 
-  // RSI R2 判据：两代产物指纹集完全相同 → 拒收（同字节换标签不算改进）。
-  // 所以 fallback artifact 的 sha256 必须跨代唯一。
-  // —— 把 generation + readings 内容拼进 hash seed，
-  //    保证 verdicts 变了就 artifact hash 也变；同样的 verdicts + 同样的 generation
-  //    才会生成同样的 artifact（R2 这时候拒收才是对的：同字节无实质改进）。
+  // artifacts 必须是**可复核的真原像**，不是占位符。
+  // 调用方（RsiBridgeService）会把本轮判决证据落盘后传进来：
+  //   { path: 证据文件的相对路径, sha256: 文件内容的真 sha256, bytes: 真实字节数 }
+  // 这样 krsi 的 R4「可锚」判据才真的是在验「这个 manifest 指着一个没被篡改的
+  // 真实证据文件」，而不是在验一个 64 个 0 的占位串。
+  //
+  // 没传 artifacts 时退回「readings 原像」：对 readings 的 JSON 做真 sha256，
+  // bytes 用真实字节数。注意**不含 generation** —— 两代读数完全相同时产物
+  // 指纹也必须相同，这正是 krsi 该拒收的情形；把 generation 混进哈希
+  // 等于伪造差异，会把「原地踏步」洗成「有新产物」。
   const artifacts =
     input.artifacts && input.artifacts.length > 0
       ? input.artifacts
-      : [
-          {
-            path: `agentkernel/gen${input.generation}-readings`,
-            sha256: hashlize(JSON.stringify({ g: input.generation, r: readings })),
-            bytes: 0,
-          },
-        ];
+      : (() => {
+          const body = JSON.stringify({ readings });
+          return [
+            {
+              path: `agentkernel/gen${input.generation}-readings`,
+              sha256: sha256Hex(body),
+              bytes: Buffer.byteLength(body, 'utf8'),
+            },
+          ];
+        })();
 
   return {
     producer: input.producer,
     generation: input.generation,
     artifacts,
-    criteria_sha256: input.criteriaSha256 ?? hashlize('agentkernel/criteria@L1'),
+    criteria_sha256: input.criteriaSha256 ?? criteriaFingerprint(),
     criteria_diff: input.criteriaDiff ?? [],
     readings,
     claim: input.claim ?? `Agent 第 ${input.generation} 代判据塔判决`,
   };
 }
 
-/** 简单 sha256 替代：这里只需要 deterministic 64 hex，不真的需要加密安全。 */
-function hashlize(s: string): string {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i);
-    h |= 0;
-  }
-  // 把整数扩成 64 hex 字符（0 也返回 64 个 0，RSI R1 只检查长度）
-  const hex = (Math.abs(h) || 0).toString(16).padStart(16, '0');
-  return hex.repeat(4).slice(0, 64);
+/** 真实 sha256（64 hex）。RSI 的 R4/R6 验的是密码学哈希，不能用弱哈希顶替。 */
+export function sha256Hex(s: string): string {
+  return createHash('sha256').update(s, 'utf8').digest('hex');
 }

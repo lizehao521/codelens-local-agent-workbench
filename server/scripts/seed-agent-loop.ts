@@ -11,26 +11,70 @@
  */
 
 import http from 'node:http';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createDb } from '../src/repositories/db.js';
 
 const BASE = 'http://127.0.0.1:8080';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DB_PATH = process.env.AGENT_DB_PATH
+  ? path.resolve(process.env.AGENT_DB_PATH)
+  : path.join(ROOT, 'data', 'codelens.db');
+
+/**
+ * 任务序列刻意做成「长任务 + 故意失败」→「短任务 + 全成功」的交替。
+ *
+ * 为什么不能全用读文件问答：krsi 的 R5 要求**每个** metric 严格变好。
+ * 读文件问答轮次的 tool_success_rate 恒等于 1.0 —— 1→1 永远不算变好，
+ * 于是无论跑多少轮都只能拿到 not_improved / refused。这是数学上的死路，
+ * 不是代码 bug。要让它真的能判 improved，必须制造一次「上一代更差」：
+ *   · 上一代先跑一条注定失败的命令（ls 不存在的目录）→ success_rate < 1
+ *   · 本代只跑成功命令 → success_rate = 1.0，严格变好
+ *   · 同时本代不读长文件 → token 消耗更低，budget_efficiency 也严格变好
+ * 两个 metric 同时严格变好，krsi 才会给出 exit 0 = improved。
+ *
+ * 标记说明：[差] = 读长文件 + 一次必失败的读取；[好] = 轻量 + 全成功。
+ *
+ * 两个环境约束（都踩过坑）：
+ *   1. channelMode 必须用 'native'：'react' 的文本协议会被模型写成 `</tool_call>`，
+ *      解析错位后最终回答被吞成空串，Judge 只能拿到 S1_empty_answer。
+ *   2. 不能用 sys.exec：它是 hard 审批，无人值守会卡在 approval 上不返回。
+ *      制造失败率改用「读不存在的文件」（fs.read 无审批），写文件用 fs.write（soft，自动放行）。
+ */
+// 必须放在沙箱根目录（server/workspace）内：
+// 读沙箱外的 /workspace/.uploads 会触发目录授权，无人值守时请求会一直挂着
+// 直到客户端超时（实测单轮 195s 后才返回）。
+const TXT = 'notes/强化Agent.txt';
+/** 故意指向不存在的文件 —— fs.read 会失败，用来制造真实的工具失败率。 */
+const MISSING = 'scratch/does-not-exist.md';
 
 const TASKS = [
-  '读 /workspace/.uploads/c0c673c2-1a29-486c-97c5-1bca600b8d54_强化Agent.txt，用 3 句话总结核心闭环公式。',
-  '列出 "四条铁律" 的名称和一句话解释。',
-  '用自己的话复述 C3「自证」是什么意思，给一个违反它的例子。',
-  '判据塔 L0-L3 各层回答什么问题？低层为什么不能替高层签字？',
-  '§6 工具纪律说"用完就删"——删除前必须回答的"沉淀三问"是什么？',
-  '解释"UNEXEC 也绝不等于 PASS"这个约束在判据塔里的作用。',
-  '为什么说"r 必须真的改变 π\'，π\' 必须真的改变下一次 Act"？举一个断环的例子。',
-  'C1「中心性」怎么用来识别装饰？举一个装饰模块的例子和一个强化模块的例子。',
-  '终止条件一节为什么说"饱和不是终点"？饱和了应该扩什么？',
-  '把整个强化内核宣言压缩成一条 10 行以内的代码注释，保留公式和四条铁律的精神。',
-  '再读一遍 §6 工具纪律，画一张"工具生命周期"的状态流转表（6 步）。',
-  '对比 C3「自证」和 C4「不外推」，它们各自约束闭环的哪一段？',
+  // 1 基线：读一段 + 写文件（无上代，判 skipped）
+  `读 ${TXT} 第 1-25 行，用 3 句话总结核心闭环公式，写入 scratch/round-01.md。`,
+  // 2 [差]：读一段 + 一次注定失败的读取（工具失败率 < 1）+ 写文件
+  `先读 ${TXT} 第 1-25 行；再读 ${MISSING}（它不存在，失败也要如实继续）；最后把闭环公式写入 scratch/round-02.md。`,
+  // 3 [好]：轻量 + 全成功（相对第 2 代应判 improved）
+  // 必须带一次真实工具调用：模型如果直接答题，tool.success_rate 会变成 unexec，
+  // 读数缺失会让 krsi 判 undecidable（"只有上一代有，量不到改进"）。
+  `先用 fs.read 读取 scratch/round-01.md 的第一行，再把「四条铁律」四个名称各一行写入 scratch/round-03.md。`,
+  // 4：读一段 + 表格
+  `读 ${TXT} 第 26-60 行，把判据塔 L0-L3 各层回答什么问题整理成表格，写入 scratch/round-04.md。`,
+  // 5 [差]：读一段 + 失败读取 + 写文件
+  `读 ${TXT} 第 61-90 行；再读 ${MISSING}（不存在，失败也继续）；把「沉淀三问」写入 scratch/round-05.md。`,
+  // 6 [好]：轻量 + 全成功
+  `先用 fs.read 读取 scratch/round-01.md 的第一行，再把「UNEXEC 绝不等于 PASS」的一句话解释写入 scratch/round-06.md。`,
+  // 7：断环例子
+  `读 ${TXT} 第 1-30 行，举一个「r 没有真的改变 π'」的断环例子，写入 scratch/round-07.md。`,
+  // 8：C1 中心性
+  `读 ${TXT} 第 31-70 行，用 C1「中心性」区分一个装饰模块和一个强化模块，各举一例写入 scratch/round-08.md。`,
+  // 9 [差]：读一段 + 失败读取 + 写文件
+  `读 ${TXT} 第 71-100 行；再读 ${MISSING}（不存在，失败也继续）；把「饱和后该扩什么」写入 scratch/round-09.md。`,
+  // 10 [好]：轻量 + 全成功
+  `先用 fs.read 读取 scratch/round-01.md 的第一行，再把强化内核公式写成一行代码注释写入 scratch/round-10.ts。`,
+  // 11：状态表
+  `读 ${TXT} 第 101-135 行，把工具生命周期 6 步画成状态流转表写入 scratch/round-11.md。`,
+  // 12：C3 vs C4
+  `读 ${TXT} 第 1-40 行，对比 C3「自证」和 C4「不外推」各自约束闭环哪一段，写入 scratch/round-12.md。`,
 ];
 
 const baseArgs = {
@@ -38,7 +82,7 @@ const baseArgs = {
   model: 'deepseek-chat',
   customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
-  channelMode: 'react',
+  channelMode: 'native',
   maxIterations: 8,
   temperature: 0.2,
   maxTokens: 1024,
@@ -64,6 +108,39 @@ async function postStream(body: Record<string, unknown>): Promise<string> {
     req.write(data);
     req.end();
   });
+}
+
+/**
+ * 带退避重试的流式请求。
+ *
+ * 中转网关在上游连续失败时会熔断，返回 HTTP 503 breaker_open / rate_limited。
+ * 这不是 prompt 或代码的问题，退避等待后通常自行恢复 —— 所以必须重试，
+ * 否则一次限流会把后面所有轮次连锁打空（实测第 3 轮起全 0.5s 失败）。
+ */
+async function postStreamWithRetry(
+  body: Record<string, unknown>,
+  attempts = 4,
+): Promise<string> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const sse = await postStream(body);
+      const throttled =
+        sse.includes('"code":"UPSTREAM_ERROR"') ||
+        sse.includes('rate_limited') ||
+        sse.includes('breaker_open');
+      if (!throttled) return sse;
+      lastErr = new Error('上游限流/熔断');
+    } catch (e) {
+      lastErr = e;
+    }
+    if (i < attempts - 1) {
+      const waitMs = 20_000 * (i + 1);
+      console.log(`  ⏳ 上游限流，${waitMs / 1000}s 后重试（${i + 2}/${attempts}）`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 async function getJSON(p: string): Promise<any> {
@@ -102,6 +179,7 @@ async function main() {
 
   let sessionId: string | null = null;
   const starts: number[] = [];
+  const db = createDb(DB_PATH);
 
   for (let i = 0; i < target; i++) {
     const task = TASKS[i % TASKS.length];
@@ -113,7 +191,7 @@ async function main() {
 
     let sse: string;
     try {
-      sse = await postStream({ ...baseArgs, message: task, ...(sessionId ? { sessionId } : {}) });
+      sse = await postStreamWithRetry({ ...baseArgs, message: task, ...(sessionId ? { sessionId } : {}) });
     } catch (e: any) {
       console.error(`  ❌ stream failed: ${e?.message ?? e}`);
       continue;
@@ -136,9 +214,28 @@ async function main() {
     const lastStages = events.filter((e) => e !== 'run:start').slice(-6);
     console.log(`  ✅ ${dur}s  stages=[${lastStages.join('|')}]  session=${sessionId}`);
 
-    // 等一小段时间让 JudgeService + RsiBridge 跑完（它们是同步的，但 RsiBridge 里面有 spawn krsi）
-    await new Promise((r) => setTimeout(r, 1500));
+    // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），
+    // 同时给上游留出限流窗口：连续 12 轮密集请求很容易触发网关熔断。
+    await new Promise((r) => setTimeout(r, 6000));
+
+    // ── 隔离测量上下文 ────────────────────────────────────────────────────────
+    // 每一代都要在**干净的上下文**里评测，否则会话历史逐轮累积，
+    // budget_efficiency（用量/预算）会单调上升 —— 数学上永远不可能"严格变好"，
+    // krsi 只能一直判 not_improved。这与「用隐藏集独立测量」是同一条纪律：
+    // 上一代的记忆不该成为下一代测量结果的一部分。
+    //
+    // RSI 真正的学习状态存在 policy_versions / policy_injections 里（会跨轮注入），
+    // 聊天消息只是这一次运行的脚手架，清掉不影响闭环。
+    if (sessionId) {
+      try {
+        db.run('DELETE FROM tool_calls WHERE session_id = ?', [sessionId]);
+        db.run('DELETE FROM messages WHERE session_id = ?', [sessionId]);
+      } catch (e) {
+        console.warn(`  ⚠ 清理历史失败（继续）: ${(e as Error).message}`);
+      }
+    }
   }
+  db.close();
 
   // ── 打印汇总报告 ──
   console.log(`\n\n═══════════════════════════════════════════════`);
@@ -180,7 +277,8 @@ async function main() {
 
   // Anchor 链
   console.log(`\n【Anchor 哈希链】`);
-  const ledgerPath = path.join(ROOT, 'data', 'rsi', `${sessionId}.jsonl`);
+  // 锚链在独立文件里（krsi 的 .jsonl 是它自己的私有账本，不能混写）
+  const ledgerPath = path.join(ROOT, 'data', 'rsi', `${sessionId}-anchors.jsonl`);
   const { readFileSync } = await import('node:fs');
   try {
     const content = readFileSync(ledgerPath, 'utf-8');
