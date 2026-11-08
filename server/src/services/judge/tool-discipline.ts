@@ -56,10 +56,14 @@ function collectTsFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-// 延迟加载测试文件内容——每次 run 只在需要跑闸时才读，Judge 主链不受影响
-let cachedCoverageFiles: Map<string, string> | null = null;
+/**
+ * 读取 tests/ 下全部 .ts 内容。
+ *
+ * **刻意不做缓存**：这条闸的消费者是「Agent 自己补测试」的闭环 ——
+ * 同一进程里 Agent 刚写完 tests/xxx.test.ts，下一轮判决必须立刻看见，
+ * 否则覆盖率永远停在旧值，Agent 会误以为自己没改好。
+ */
 function getCoverageFiles(): Map<string, string> {
-  if (cachedCoverageFiles) return cachedCoverageFiles;
   const DISCIPLINE_SELF = 'tool-discipline.test.ts';
   const all = new Map<string, string>();
   for (const file of collectTsFiles(testsDir)) {
@@ -69,7 +73,6 @@ function getCoverageFiles(): Map<string, string> {
       all.set(file, require('node:fs').readFileSync(file, 'utf8'));
     } catch { /* 读不了就跳过，这条闸降级成 unexec */ }
   }
-  cachedCoverageFiles = all;
   return all;
 }
 
@@ -208,12 +211,20 @@ export function writeGateReuse(): CriterionVerdict {
     if (!hit) uncovered.push(`${def.name}（应有测试引用 ${ids.join(' / ')} 之一）`);
   }
 
+  const total = BUILTIN_TOOLS.length;
+  const covered = total - uncovered.length;
+  // score 是**连续覆盖率**，不只是二值 pass/fail：
+  // 这样 Agent 每补一个工具的测试，RSI 的读数就真的严格变好一格。
+  // 只给二值的话，10 个工具补 9 个仍然是 fail，跨代看不出一丝进步。
+  const score = total > 0 ? Math.round((covered / total) * 1000) / 1000 : 0;
+
   if (uncovered.length > 0) {
     return {
       layer: 'L1',
       criterion: 'tool.discipline.write_gate',
       status: 'fail',
-      detail: `以下工具进了主树却没有测试覆盖，违反「写闸复用：工具要进主树必须过自证」：\n  ${uncovered.join('\n  ')}`,
+      score,
+      detail: `写闸复用：${covered}/${total} 个内置工具有测试引用（覆盖率 ${(score * 100).toFixed(0)}%）。以下工具进了主树却没有测试覆盖：\n  ${uncovered.join('\n  ')}`,
     };
   }
 
@@ -221,7 +232,8 @@ export function writeGateReuse(): CriterionVerdict {
     layer: 'L1',
     criterion: 'tool.discipline.write_gate',
     status: 'pass',
-    detail: `全部 ${BUILTIN_TOOLS.length} 个内置工具均有测试引用，写闸复用成立`,
+    score: 1,
+    detail: `全部 ${total} 个内置工具均有测试引用，写闸复用成立`,
   };
 }
 

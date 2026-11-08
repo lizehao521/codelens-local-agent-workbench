@@ -70,6 +70,15 @@ const METRIC_MAP: Record<
     direction: 'up',
     basis: BASIS.Measured,
   },
+  // ── 写闸覆盖率（连续值 0-1）──
+  // 让「Agent 自己补测试」这件事在 RSI 里可见：每补一个工具，
+  // tool_write_coverage 就严格上升一格，krsi 的 R5 能据此判 improved。
+  // 若只保留二值 pass/fail，补到 9/10 仍然是 fail，跨代完全看不出进步。
+  'tool.discipline.write_gate': {
+    metric: 'tool_write_coverage',
+    direction: 'up',
+    basis: BASIS.Measured,
+  },
   // ── L2 深判（LLM 语义裁判）──
   // basis=2 Relayed：来自固定 prompt + 固定模型 + temperature=0 的 LLM 判定，
   // 同一输入复跑会得到相同分数，本质上是"relayed from a known process"，

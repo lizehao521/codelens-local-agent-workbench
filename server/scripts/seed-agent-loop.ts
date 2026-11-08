@@ -77,6 +77,46 @@ const TASKS = [
   `读 ${TXT} 第 1-40 行，对比 C3「自证」和 C4「不外推」各自约束闭环哪一段，写入 scratch/round-12.md。`,
 ];
 
+/**
+ * 自改进任务：让 Agent 自己补「写闸」点名的测试缺口。
+ *
+ * 闭环形状：Judge 的 write_gate 报「哪些工具进主树却没测试」→ 归因器把它
+ * 变成经验写进 π' → 下一轮 Agent 按经验去 tests/ 补真实断言 → 覆盖率上升
+ * → RSI 读数严格变好。这是「Agent 让自己变得更好」的最小可验证形态。
+ *
+ * 硬约束（写进 prompt，也必须事后用 git diff 核验）：
+ *   只允许在 tests/ 下新建文件，绝不修改 src/。
+ */
+const SELF_RULES = `严格按 3 步执行，不要发散：
+第 1 步：读下面点名的 2 个源文件的**前 60 行**；
+第 2 步：立刻用 fs.write 创建指定测试文件（内容一次写完，不要分片）；
+第 3 步：回答"已创建 <文件名>"。
+禁止读第 3 个文件，禁止读 path-jail / types / package.json / 现有测试当模板。
+只允许新建 tests/ 下的这一个文件，绝不修改 src/ 下任何文件。`;
+
+const SELF_TASKS = [
+  `为 http.request 与 calc.evaluate 两个工具补测试。${SELF_RULES}
+源文件：src/tools/builtin/http-request.tool.ts、src/tools/builtin/calc-evaluate.tool.ts
+目标文件：tests/tools-http-calc.test.ts
+内容要求：vitest；用 vi.stubGlobal('fetch') 模拟成功与 HTTP 500 两条路径；calc.evaluate 断言基础运算结果。`,
+  `为 fs.read 与 fs.list 两个工具补测试。${SELF_RULES}
+源文件：src/tools/builtin/fs-read.tool.ts、src/tools/builtin/fs-list.tool.ts
+目标文件：tests/tools-fs-read.test.ts
+内容要求：在 os.tmpdir() 建临时目录，验证读写列的真实行为，含不存在路径的报错。`,
+  `为 fs.write 与 json.format 两个工具补测试。${SELF_RULES}
+源文件：src/tools/builtin/fs-write.tool.ts、src/tools/builtin/json-format.tool.ts
+目标文件：tests/tools-fs-write.test.ts
+内容要求：在 os.tmpdir() 验证 fs.write 创建/覆盖；json.format 断言格式化结果。`,
+  `为 text.diff 与 time.now 两个工具补测试。${SELF_RULES}
+源文件：src/tools/builtin/text-diff.tool.ts、src/tools/builtin/time-now.tool.ts
+目标文件：tests/tools-text-time.test.ts
+内容要求：为两个工具各写真实断言。`,
+  `为 uuid.generate 与 sys.exec 白名单策略补测试。${SELF_RULES}
+源文件：src/tools/builtin/uuid-generate.tool.ts、src/tools/builtin/sys-exec.policy.ts
+目标文件：tests/tools-uuid-policy.test.ts
+内容要求：断言 uuid 输出格式；断言命令白名单允许 git/node、拒绝 rm -rf。不要真的执行命令。`,
+];
+
 const baseArgs = {
   provider: 'custom',
   // 网关的档位模型：极速 / 极速-any / 旗舰 / 旗舰-any / 推理 / 平衡。
@@ -86,9 +126,12 @@ const baseArgs = {
   customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
   channelMode: 'native',
-  maxIterations: 8,
+  // 自改进要写整个测试文件：文件正文是 fs.write 的**参数**，算在 completion 里。
+  // 1024 会在写到一半被截断 → 工具调用参数不完整 → 什么都写不出来。
+  // 迭代数同理：读 2-3 个源文件就要 6-8 轮，写文件还要 1-2 轮。
+  maxIterations: 20,
   temperature: 0.2,
-  maxTokens: 1024,
+  maxTokens: 4000,
 };
 
 // ── HTTP 工具 ──────────────────────────────────────────────────────────────
@@ -178,14 +221,16 @@ function getSessionId(sse: string): string | null {
 
 async function main() {
   const target = Math.max(2, parseInt(process.argv[2] || '12', 10));
-  console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮 ═══\n`);
+  const selfMode = process.argv.includes('--self');
+  const tasks = selfMode ? SELF_TASKS : TASKS;
+  console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${selfMode ? '自改进：补测试' : '演示任务'}）═══\n`);
 
   let sessionId: string | null = null;
   const starts: number[] = [];
   const db = createDb(DB_PATH);
 
   for (let i = 0; i < target; i++) {
-    const task = TASKS[i % TASKS.length];
+    const task = tasks[i % tasks.length];
     const start = Date.now();
     starts.push(start);
 
