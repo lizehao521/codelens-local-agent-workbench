@@ -125,6 +125,11 @@ export interface AgentLoopDeps {
    */
   rsi?: import('../rsi/rsi-bridge.service.js').RsiBridgeService;
   /**
+   * SQLite 句柄（可选）。RSI 归因器直接向 policy_injections 落审计行，
+   * 需要它才能工作。不传时归因整段跳过 —— 表现为「对账有结果、但没有经验沉淀」。
+   */
+  db?: import('../../repositories/db.js').Db;
+  /**
    * RSI 归因器 LLM 凭证（可选）。提供时：krsi 判 not_improved / refused 后，
    * 会调 LLM 归因并把归因经验写回 policy_injections 作为 π'。
    * 不提供时跳过归因，RSI 只有旁路对账（零影响，向后兼容）。
@@ -1399,7 +1404,9 @@ export class AgentLoopService {
             const attrOut = await attributeDegradation({
               db,
               sessionId,
-              generation: 1, // 归因本身不依赖 generation 精确定位
+              // 审计表里的 policy_version 要写真实的 π 版本号，否则看板上
+              // 「这条经验属于哪一版策略」永远指向 1，无法回溯。
+              generation: this.deps.policy?.currentVersion() ?? 0,
               runVerdicts: run.verdicts,
               rsiResult: result,
               apiKey: this.deps.rsiAttributorApiKey!,
@@ -1415,6 +1422,28 @@ export class AgentLoopService {
                 ? `归因已落库: ${attrOut.lesson?.slice(0, 60) ?? ''}`
                 : attrOut.failure ?? '无输出',
             });
+
+            // ── 闭环最后一环：把归因经验真正并入 π' ────────────────────────
+            // policy_injections 只是审计表；UpdateService.getPolicy() 只读
+            // policy_versions。只写审计表的话，这条经验下一轮的 system prompt
+            // 里根本不会出现 —— 那就是宣言点名的「r 没有真的改变 π'」。
+            // 只有写进 policy_versions，getInjectableView() 才会把它注入下一次 Act。
+            if (attrOut.wroteRow && attrOut.lesson && this.deps.policy) {
+              try {
+                const next = this.deps.policy.applyUpdate(
+                  { addLessons: [attrOut.lesson] },
+                  `rsi:${result.state}:${attrOut.lesson.slice(0, 48)}`,
+                );
+                this.recordSpan(traceId, {
+                  kind: 'update',
+                  name: `RSI 经验入 π`,
+                  status: 'ok',
+                  detail: `π' 现有 ${next.lessons.length} 条经验（下一轮 Act 会注入）`,
+                });
+              } catch (err) {
+                console.warn('[rsi-attributor] 归因经验写入 π 失败:', err instanceof Error ? err.message : err);
+              }
+            }
           } catch (err) {
             console.warn('[rsi-attributor] 归因异常:', err instanceof Error ? err.message : err);
           }

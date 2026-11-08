@@ -272,6 +272,9 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     // RSI 旁路对账（L1 机械桥）：消费同一批 verdicts，生成跨代四态 verdict；
     // 双轨并存，不阻断现有闭环。内存库时 rsi=undefined，loop 跳过。
     rsi,
+    // RSI 归因器要直接写 policy_injections，必须把 db 传下去 ——
+    // 之前没传，归因整段被 `&& db` 静默跳过（对账有结果、经验一条没沉淀）。
+    db,
     // RSI 归因器 LLM 凭证：krsi 判 not_improved / refused 时触发 LLM 归因，
     // 归因经验直接写 policy_injections 作为 π'。未配凭证时只跑对账不跑归因。
     rsiAttributorApiKey: config.serverApiKey || undefined,
