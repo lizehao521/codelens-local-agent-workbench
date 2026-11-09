@@ -14,7 +14,9 @@
     "test": "vitest run && npm run test:krsi",
     "test:krsi": "go build -C krsi -o /tmp/krsi . && node --import tsx scripts/krsi-conformance.ts",
     "typecheck": "tsc --noEmit",
-    "smoke": "node scripts/smoke-real.mjs"
+    "smoke": "node scripts/smoke-real.mjs",
+    "rsi:propose": "tsx scripts/seed-agent-loop.ts 1 --propose",
+    "rsi:code": "tsx scripts/seed-agent-loop.ts 3 --code"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

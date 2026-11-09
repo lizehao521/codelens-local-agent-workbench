@@ -13,7 +13,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 
@@ -319,6 +319,27 @@ const baseArgs = {
   maxTokens: 4000,
 };
 
+/**
+ * 从版本库里的 eval-fixtures 恢复沙箱中的待修实现。
+ *
+ * 只补**缺失**的文件，绝不覆盖已有文件：已经修好的实现必须跨轮、跨代保留，
+ * 否则每一轮都从带缺陷的初始版本重新开始，读数就永远在原地打转。
+ * 沙箱被回收后重新起跑时，这一步让实验可复现。
+ */
+function syncEvalFixtures(): void {
+  const src = path.join(ROOT, 'eval-fixtures');
+  if (!existsSync(src)) return;
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const from = path.join(src, entry.name, 'impl.cjs');
+    const to = path.join(ROOT, 'workspace', 'eval', entry.name, 'impl.cjs');
+    if (!existsSync(from) || existsSync(to)) continue;
+    mkdirSync(path.dirname(to), { recursive: true });
+    copyFileSync(from, to);
+    console.log(`  ↩ 恢复评测实现：${entry.name}`);
+  }
+}
+
 // ── HTTP 工具 ──────────────────────────────────────────────────────────────
 
 async function postStream(body: Record<string, unknown>): Promise<string> {
@@ -487,6 +508,8 @@ async function main() {
   const codeMode = process.argv.includes('--code');
   const proposeMode = process.argv.includes('--propose');
   const selfMode = process.argv.includes('--self') || depthMode;
+  // 沙箱可能被回收重来：开跑前先把版本库里的 fixture 补回缺失项。
+  if (codeMode || proposeMode) syncEvalFixtures();
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
   const onlyIdx = onlyArg ? Number(onlyArg.split('=')[1]) : null;
@@ -582,7 +605,7 @@ async function main() {
       console.log(`  ✅ 第 ${round} 轮完成 session=${sid}`);
     }
 
-    const suiteDir = path.join(ROOT, 'data', 'eval-suites');
+    const suiteDir = path.join(ROOT, 'eval-suites');
     const promoted = existsSync(suiteDir)
       ? readdirSync(suiteDir).filter((f) => f.endsWith('.json'))
       : [];

@@ -157,13 +157,15 @@ export function findSuite(id: string): EvalSuite | undefined {
 }
 
 /**
- * 已晋升套件的存放目录 —— **沙箱之外**（server/data/eval-suites）。
+ * 已晋升套件的存放目录 —— **沙箱之外、且进版本管理**（server/eval-suites）。
  *
  * 为什么不能放沙箱里：Agent 有 fs.write 权限，若套件定义在沙箱内，
  * 它可以直接写一个「用例恒真」的套件给自己满分。判据必须放在它改不到的地方。
+ * 为什么不放 data/：data/ 是 gitignore 的运行时目录，沙箱重置就没了；
+ * 套件定义是实验资产，必须能跟仓库一起活下去。
  */
 export function suiteStoreDir(sandboxRoot: string): string {
-  return path.resolve(sandboxRoot, '..', 'data', 'eval-suites');
+  return path.resolve(sandboxRoot, '..', 'eval-suites');
 }
 
 /**
