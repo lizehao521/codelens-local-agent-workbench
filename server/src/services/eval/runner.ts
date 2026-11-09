@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
-import { EVAL_SUITES, type EvalCase, type EvalSuite } from './suites.js';
+import { allSuites, type EvalCase, type EvalSuite } from './suites.js';
 
 export interface EvalCaseFailure {
   name: string;
@@ -41,6 +41,14 @@ export interface EvalBatteryResult {
   /** 0–1；total=0 时为 0。 */
   score: number;
   suites: EvalSuiteResult[];
+}
+
+/** 源码级执行的返回值：propose 的变异验证与 suite 打分共用这一份口径。 */
+export interface SourceRunResult {
+  passed: number;
+  total: number;
+  failures: EvalCaseFailure[];
+  error?: string;
 }
 
 const CASE_TIMEOUT_MS = 1000;
@@ -116,6 +124,63 @@ function runCase(ctx: vm.Context, c: EvalCase): RunOutcome {
 }
 
 /**
+ * 直接对一段源码跑用例（不落盘）。
+ *
+ * @param hiddenFrom 该下标及之后的用例标记为 hidden（只影响失败项标记，不影响计分）
+ */
+export function runSourceCases(
+  source: string,
+  exportName: string,
+  cases: EvalCase[],
+  filename = '<inline>',
+  hiddenFrom: number = Number.POSITIVE_INFINITY,
+): SourceRunResult {
+  const moduleShim = { exports: {} as Record<string, unknown> };
+  const ctx = vm.createContext({
+    module: moduleShim,
+    exports: moduleShim.exports,
+    __name: exportName,
+    __args: [] as unknown[],
+    __result: undefined as unknown,
+  });
+
+  try {
+    vm.runInContext(source, ctx, { timeout: MODULE_TIMEOUT_MS, filename });
+  } catch (err) {
+    return {
+      passed: 0,
+      total: cases.length,
+      failures: [],
+      error: `加载失败：${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const exported = (ctx as Record<string, unknown>).module as
+    | { exports?: Record<string, unknown> }
+    | undefined;
+  const fn = exported?.exports?.[exportName];
+  if (typeof fn !== 'function') {
+    return {
+      passed: 0,
+      total: cases.length,
+      failures: [],
+      error: `module.exports.${exportName} 不是函数（必须保持 CommonJS 导出）`,
+    };
+  }
+
+  let passed = 0;
+  const failures: EvalCaseFailure[] = [];
+  cases.forEach((c, index) => {
+    const hidden = index >= hiddenFrom;
+    const outcome = runCase(ctx, c);
+    if (outcome.pass) passed += 1;
+    else failures.push({ name: c.name, expected: outcome.expected, actual: outcome.actual, hidden });
+  });
+
+  return { passed, total: cases.length, failures };
+}
+
+/**
  * 跑单套件。
  * @param includeHidden true = 判据口径（public + hidden 全量）；false = Agent 可见口径。
  */
@@ -151,74 +216,31 @@ export function runSuite(
     ? [...suite.publicCases, ...suite.hiddenCases]
     : [...suite.publicCases];
   const hiddenFrom = suite.publicCases.length;
+  const result = runSourceCases(source, suite.exportName, cases, abs, hiddenFrom);
 
-  const moduleShim = { exports: {} as Record<string, unknown> };
-  const ctx = vm.createContext({
-    module: moduleShim,
-    exports: moduleShim.exports,
-    __name: suite.exportName,
-    __args: [] as unknown[],
-    __result: undefined as unknown,
-  });
-
-  try {
-    vm.runInContext(source, ctx, { timeout: MODULE_TIMEOUT_MS, filename: abs });
-  } catch (err) {
-    return {
-      ...base,
-      total: cases.length,
-      publicTotal: suite.publicCases.length,
-      error: `加载失败：${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-
-  const exported = (ctx as Record<string, unknown>).module as
-    | { exports?: Record<string, unknown> }
-    | undefined;
-  const fn = exported?.exports?.[suite.exportName];
-  if (typeof fn !== 'function') {
-    return {
-      ...base,
-      total: cases.length,
-      publicTotal: suite.publicCases.length,
-      error: `module.exports.${suite.exportName} 不是函数（必须保持 CommonJS 导出）`,
-    };
-  }
-
-  let passed = 0;
-  let publicPassed = 0;
-  const failures: EvalCaseFailure[] = [];
-  cases.forEach((c, index) => {
-    const hidden = index >= hiddenFrom;
-    const outcome = runCase(ctx, c);
-    if (outcome.pass) {
-      passed += 1;
-      if (!hidden) publicPassed += 1;
-    } else {
-      failures.push({ name: c.name, expected: outcome.expected, actual: outcome.actual, hidden });
-    }
-  });
-
+  const publicTotal = suite.publicCases.length;
+  const publicFailures = result.failures.filter((f) => !f.hidden).length;
   return {
     ...base,
-    ok: passed === cases.length,
-    passed,
-    total: cases.length,
-    publicPassed,
-    publicTotal: suite.publicCases.length,
-    failures,
+    ok: result.error === undefined && result.passed === result.total,
+    passed: result.passed,
+    total: result.total,
+    publicTotal,
+    publicPassed: Math.max(0, publicTotal - publicFailures),
+    failures: result.failures,
+    ...(result.error ? { error: result.error } : {}),
   };
 }
 
-/** 跑全部固定套件。判据用 includeHidden=true，Agent 可见口径也用它（只回显 public）。 */
+/** 跑全部固定套件（内置 + 已晋升的提案套件）。 */
 export function runEvalBattery(
   sandboxRoot: string,
   options: { includeHidden?: boolean; only?: string } = {},
 ): EvalBatteryResult {
   const includeHidden = options.includeHidden ?? true;
-  const suites = EVAL_SUITES.filter((s) => !options.only || s.id === options.only).map((s) =>
-    runSuite(sandboxRoot, s, includeHidden),
-  );
+  const suites = allSuites(sandboxRoot)
+    .filter((s) => !options.only || s.id === options.only)
+    .map((s) => runSuite(sandboxRoot, s, includeHidden));
   const passed = suites.reduce((sum, s) => sum + s.passed, 0);
   const total = suites.reduce((sum, s) => sum + s.total, 0);
   return {

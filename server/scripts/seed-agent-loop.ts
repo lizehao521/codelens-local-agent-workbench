@@ -13,7 +13,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 
@@ -262,6 +262,22 @@ const CODE_TASKS = [
 注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
 ];
 
+/** 扩题模式：Agent 自己联网检索、自己提案，服务端做变异验证后决定是否晋升。 */
+const PROPOSE_TASK = `你要为自己的评测集新增 2 个任务套件。严格按下面步骤执行，不要发散：
+1) 用 web.search 检索真实缺陷模式，至少检索 2 次，查询要具体（例如 "javascript interval merge bug edge cases"、"query string parser decodeURIComponent common bugs"）；
+2) 从结果里挑两个「能写成确定性输入/输出」的模式（不要选异步、不要选依赖网络的）；
+3) 对每个模式调用 eval.propose 提交一份提案，proposal 字段必须完整：
+   - id：小写字母/数字/下划线，3-32 字符，不能与已有套件重名；
+   - title：一句话说明考什么；
+   - exportName：实现里导出的函数名；
+   - reference：正确的 CommonJS 实现（module.exports = { 函数名 }）；
+   - buggy：同一导出名、但带**真实缺陷**的实现（会被放进沙箱让下一轮修）；
+   - publicCases：至少 2 条 {name, args, expected}；
+   - hiddenCases：至少 3 条，必须检验通用性，不能和 publicCases 用同样的参数；
+   - sourceUrls：第 1 步检索到的链接（至少 1 条）。
+4) 如果 eval.propose 返回未通过，按未通过项修正后重新提交，最多重试 3 次；
+5) 最后用一句话报告两个提案各自是否通过。`;
+
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
   `帮你自己写一份能力清单文档。${SELF_RULES}
@@ -469,6 +485,7 @@ async function main() {
   const depthMode = process.argv.includes('--depth');
   const forgeMode = process.argv.includes('--forge');
   const codeMode = process.argv.includes('--code');
+  const proposeMode = process.argv.includes('--propose');
   const selfMode = process.argv.includes('--self') || depthMode;
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
@@ -545,6 +562,46 @@ async function main() {
     }
   };
   if (selfMode || codeMode) await enableHeadlessWrites();
+
+  // ── 扩题轮：Agent 检索 → 提案 → 服务端变异验证 → 通过即晋升 ──────────────
+  // 只跑一轮，不产生代际读数：它量的是「能不能自己造出有判别力的题」，
+  // 不是修题能力。晋升后的套件会进入下一批修复链的测量集。
+  if (proposeMode) {
+    console.log('▶ 检索 + 提案中（服务端逐条做变异验证）…');
+    const sse = await postStreamWithRetry({
+      ...baseArgs,
+      maxTokens: 6000,
+      maxIterations: 26,
+      message: PROPOSE_TASK,
+      rsiMeasure: false,
+    });
+    const sid = getSessionId(sse);
+    console.log(`  ✅ 提案轮完成 session=${sid}`);
+
+    const suiteDir = path.join(ROOT, 'data', 'eval-suites');
+    const promoted = existsSync(suiteDir)
+      ? readdirSync(suiteDir).filter((f) => f.endsWith('.json'))
+      : [];
+    console.log(`\n【已晋升套件】${promoted.length} 个：${promoted.join(', ') || '（无）'}`);
+
+    const propDir = path.join(ROOT, 'data', 'eval-proposals');
+    if (existsSync(propDir)) {
+      for (const f of readdirSync(propDir).filter((x) => x.endsWith('.json'))) {
+        try {
+          const p = JSON.parse(readFileSync(path.join(propDir, f), 'utf8'));
+          const failed = (p.validation?.checks ?? []).filter((c: { ok: boolean }) => !c.ok);
+          console.log(
+            `  · ${p.id}: ${p.validation?.accepted ? '通过' : '未通过'}` +
+              (failed.length ? `（${failed.map((c: { name: string }) => c.name).join('、')}）` : ''),
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    db.close();
+    return;
+  }
 
   // 开跑前先做一次基线验收：把「当前就红的测试」作为第 1 轮任务，
   // 而不是让 Agent 先做新任务、把红灯一直拖到最后一轮。

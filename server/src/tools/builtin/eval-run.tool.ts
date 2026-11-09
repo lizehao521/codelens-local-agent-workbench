@@ -10,7 +10,7 @@
  * 不是工具的失败。这与 sys.exec 的退出码口径一致。
  */
 
-import { EVAL_RUN_DISPLAY_NAME, findSuite, EVAL_SUITES } from '../../services/eval/suites.js';
+import { EVAL_RUN_DISPLAY_NAME, allSuites, EVAL_SUITES } from '../../services/eval/suites.js';
 import { runEvalBattery } from '../../services/eval/runner.js';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 
@@ -28,8 +28,7 @@ export const evalRunTool: ToolDefinition = {
     properties: {
       suite: {
         type: 'string',
-        enum: EVAL_SUITES.map((s) => s.id),
-        description: '只跑某一套件；缺省跑全部',
+        description: '只跑某一套件（内置或已晋升的提案套件）；缺省跑全部',
       },
     },
     additionalProperties: false,
@@ -43,14 +42,16 @@ export const evalRunTool: ToolDefinition = {
   enabled: (ctx) => Boolean(ctx.sandboxRoot),
   handler: async (args, ctx): Promise<ToolOutcome> => {
     const requested = args.suite === undefined ? undefined : String(args.suite);
-    if (requested !== undefined && !findSuite(requested)) {
+    if (requested !== undefined && !allSuites(ctx.sandboxRoot).some((s) => s.id === requested)) {
       return {
         ok: false,
         summary: `未知套件：${requested}`,
         error: {
           code: 'TOOL_INVALID_ARGS',
           kind: 'invalid_args',
-          message: `未知套件：${requested}；可用：${EVAL_SUITES.map((s) => s.id).join(' / ')}`,
+          message: `未知套件：${requested}；可用：${allSuites(ctx.sandboxRoot)
+            .map((s) => s.id)
+            .join(' / ')}`,
         },
       };
     }

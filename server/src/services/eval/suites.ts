@@ -10,6 +10,9 @@
  *    拿到的是「此刻的真实通过率」，不是 Agent 的自述。
  */
 
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+
 export interface EvalCase {
   /** 用例名，出现在失败列表里。 */
   name: string;
@@ -151,4 +154,49 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
 /** 按 id 取套件；未知 id 返回 undefined。 */
 export function findSuite(id: string): EvalSuite | undefined {
   return EVAL_SUITES.find((s) => s.id === id);
+}
+
+/**
+ * 已晋升套件的存放目录 —— **沙箱之外**（server/data/eval-suites）。
+ *
+ * 为什么不能放沙箱里：Agent 有 fs.write 权限，若套件定义在沙箱内，
+ * 它可以直接写一个「用例恒真」的套件给自己满分。判据必须放在它改不到的地方。
+ */
+export function suiteStoreDir(sandboxRoot: string): string {
+  return path.resolve(sandboxRoot, '..', 'data', 'eval-suites');
+}
+
+/**
+ * 已晋升的提案套件（Agent 检索 → eval.propose → 变异验证通过 → 落盘到这里）。
+ *
+ * 与内置套件的区别只是来源：它们在数据目录里，可以随实验迭代增删，
+ * 而内置套件是代码里的固定测量面。两者进同一个 battery 打分。
+ */
+export function promotedSuites(sandboxRoot: string): EvalSuite[] {
+  const dir = suiteStoreDir(sandboxRoot);
+  if (!existsSync(dir)) return [];
+  const out: EvalSuite[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    try {
+      const raw = JSON.parse(readFileSync(path.join(dir, file), 'utf8')) as EvalSuite;
+      if (
+        raw &&
+        typeof raw.id === 'string' &&
+        typeof raw.implPath === 'string' &&
+        typeof raw.exportName === 'string' &&
+        Array.isArray(raw.publicCases) &&
+        Array.isArray(raw.hiddenCases)
+      ) {
+        out.push(raw);
+      }
+    } catch {
+      /* 单个坏文件跳过：一条脏数据不该拖垮整代测量 */
+    }
+  }
+  return out;
+}
+
+/** 全部生效套件（内置 + 已晋升）。 */
+export function allSuites(sandboxRoot: string): EvalSuite[] {
+  return [...EVAL_SUITES, ...promotedSuites(sandboxRoot)];
 }

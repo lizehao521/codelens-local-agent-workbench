@@ -14,6 +14,7 @@ import { sysExecTool } from './sys-exec.tool.js';
 import { toolForgeTool } from './tool-forge.tool.js';
 import { webSearchTool } from './web-search.tool.js';
 import { evalRunTool } from './eval-run.tool.js';
+import { evalProposeTool } from './eval-propose.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -29,4 +30,5 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   toolForgeTool,
   webSearchTool,
   evalRunTool,
+  evalProposeTool,
 ];
