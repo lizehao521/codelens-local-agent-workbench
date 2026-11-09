@@ -13,7 +13,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 
@@ -95,6 +95,49 @@ const SELF_RULES = `严格按 3 步执行，不要发散：
 第 3 步：回答"已创建 <文件名>"。
 只允许新建/覆盖本次点名的这一个目标文件；绝不修改 src/ 下任何文件。
 不要读 package.json、dist、node_modules、现有测试当模板。`;
+
+/**
+ * 深度自证任务：把「只断言 name/wireName」的浅测试升级为真正调用 handler 的行为断言。
+ *
+ * 为什么这是当前最该做的事：写闸只做字符串匹配，10 个用例里 9 个没调用过 handler
+ * 也能判绿 —— 那是全系统最危险的一处「假绿」。行为断言无法被关键词骗过：
+ * 工具一改返回结构，测试立刻红。
+ */
+const BEHAVIOR_RULES = `严格按 3 步执行，不要发散：
+第 1 步：读下面点名的源文件（每个最多前 100 行，最多读 4 个文件）；
+第 2 步：立刻用 fs.write（operation=create）一次性写完目标文件；
+第 3 步：回答"已创建 <文件名>"。
+只允许新建本次点名的这一个目标文件；绝不修改 src/，绝不覆盖已有文件。
+必须真的调用 tool.handler(...)，断言返回值的具体字段；只断言 name/wireName 不算完成。`;
+
+const BEHAVIOR_TASKS = [
+  `用 fs.write、operation=create 新建 tests/behavior-pure.test.ts。不要读任何文件，按下面契约直接写。
+
+import { describe, it, expect } from "vitest";
+import { calcEvaluateTool } from "../src/tools/builtin/calc-evaluate.tool.js";
+import { jsonFormatTool } from "../src/tools/builtin/json-format.tool.js";
+import { textDiffTool } from "../src/tools/builtin/text-diff.tool.js";
+
+const ctx = { sandboxRoot: process.cwd() } as any;
+
+契约（已核实，直接用）：
+1) calcEvaluateTool.handler({ expression: "1+1" }, ctx)
+   → ok=true，data.decimal === 2，data.base === 10
+2) jsonFormatTool.handler({ input: '{"b":1,"a":2}', mode: "pretty" }, ctx)
+   → ok=true，data.output 是字符串，JSON.parse(data.output) 深度等于 {b:1,a:2}
+3) textDiffTool.handler({ left: "a\\nb", right: "a\\nc" }, ctx)
+   → ok=true，data.additions === 1，data.deletions === 1，data.identical === false
+
+写 3 个 it()，逐个断言上面这些字段。写完回答 done。`,
+  `为文件类工具写行为断言。${BEHAVIOR_RULES}
+源文件：src/tools/builtin/fs-write.tool.ts、fs-read.tool.ts、fs-list.tool.ts、src/types/tool.ts
+目标文件：tests/behavior-fs.test.ts
+内容要求：在 os.tmpdir() 建临时目录，用 handler 完成 create → read 回读 → list 列到 → overwrite 覆盖，逐步断言内容与条目；最后再断言读取不存在文件的报错路径。`,
+  `为网络与命令策略写行为断言。${BEHAVIOR_RULES}
+源文件：src/tools/builtin/http-request.tool.ts、sys-exec.policy.ts、src/types/tool.ts
+目标文件：tests/behavior-io.test.ts
+内容要求：http.request 至少断言一条**失败/拒绝路径**（非法协议、内网地址或缺失 URL 必须被拒），不要真发外网请求；sys.exec 断言白名单策略对 "git"/"node" 放行、对 "rm -rf /" 拒绝。`,
+];
 
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
@@ -297,9 +340,11 @@ function getSessionId(sse: string): string | null {
 
 async function main() {
   const target = Math.max(2, parseInt(process.argv[2] || '12', 10));
-  const selfMode = process.argv.includes('--self');
-  const tasks = selfMode ? SELF_TASKS : TASKS;
-  console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${selfMode ? '自改进：补测试' : '演示任务'}）═══\n`);
+  const depthMode = process.argv.includes('--depth');
+  const selfMode = process.argv.includes('--self') || depthMode;
+  const tasks = depthMode ? BEHAVIOR_TASKS : selfMode ? SELF_TASKS : TASKS;
+  const modeLabel = depthMode ? '深度自证：行为断言' : selfMode ? '自改进：补测试' : '演示任务';
+  console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
 
   let sessionId: string | null = null;
   const starts: number[] = [];
@@ -332,7 +377,13 @@ async function main() {
     // 有红灯时，本轮唯一任务：**新建**一个整合测试文件（create，不触发覆盖审批）。
     // 覆盖已有文件会被安全复核判成"删除不可逆"而升级人工确认，无头环境必卡。
     const task = feedback
-      ? `本轮唯一目标：新建 tests/tools-selftest.test.ts，用一次通过的测试覆盖全部 10 个内置工具。
+      ? depthMode
+        ? `本轮唯一目标：修好上一轮失败的行为断言文件（见下方失败摘要里的 tests/behavior-*.test.ts），让它跑绿。
+要求：只用 vitest；直接调用 tool.handler(...) 并断言真实返回值；不要断言 name/wireName 充数；
+不要读 dist / node_modules；不要修改 src/。
+
+${feedback}`
+        : `本轮唯一目标：新建 tests/tools-selftest.test.ts，用一次通过的测试覆盖全部 10 个内置工具。
 要求：
 1) 只用 vitest 的 describe/it/expect，不要用 node:test / node:assert；
 2) 用 fs.write、operation=create（不要 overwrite）；
@@ -380,22 +431,29 @@ ${feedback}`
 
     // ── 自动验收：Agent 写完，由 harness 真跑一遍测试并把失败回灌下一轮 ──────
     if (selfMode) {
+      const allTests = readdirSync(path.join(ROOT, 'tests'));
       const selfTest = 'tests/tools-selftest.test.ts';
-      const testFiles = existsSync(path.join(ROOT, selfTest))
-        ? [selfTest]
-        : readdirSync(path.join(ROOT, 'tests'))
-            .filter((f) => f.startsWith('tools-') && f.endsWith('.test.ts'))
-            .map((f) => `tests/${f}`);
+      // 验收范围：整合测试 + Agent 新建的行为断言（behavior-*.test.ts）。
+      // 行为断言是「深度自证」的产物，必须每轮都真跑，绿了才算这一轮算数。
+      const testFiles = [
+        ...(existsSync(path.join(ROOT, selfTest)) ? [selfTest] : []),
+        ...allTests.filter((f) => f.startsWith('behavior-') && f.endsWith('.test.ts')).map((f) => `tests/${f}`),
+      ];
+      if (testFiles.length === 0) {
+        testFiles.push(
+          ...allTests.filter((f) => f.startsWith('tools-') && f.endsWith('.test.ts')).map((f) => `tests/${f}`),
+        );
+      }
       const check = runVitest(testFiles);
       if (check.ok) {
-        console.log(`  ✅ 自动验收：${testFiles.join(', ')} 全部通过`);
+        console.log(`  ✅ 自动验收：${testFiles.length} 个文件全部通过（${testFiles.join(', ')}）`);
         feedback = '';
         // 整合测试绿了以后，把之前生成的红文件归档出去（harness 自己的清理，
         // 不经过 Agent —— 覆盖/删除都要人工审批，无头环境做不了）。
         if (existsSync(path.join(ROOT, selfTest))) {
           const archive = path.join('/tmp', 'legacy-agent-tests');
           mkdirSync(archive, { recursive: true });
-          for (const f of readdirSync(path.join(ROOT, 'tests'))) {
+          for (const f of allTests) {
             if (f.startsWith('tools-') && f.endsWith('.test.ts') && f !== 'tools-selftest.test.ts') {
               try {
                 renameSync(path.join(ROOT, 'tests', f), path.join(archive, f));
@@ -406,7 +464,19 @@ ${feedback}`
         }
       } else {
         console.log(`  ❌ 自动验收：测试失败 → 已回灌到下一轮`);
-        feedback = `【上一轮自动验收失败】你上一轮写的测试跑不过。失败摘要：\n${check.summary}`;
+        let note = '';
+        if (depthMode) {
+          // 覆盖写要人工审批，Agent 没法原地改。这里由 harness 把红文件删掉，
+          // 下一轮它就能用 operation=create 以同名重建 —— 等价于"改"，但不触发审批。
+          const failed = [...new Set(check.summary.match(/tests\/behavior-[\w.-]+\.test\.ts/g) ?? [])];
+          for (const rel of failed) {
+            try {
+              unlinkSync(path.join(ROOT, rel));
+              note += `（${rel} 已被清空，请用 operation=create 以同名重新创建）\n`;
+            } catch { /* ignore */ }
+          }
+        }
+        feedback = `【上一轮自动验收失败】你上一轮写的测试跑不过。失败摘要：\n${check.summary}\n${note}`;
       }
     }
 
