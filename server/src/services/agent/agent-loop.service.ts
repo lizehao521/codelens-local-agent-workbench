@@ -75,6 +75,8 @@ export interface AgentRunRequest {
   channelMode: 'auto' | 'native' | 'react';
   /** 是否计入 RSI 测量（缺省 true）。false = 只干活/学习，不参与跨代对账。 */
   rsiMeasure?: boolean;
+  /** 测量采样次数（缺省 1）。>1 时 RSI 读数取最近 N 次同探针判决的均值。 */
+  rsiMeasureSamples?: number;
   maxIterations: number;
   temperature: number;
   maxTokens: number;
@@ -281,6 +283,11 @@ export class AgentLoopService {
    * 按 sessionId 记录，finish 时清除 —— 干活轮照常判决与学习，只是不进跨代对账。
    */
   private readonly nonMeasureSessions = new Set<string>();
+  /**
+   * 测量采样次数（按 sessionId）。测量轮由请求带入；finish 时清除。
+   * 只在 rsiMeasure=true 的 run 上生效，交给 RsiBridgeService 做多样本均值。
+   */
+  private readonly measureSampleCounts = new Map<string, number>();
   /** 汇报卡每个 run 只发一次（finish 可能被多个出口调用）。 */
   private readonly reportedRuns = new Set<string>();
 
@@ -360,8 +367,13 @@ export class AgentLoopService {
     });
     // 测量分流：rsiMeasure=false 的 run 照常判决/学习，只是不进 RSI 跨代对账。
     // 用 sessionId 记录，与 activeTraces 同口径，避免并发 run 互相覆盖。
-    if (req.rsiMeasure === false) this.nonMeasureSessions.add(session.id);
-    else this.nonMeasureSessions.delete(session.id);
+    if (req.rsiMeasure === false) {
+      this.nonMeasureSessions.add(session.id);
+      this.measureSampleCounts.delete(session.id);
+    } else {
+      this.nonMeasureSessions.delete(session.id);
+      this.measureSampleCounts.set(session.id, Math.max(1, req.rsiMeasureSamples ?? 1));
+    }
     this.deps.runState?.stage(runId, 'connecting');
 
     // ── 运行轨迹（可观测面）──────────────────────────────────────────────────
@@ -1269,6 +1281,7 @@ export class AgentLoopService {
     this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0);
     // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
     this.nonMeasureSessions.delete(session.id);
+    this.measureSampleCounts.delete(session.id);
     this.deps.abortRegistry.release(session.id);
     // P1-2 watchdog: no approval park may outlive its task. Anything still
     // parked at this point is stale (its loop is gone) — settle it so no
@@ -1388,12 +1401,14 @@ export class AgentLoopService {
   ): void {
     if (!this.deps.rsi) return;
     if (!run.runId || run.runId <= 0) return;
+    // 采样次数：测量轮由请求带入（>1 = 把最近 N 次同探针判决取均值）。
+    const samples = this.measureSampleCounts.get(sessionId) ?? 1;
 
     // session-scoped generation 由 RsiBridgeService 自己算（基于 policy_rsi_runs 表），
     // 这里只传 hint（0 即可），彻底和 PolicyRepository 解耦。
     const db = (this.deps as { db?: import('../../repositories/db.js').Db }).db;
     void this.deps.rsi
-      .compare(sessionId, 0, run.verdicts, run.runId)
+      .compare(sessionId, 0, run.verdicts, run.runId, samples)
       .then(async (result) => {
         // 轨迹里记一笔：improved=ok，其他状态也 ok（都是有效判定，不区分 ok/error）
         // 但 error 单独标 error —— 它表示桥接自身故障，不是 RSI 判定结果

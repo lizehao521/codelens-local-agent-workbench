@@ -102,14 +102,20 @@ const METRIC_MAP: Record<
 };
 
 /**
- * 必须每代都有读数（哪怕是 absent）的目标指标 —— 它们的判据名。
+ * 可能产出数值读数的判据 —— 它们必须每代都在（哪怕是 absent）。
  *
  * 为什么单独列出：krsi 的 R3 规定「上一代有、这一代消失的指标 = 删指标」。
- * 语义覆盖率在最终回答为空时算不出来，如果这一代直接不写这条 reading，
- * R3 会把"量不到"误判成"删指标"，整代被拒。写成 basis=5(absent) 既保持
- * 指标集合稳定，又诚实标注"这一代量不到"。
+ * 一次探针没调工具（tool_success_rate=unexec）或最终回答为空（语义覆盖率算不出），
+ * 如果这一代直接不写这条 reading，R3 会把"量不到"误判成"删指标"，整代被拒。
+ * 写成 basis=5(absent) 既保持指标集合稳定，又诚实标注"这一代量不到"。
+ *
+ * task.terminal / loop.health 不在这里：它们本来就是二值信号、从不出 score，
+ * 永远不进 readings，不存在"消失"问题。
  */
-const OBJECTIVE_CRITERIA = new Set([
+const SCORABLE_CRITERIA = new Set([
+  'tool.success_rate',
+  'approval.friction',
+  'tool.discipline.write_gate',
   'semantic.task_completion',
   'semantic.completion',
 ]);
@@ -244,7 +250,7 @@ export function verdictsToReadings(verdicts: CriterionVerdict[]): RsiReading[] {
     // 否则 krsi 的 R3 会把"这一代量不到"误判成"删掉难看的指标"。
     // 只在这条判据**真的被执行过**（verdict 存在）时补 absent；
     // 判据根本没接（如深判未启用）就不写，避免凭空造一条永远量不到的指标。
-    if (OBJECTIVE_CRITERIA.has(criterion) && verdict) {
+    if (SCORABLE_CRITERIA.has(criterion) && verdict) {
       out.push({
         metric: conf.metric,
         n: 0,

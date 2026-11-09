@@ -171,6 +171,9 @@ const MEASURE_PROBE = `请通读 notes/强化Agent.txt，然后逐条回答下�
 5) Update 只允许改什么。
 不要写文件，不要列目录。`;
 
+/** 每个测量轮采样几次。3 次能把单次作答的覆盖率噪声压到约 1/√3。 */
+const PROBE_SAMPLES = 3;
+
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
   `帮你自己写一份能力清单文档。${SELF_RULES}
@@ -197,10 +200,10 @@ const SELF_TASKS = [
 
 const baseArgs = {
   provider: 'custom',
-  // 网关的档位模型：极速 / 极速-any / 旗舰 / 旗舰-any / 推理 / 平衡。
   // 用「平衡」：原生 tool calling 稳定、响应 2-3s、无冗长推理链，
-  // token 消耗可控 —— 这一点对 RSI 很关键：budget_efficiency 必须真的能变好。
-  model: '旗舰',
+  // 且**最终回答不会空**。实测「旗舰」在同一探针上只回 "\n\n"（completion 58 tokens），
+  // 空回答会让 L2 语义覆盖率量不到，整代直接作废 —— 测量面必须选稳定的档位。
+  model: '平衡',
   customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
   channelMode: 'native',
@@ -474,22 +477,34 @@ ${feedback}`
     if (!sessionId) sessionId = getSessionId(sse);
     console.log(`  ✅ 干活轮 ${((Date.now() - start) / 1000).toFixed(1)}s  session=${sessionId}`);
 
-    // ── ② 测量轮：固定探针，唯一进 RSI 的读数来源 ──────────────────────────
+    // ── ② 测量轮：固定探针 × N，只有最后一次进 RSI，读数取 N 次均值 ─────────
     // 固定任务 → 代际读数可比；干活轮不进对账 → 开发噪声不会污染结论。
     // 这就是「隐藏评测分流」：改目标的过程与量结果的过程分开。
-    // 先清上下文：探针必须在空上下文里量，否则上一段干活历史会混进用量读数。
-    if (sessionId) clearHistory(sessionId);
+    //
+    // 为什么要采样 N 次：单次作答的语义覆盖率有 ±0.03 级随机波动，
+    // 直接拿两次单样本相减 = 拿掷骰子的结果判"进步"。N 次取均值把噪声压到 1/√N，
+    // 才让 krsi 的"严格变好"对应真实差异。
     const probeStart = Date.now();
-    try {
-      await postStreamWithRetry({
-        ...baseArgs,
-        message: MEASURE_PROBE,
-        rsiMeasure: true,
-        ...(sessionId ? { sessionId } : {}),
-      });
-      console.log(`  🔬 测量轮 ${((Date.now() - probeStart) / 1000).toFixed(1)}s`);
-    } catch (e: any) {
-      console.error(`  ❌ 测量轮失败: ${e?.message ?? e}`);
+    let okSamples = 0;
+    for (let s = 1; s <= PROBE_SAMPLES; s++) {
+      // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
+      // 采样之间不独立，均值就没意义。
+      if (sessionId) clearHistory(sessionId);
+      const isLast = s === PROBE_SAMPLES;
+      try {
+        await postStreamWithRetry({
+          ...baseArgs,
+          message: MEASURE_PROBE,
+          // 前 N-1 次只采样（rsiMeasure=false，不进对账），最后一次才落代
+          rsiMeasure: isLast,
+          rsiMeasureSamples: isLast ? Math.max(1, okSamples + 1) : 1,
+          ...(sessionId ? { sessionId } : {}),
+        });
+        okSamples += 1;
+        console.log(`  🔬 采样 ${s}/${PROBE_SAMPLES} ${((Date.now() - probeStart) / 1000).toFixed(1)}s`);
+      } catch (e: any) {
+        console.error(`  ❌ 采样 ${s}/${PROBE_SAMPLES} 失败: ${e?.message ?? e}`);
+      }
     }
 
     // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），

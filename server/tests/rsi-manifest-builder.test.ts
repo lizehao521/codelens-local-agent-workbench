@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildManifest, verdictsToReadings, KNOWN_CRITERIA } from '../src/services/rsi/manifest-builder.js';
+import { averageVerdicts } from '../src/services/rsi/rsi-bridge.service.js';
 import type { CriterionVerdict } from '../src/services/judge/types.js';
 
 const PASS_V: CriterionVerdict = (criterion: string, score?: number): CriterionVerdict => ({
@@ -77,11 +78,18 @@ describe('manifest-builder', () => {
       expect(readings).toEqual([]);
     });
 
-    it('unexec（无 score）→ 跳过', () => {
+    it('unexec（无 score）→ 写 absent，保持指标集合稳定', () => {
       const verdicts: CriterionVerdict[] = [UNEXEC_V('tool.success_rate')];
       const readings = verdictsToReadings(verdicts);
-      // unexec 也没有 score，同样跳过
-      expect(readings).toEqual([]);
+      // 一次探针没调工具时 success_rate 会 unexec；直接消失会被 R3 判成"删指标"，
+      // 所以写 absent（n=0）而不是跳过。
+      expect(readings).toHaveLength(1);
+      expect(readings[0]).toMatchObject({
+        metric: 'tool_success_rate',
+        n: 0,
+        basis: 5,
+        role: 'guard',
+      });
     });
 
     it('未知判据名 → 跳过', () => {
@@ -157,5 +165,55 @@ describe('manifest-builder', () => {
       // 这两条都是护栏（有天花板，不能要求每代严格变好）
       expect(readings.every((r) => r.role === 'guard')).toBe(true);
     });
+  });
+});
+
+describe('averageVerdicts（多样本均值）', () => {
+  const obj = (score: number, status: 'pass' | 'fail' | 'unexec' = 'pass'): CriterionVerdict => ({
+    layer: 'L2', criterion: 'semantic.task_completion', status, score,
+  });
+
+  it('单样本原样返回', () => {
+    const one = [obj(0.5)];
+    expect(averageVerdicts([one])).toEqual(one);
+  });
+
+  it('多个样本取算术平均（保留 3 位小数）', () => {
+    const out = averageVerdicts([[obj(0.4)], [obj(0.5)], [obj(0.61)]]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.score).toBe(0.503);
+    expect(out[0]?.detail).toContain('3 次采样均值');
+  });
+
+  it('状态取最坏：任一次 fail 就是 fail', () => {
+    const out = averageVerdicts([[obj(0.9, 'pass')], [obj(0.2, 'fail')]]);
+    expect(out[0]?.status).toBe('fail');
+  });
+
+  it('只保留当前这轮已有的判据（老采样多出来的不引入）', () => {
+    const old: CriterionVerdict = { layer: 'L2', criterion: 'semantic.completion', status: 'pass', score: 0.9 };
+    const out = averageVerdicts([[obj(0.5), old], [obj(0.7)]]);
+    expect(out.map((v) => v.criterion)).toEqual(['semantic.task_completion']);
+  });
+
+  it('少数样本缺读数（1/3）→ 用其余样本均值，并标注样本数', () => {
+    const noScore: CriterionVerdict = {
+      layer: 'L2', criterion: 'semantic.task_completion', status: 'fail',
+      detail: 'S1_empty_answer',
+    };
+    const out = averageVerdicts([[obj(0.9)], [noScore], [obj(0.8)]]);
+    expect(out[0]?.score).toBe(0.85);
+    expect(out[0]?.status).toBe('fail');
+    expect(out[0]?.detail).toContain('2/3 次采样均值');
+  });
+
+  it('有效样本不足一半（1/3）→ 不产出均值（不许拿单次成绩冒充整代）', () => {
+    const noScore: CriterionVerdict = {
+      layer: 'L2', criterion: 'semantic.task_completion', status: 'fail',
+      detail: 'S1_empty_answer',
+    };
+    const out = averageVerdicts([[obj(0.9)], [noScore], [noScore]]);
+    expect(out[0]?.score).toBeUndefined();
+    expect(out[0]?.detail).toContain('不足一半');
   });
 });

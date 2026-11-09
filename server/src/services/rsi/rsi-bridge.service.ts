@@ -95,7 +95,40 @@ export class RsiBridgeService {
     _generationHint: number,
     runVerdicts: CriterionVerdict[],
     judgeRunId: number,
+    /** 采样次数（默认 1）。>1 时把最近 N-1 次判决一并取均值，压制单次作答的随机波动。 */
+    samples = 1,
   ): Promise<RsiBridgeResult> {
+    // ── 多样本均值：同一探针跑 N 次，读数取均值 ────────────────────────────
+    // 单次作答的 goal_term_coverage 波动可达 ±0.03，直接把两次单样本相减
+    // 等于拿掷骰子的结果判"进步"。N 次取均值把标准差压到 1/√N，
+    // 才让 R5 的"严格变好"对应真实差异而不是噪声。
+    const effectiveVerdicts =
+      samples > 1
+        ? averageVerdicts([
+            ...this.fetchRecentVerdicts(sessionId, judgeRunId, samples - 1),
+            runVerdicts,
+          ])
+        : runVerdicts;
+
+    // ── 无效测量不落代 ────────────────────────────────────────────────────────
+    // 探针最终回答为空 / 语义层未执行时，目标指标没有读数。此时若照常落一代，
+    // 链上会堆满 undecidable，generation 被推高却没有任何可比读数。
+    // 正确做法是"这一代不计"：不写 policy_rsi_runs、不推进代序，下一轮重新测。
+    const hasObjectiveScore = effectiveVerdicts.some(
+      (v) =>
+        v.criterion === 'semantic.task_completion' &&
+        typeof v.score === 'number' &&
+        Number.isFinite(v.score),
+    );
+    if (!hasObjectiveScore) {
+      return {
+        state: 'skipped',
+        exitCode: null,
+        reasons: ['探针未产生可测的目标读数（空回答或未执行），本代不计'],
+        reportRaw: '',
+        ledgerPath: '',
+      };
+    }
     // ── 自动决定 session-scoped generation ────────────────────────────────────
     const prevGenRow = this.deps.db.get<{ generation: number; next_manifest_json: string | null }>(
       `SELECT generation, next_manifest_json FROM policy_rsi_runs
@@ -117,7 +150,7 @@ export class RsiBridgeService {
       // 深判是 post-hoc 触发的，它在 judge_runs 里是 parent_run=本轮 runId 的子行。
       // 这里查一下，有深判行就把它作为一个额外的 semantic.completion verdict
       // 喂进 manifest（basis=2 Relayed），让 krsi 跨代能判语义评分严格变好。
-      let enrichedVerdicts = runVerdicts;
+      let enrichedVerdicts: CriterionVerdict[] = effectiveVerdicts;
       const deepRow = this.deps.db.get<{ verdict: string; score: number }>(
         `SELECT verdict, score FROM judge_runs WHERE parent_run = ? LIMIT 1`,
         [judgeRunId],
@@ -240,6 +273,53 @@ export class RsiBridgeService {
   }
 
   // ── 内部 ──────────────────────────────────────────────────────────────────
+
+  /**
+   * 取当前判决之前的最近 N 次判决（按 run 分组，最新的在前）。
+   *
+   * 只用于多样本均值：调用方保证这 N 次运行是**同一探针**的连续采样。
+   * 用 judge_verdicts 还原而不依赖 judge_runs.context_json —— 后者是压缩快照，
+   * 解析它等于把测量逻辑绑在一个会变的序列化格式上。
+   */
+  private fetchRecentVerdicts(
+    sessionId: string,
+    beforeRunId: number,
+    limit: number,
+  ): CriterionVerdict[][] {
+    if (limit <= 0) return [];
+    const rows = this.deps.db.all<{
+      run_id: number;
+      layer: string;
+      criterion: string;
+      status: string;
+      score: number | null;
+      detail: string | null;
+    }>(
+      `SELECT run_id, layer, criterion, status, score, detail
+         FROM judge_verdicts
+        WHERE session_id = ? AND run_id < ?
+        ORDER BY run_id DESC, id ASC`,
+      [sessionId, beforeRunId],
+    );
+
+    const byRun = new Map<number, CriterionVerdict[]>();
+    for (const r of rows) {
+      let list = byRun.get(r.run_id);
+      if (!list) {
+        if (byRun.size >= limit) break; // 只要最近 N 次，更早的不再收集
+        list = [];
+        byRun.set(r.run_id, list);
+      }
+      list.push({
+        layer: r.layer as CriterionVerdict['layer'],
+        criterion: r.criterion,
+        status: r.status as CriterionVerdict['status'],
+        detail: r.detail ?? undefined,
+        ...(r.score === null ? {} : { score: r.score }),
+      });
+    }
+    return [...byRun.values()];
+  }
 
   /**
    * 取上一代 Manifest：落库原文优先，缺失时才从判决重建。
@@ -524,6 +604,64 @@ function parseExitCode(code: number | null): RsiVerdictState {
     case 3: return 'undecidable';
     default: return 'error'; // null / 其他数字
   }
+}
+
+/**
+ * 多样本判决均值（纯函数，供单测钉死）。
+ *
+ * 只对**当前这一轮**已有的判据求均值：老采样里多出来的判据不引入，
+ * 避免"上一轮跑过深判、这一轮没跑"就把测量口径偷偷改宽。
+ *
+ * status 取最坏：任一次 fail 就是 fail（一次没做成不能靠均值洗掉）；
+ * 全 unexec 才算 unexec。score 取算术平均并保留 3 位小数。
+ */
+export function averageVerdicts(sampleSets: CriterionVerdict[][]): CriterionVerdict[] {
+  const current = sampleSets[sampleSets.length - 1] ?? [];
+  if (sampleSets.length <= 1) return current;
+
+  const agg = new Map<string, { statuses: CriterionVerdict['status'][]; scores: number[] }>();
+  for (const set of sampleSets) {
+    for (const v of set) {
+      let a = agg.get(v.criterion);
+      if (!a) {
+        a = { statuses: [], scores: [] };
+        agg.set(v.criterion, a);
+      }
+      a.statuses.push(v.status);
+      if (typeof v.score === 'number' && Number.isFinite(v.score)) a.scores.push(v.score);
+    }
+  }
+
+  return current.map((v) => {
+    const a = agg.get(v.criterion);
+    if (!a) return v;
+    const status: CriterionVerdict['status'] = a.statuses.includes('fail')
+      ? 'fail'
+      : a.statuses.includes('pass')
+        ? 'pass'
+        : 'unexec';
+
+    // 有效样本不足一半 → 这一代不产出读数（下游按 absent 处理）。
+    // 允许少数样本失败（上游偶发空回答），但不能只拿"成功的那一次"当整代读数：
+    // 3 次里只有 1 次有读数就求均值，等于把测量噪声洗成成绩。
+    const minValid = Math.ceil(sampleSets.length / 2);
+    if (a.scores.length < minValid) {
+      return {
+        ...v,
+        status,
+        score: undefined,
+        detail: `${v.detail ?? ''}｜${a.scores.length}/${sampleSets.length} 次采样有读数（不足一半），样本不完整`.trim(),
+      };
+    }
+
+    const avg = a.scores.reduce((x, y) => x + y, 0) / a.scores.length;
+    return {
+      ...v,
+      status,
+      score: Math.round(avg * 1000) / 1000,
+      detail: `${v.detail ?? ''}｜${a.scores.length}/${sampleSets.length} 次采样均值 ${avg.toFixed(3)}`.trim(),
+    };
+  });
 }
 
 /** 从 krsi 报告里抓「理由」段落（R5 的未变好理由、R3 的拒收点名等）。 */
