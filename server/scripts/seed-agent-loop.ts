@@ -309,7 +309,8 @@ const baseArgs = {
   // 空回答会让 L2 语义覆盖率量不到，整代直接作废 —— 测量面必须选稳定的档位。
   model: '平衡',
   customBaseUrl: 'http://1.92.92.200:8787/v1',
-  apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
+  // 凭证只从环境变量读（.env / 进程环境），绝不写进源码 —— 源码会进 git。
+  apiKey: process.env.LLM_SERVER_API_KEY ?? '',
   channelMode: 'native',
   // 自改进要写整个测试文件：文件正文是 fs.write 的**参数**，算在 completion 里。
   // 1024 会在写到一半被截断 → 工具调用参数不完整 → 什么都写不出来。
