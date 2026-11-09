@@ -215,6 +215,20 @@ const FORGE_PROBE = `请按下面的顺序执行，每步都要真的调用工�
 3) 如果第 1 步就成功了，说明复用到了沉淀下来的能力，直接结束，不要再重建一次。`;
 
 /**
+ * 代码修复族的测量探针：只读数，不改代码。
+ *
+ * 不能复用干活轮的任务：
+ *   - AUTO_TASK 会「挑一个最低分的失败套件修」——干活轮刚修完 A，测量轮就顺手修 B，
+ *     本代读数把下一代的工作提前算进来，代际不可比；
+ *   - CODE_TASKS 虽点名同一套件，但干活轮没修成时，测量轮会接着修，读数同样错位。
+ * 判据在判决时刻重跑全套件，探针只需一次成功的 eval.run，不采信它的自述。
+ */
+const CODE_PROBE = `本轮只做测量，不要修改任何文件。严格按顺序：
+1) 调用 eval.run（不传 suite）拿到当前通过率与各套件得分；
+2) 用一句话报告通过率。
+禁止调用 fs.write / sys.exec，禁止新建或改写任何文件；发现失败也不要修。`;
+
+/**
  * 代码修复任务族 —— 目标指标是「固定评测套件的通过率」。
  *
  * 与前面几族的本质区别：
@@ -728,8 +742,8 @@ ${feedback}`
     // 直接拿两次单样本相减 = 拿掷骰子的结果判"进步"。N 次取均值把噪声压到 1/√N，
     // 才让 krsi 的"严格变好"对应真实差异。
     const probeStart = Date.now();
-    // 代码修复族是确定性的：评测通过率由「此刻的文件内容」唯一决定，
-    // 没有语义作答的随机波动，采样多次只会让同一代内反复改同一个文件。
+    // 代码修复族是确定性的：测量轮只跑 eval.run（CODE_PROBE 不改文件），
+    // 通过率由「此刻的文件内容」唯一决定，没有随机波动，一次采样就够。
     const probeSamples = codeMode || autoMode ? 1 : PROBE_SAMPLES;
     let okSamples = 0;
     for (let s = 1; s <= probeSamples; s++) {
@@ -745,8 +759,10 @@ ${feedback}`
           ...baseArgs,
           message: forgeMode
             ? FORGE_PROBE
+            // 代码修复族只做测量：干活轮刚修完一个套件，测量轮若复用干活任务，
+            // 会顺手把下一个失败套件也修了，本代读数就混进了下一代的工作。
             : codeMode || autoMode
-              ? tasks[i % tasks.length]!
+              ? CODE_PROBE
               : MEASURE_PROBE,
           // 前 N-1 次只采样（rsiMeasure=false，不进对账），最后一次才落代
           rsiMeasure: isLast,
