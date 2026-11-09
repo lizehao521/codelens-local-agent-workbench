@@ -23,6 +23,7 @@ import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../
 import { L0_CRITERIA, resolveThresholds, type L0Thresholds } from './criteria.js';
 import { runCanary, type CanaryOutcome } from './canary.js';
 import { runToolDisciplineGates } from './tool-discipline.js';
+import { evalPassRateGate } from './eval-rate.js';
 import { buildSemanticEvidence, type SemanticAssessor, type SemanticEvidence } from './semantic.js';
 import { summarize } from './summarize.js';
 import { encodeSnapshot } from './snapshot-codec.js';
@@ -307,7 +308,17 @@ export class JudgeService {
       : unwiredL3();
 
     const discipline = runToolDisciplineGates(evidence);
-    const verdicts: CriterionVerdict[] = [...l0, canary.verdict, ...discipline, l2, l3];
+    // 代码修复族的目标读数：只在「本轮真跑过 eval.run」时产出，
+    // 否则不产出判据（见 eval-rate.ts 的说明），避免污染无关会话的覆盖率。
+    const evalRate = evalPassRateGate(evidence);
+    const verdicts: CriterionVerdict[] = [
+      ...l0,
+      canary.verdict,
+      ...discipline,
+      ...(evalRate ? [evalRate] : []),
+      l2,
+      l3,
+    ];
     const summary = summarize(verdicts, profiles);
 
     // 复算所需的证据摘要：超限时只留 digest，但 digest 本身照样算全量，

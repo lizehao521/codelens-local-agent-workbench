@@ -13,6 +13,7 @@ import { textDiffTool } from './text-diff.tool.js';
 import { sysExecTool } from './sys-exec.tool.js';
 import { toolForgeTool } from './tool-forge.tool.js';
 import { webSearchTool } from './web-search.tool.js';
+import { evalRunTool } from './eval-run.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -27,4 +28,5 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   sysExecTool,
   toolForgeTool,
   webSearchTool,
+  evalRunTool,
 ];

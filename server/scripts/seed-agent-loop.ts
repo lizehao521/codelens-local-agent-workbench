@@ -211,6 +211,35 @@ const FORGE_PROBE = `请按下面的顺序执行，每步都要真的调用工�
       并且必须带 promote=true —— 把能力晋升到会话能力库，下一代才不用重建。
 3) 如果第 1 步就成功了，说明复用到了沉淀下来的能力，直接结束，不要再重建一次。`;
 
+/**
+ * 代码修复任务族 —— 目标指标是「固定评测套件的通过率」。
+ *
+ * 与前面几族的本质区别：
+ *   · 判据在服务端（src/services/eval/suites.ts），Agent 改不到；
+ *   · 打分用 public + hidden 全量用例，只针对公开样例打补丁拿不到满分；
+ *   · 产物是**代码本身**，会跨代保留 —— 这就是代码域的能力沉淀。
+ *
+ * 每代只点名一个套件，三代走完 3 个套件，读数应当单调上升：
+ *   基线 5/21 → g1(12/21) → g2(16/21) → g3(21/21) → 之后诚实饱和。
+ */
+const CODE_TASKS = [
+  `修复 eval/slugify/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="slugify"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+如果 eval.run 仍有失败，按失败详情继续改，直到 score=1。`,
+  `修复 eval/chunk/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="chunk"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
+  `修复 eval/parse_kv/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="parse_kv"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
+];
+
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
   `帮你自己写一份能力清单文档。${SELF_RULES}
@@ -417,26 +446,31 @@ async function main() {
   const target = Math.max(2, parseInt(process.argv[2] || '12', 10));
   const depthMode = process.argv.includes('--depth');
   const forgeMode = process.argv.includes('--forge');
+  const codeMode = process.argv.includes('--code');
   const selfMode = process.argv.includes('--self') || depthMode;
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
   const onlyIdx = onlyArg ? Number(onlyArg.split('=')[1]) : null;
-  const tasks = forgeMode
-    ? FORGE_TASKS
-    : depthMode
-      ? onlyIdx !== null
-        ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
-        : BEHAVIOR_TASKS
-      : selfMode
-        ? SELF_TASKS
-        : TASKS;
-  const modeLabel = forgeMode
-    ? '造工具：能力生命周期'
-    : depthMode
-      ? '深度自证：行为断言'
-      : selfMode
-        ? '自改进：补测试'
-        : '演示任务';
+  const tasks = codeMode
+    ? CODE_TASKS
+    : forgeMode
+      ? FORGE_TASKS
+      : depthMode
+        ? onlyIdx !== null
+          ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
+          : BEHAVIOR_TASKS
+        : selfMode
+          ? SELF_TASKS
+          : TASKS;
+  const modeLabel = codeMode
+    ? '代码修复：固定评测通过率'
+    : forgeMode
+      ? '造工具：能力生命周期'
+      : depthMode
+        ? '深度自证：行为断言'
+        : selfMode
+          ? '自改进：补测试'
+          : '演示任务';
   console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
 
   // --session=<id>：接着已有会话继续推代（不传则新建会话，代际从 g1 起）
@@ -488,7 +522,7 @@ async function main() {
       /* 写不进 checkpoint 就退化为历史窗口，不影响判定 */
     }
   };
-  if (selfMode) await enableHeadlessWrites();
+  if (selfMode || codeMode) await enableHeadlessWrites();
 
   // 开跑前先做一次基线验收：把「当前就红的测试」作为第 1 轮任务，
   // 而不是让 Agent 先做新任务、把红灯一直拖到最后一轮。
@@ -564,28 +598,35 @@ ${feedback}`
     // 直接拿两次单样本相减 = 拿掷骰子的结果判"进步"。N 次取均值把噪声压到 1/√N，
     // 才让 krsi 的"严格变好"对应真实差异。
     const probeStart = Date.now();
+    // 代码修复族是确定性的：评测通过率由「此刻的文件内容」唯一决定，
+    // 没有语义作答的随机波动，采样多次只会让同一代内反复改同一个文件。
+    const probeSamples = codeMode ? 1 : PROBE_SAMPLES;
     let okSamples = 0;
-    for (let s = 1; s <= PROBE_SAMPLES; s++) {
+    for (let s = 1; s <= probeSamples; s++) {
       // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
       // 采样之间不独立，均值就没意义。
       if (sessionId) clearHistory(sessionId);
       // 造工具族每次采样都要先清掉作用域里的残留定义，
       // 否则上一代遗留的 .json 会让 create 直接冲突（同名工具已存在）。
       if (forgeMode && sessionId) clearForgeScope(sessionId);
-      const isLast = s === PROBE_SAMPLES;
+      const isLast = s === probeSamples;
       try {
         await postStreamWithRetry({
           ...baseArgs,
-          message: forgeMode ? FORGE_PROBE : MEASURE_PROBE,
+          message: forgeMode
+            ? FORGE_PROBE
+            : codeMode
+              ? tasks[i % tasks.length]!
+              : MEASURE_PROBE,
           // 前 N-1 次只采样（rsiMeasure=false，不进对账），最后一次才落代
           rsiMeasure: isLast,
           rsiMeasureSamples: isLast ? Math.max(1, okSamples + 1) : 1,
           ...(sessionId ? { sessionId } : {}),
         });
         okSamples += 1;
-        console.log(`  🔬 采样 ${s}/${PROBE_SAMPLES} ${((Date.now() - probeStart) / 1000).toFixed(1)}s`);
+        console.log(`  🔬 采样 ${s}/${probeSamples} ${((Date.now() - probeStart) / 1000).toFixed(1)}s`);
       } catch (e: any) {
-        console.error(`  ❌ 采样 ${s}/${PROBE_SAMPLES} 失败: ${e?.message ?? e}`);
+        console.error(`  ❌ 采样 ${s}/${probeSamples} 失败: ${e?.message ?? e}`);
       }
     }
 

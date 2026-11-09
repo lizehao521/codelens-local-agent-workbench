@@ -101,6 +101,15 @@ const METRIC_MAP: Record<
     basis: BASIS.Measured,
     role: 'guard',
   },
+  // 「改完代码真的能跑通吗」：固定评测套件（public + hidden）的通过率。
+  // 这是唯一一个由**外部判据**（服务端用例）而不是 Agent 自述决定的目标指标，
+  // 因此它无法被"多造几个工具"这类行为刷高：只有把实现改对，它才会动。
+  'task.test_pass_rate': {
+    metric: 'test_pass_rate',
+    direction: 'up',
+    basis: BASIS.Measured,
+    role: 'objective',
+  },
   // 语义完成度（问答评分表）**不进 RSI readings**：
   // 已实测饱和（概念题首代 5/5），而且它的单代波动 ±0.05 属于噪声。
   // 把它当护栏，噪声就会把「目标已经到顶」误判成「退步」；
@@ -138,6 +147,7 @@ const SCORABLE_CRITERIA = new Set([
   'tool.discipline.write_gate',
   'tool.discipline.lesson_pairing',
   'tool.capability.reuse',
+  'task.test_pass_rate',
   'semantic.task_completion',
   'semantic.completion',
 ]);
