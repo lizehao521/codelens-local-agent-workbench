@@ -6,10 +6,10 @@
 //
 // 退出码：
 //
-//	0 = improved      所有可比指标严格变好
-//	1 = not_improved  有指标没变好（持平或变坏）
+//	0 = improved      所有目标指标严格变好，且没有护栏指标变差
+//	1 = not_improved  有目标指标没变好，或护栏指标变差
 //	2 = refused       拒收：schema/判据/锚定/账本完整性不通过
-//	3 = undecidable   没有可比指标，量不到
+//	3 = undecidable   没有可比目标指标，量不到
 //
 // 设计立场（这是与「LLM 自评式 RSI」的根本区别）：
 //   - 判定只依赖两代 manifest 的**实测读数**，不调用任何模型；
@@ -54,6 +54,10 @@ type Reading struct {
 	WhyAbsent   string   `json:"why_absent,omitempty"`
 	Direction   string   `json:"direction"`
 	Denominator *float64 `json:"denominator,omitempty"`
+	// Role：objective = 必须严格变好；guard = 不得变差（缺省 objective）。
+	// 护栏指标天生有天花板（成功率 100%、覆盖率 100%），到了顶就不可能再"严格变好"，
+	// 把它们当目标会让 R5 永远判不出 improved —— 那是角色错配，不是没进步。
+	Role string `json:"role,omitempty"`
 }
 
 type Manifest struct {
@@ -344,22 +348,35 @@ type metricLine struct {
 	Before float64
 	After  float64
 	Better bool
+	Role   string
 }
 
-func compare(prev, next Manifest) ([]metricLine, int) {
+// compare 把两代可比指标分成两组：
+//   - objective（目标）：必须严格变好，objectiveStrict 统计变好的个数
+//   - guard（护栏）：只要不变差即可，guardRegressed 统计变差的个数
+//
+// 两组都要求「方向一致」才可比；方向不一致的指标直接跳过（不参与判定）。
+func compare(prev, next Manifest) (out []metricLine, objectiveStrict, objectiveCount, guardRegressed int) {
 	byPrev := map[string]Reading{}
 	for _, r := range prev.Readings {
 		byPrev[r.Metric] = r
 	}
-	var out []metricLine
-	strict := 0
 	for _, n := range next.Readings {
 		p, ok := byPrev[n.Metric]
 		if !ok {
 			continue
 		}
 		if p.Direction != n.Direction {
-			continue // 方向不一致的指标不可比，交由调用方处置
+			continue
+		}
+		// 两代都量不到（basis=5）→ 这一对不可比，不参与判定；
+		// 只有一侧量不到时仍参与：目标指标"这一代量不到"不能被当成变好。
+		if p.Basis == 5 && n.Basis == 5 {
+			continue
+		}
+		role := n.Role
+		if role == "" {
+			role = "objective"
 		}
 		better := false
 		if n.Direction == "up" {
@@ -367,13 +384,27 @@ func compare(prev, next Manifest) ([]metricLine, int) {
 		} else {
 			better = n.N < p.N
 		}
-		if better {
-			strict++
+		line := metricLine{Metric: n.Metric, Before: p.N, After: n.N, Better: better, Role: role}
+		if role == "guard" {
+			// 护栏的"达标"= 没变差；持平可以，变差不行。
+			ok := n.N >= p.N
+			if n.Direction == "down" {
+				ok = n.N <= p.N
+			}
+			line.Better = ok
+			if !ok {
+				guardRegressed++
+			}
+		} else {
+			objectiveCount++
+			if better {
+				objectiveStrict++
+			}
 		}
-		out = append(out, metricLine{Metric: n.Metric, Before: p.N, After: n.N, Better: better})
+		out = append(out, line)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Metric < out[j].Metric })
-	return out, strict
+	return out, objectiveStrict, objectiveCount, guardRegressed
 }
 
 func fmtNum(f float64) string {
@@ -438,7 +469,7 @@ func main() {
 		}
 	}
 
-	metrics, strict := compare(prev, next)
+	metrics, objectiveStrict, objectiveCount, guardRegressed := compare(prev, next)
 
 	// 账本：先把两代 manifest 记上链，再记判决。
 	var rows []ledgerRow
@@ -457,11 +488,21 @@ func main() {
 	case len(metrics) == 0:
 		exit, verdict = exitUndecidable, "undecidable"
 		reasons = append(reasons, "R5: 两代没有可比指标，量不到改进")
-	case strict < len(metrics):
+	case objectiveCount == 0:
+		exit, verdict = exitUndecidable, "undecidable"
+		reasons = append(reasons, "R5: 只有护栏指标、没有目标指标 —— 护栏不变差只能说明没退步，说明不了能力提升")
+	case guardRegressed > 0:
 		exit, verdict = exitNotImproved, "not_improved"
 		for _, m := range metrics {
-			if !m.Better {
-				reasons = append(reasons, fmt.Sprintf("R5: 指标 %q 没变好（%s → %s）", m.Metric, fmtNum(m.Before), fmtNum(m.After)))
+			if m.Role == "guard" && !m.Better {
+				reasons = append(reasons, fmt.Sprintf("R5: 护栏指标 %q 变差（%s → %s）", m.Metric, fmtNum(m.Before), fmtNum(m.After)))
+			}
+		}
+	case objectiveStrict < objectiveCount:
+		exit, verdict = exitNotImproved, "not_improved"
+		for _, m := range metrics {
+			if m.Role != "guard" && !m.Better {
+				reasons = append(reasons, fmt.Sprintf("R5: 目标指标 %q 没变好（%s → %s）", m.Metric, fmtNum(m.Before), fmtNum(m.After)))
 			}
 		}
 	}
@@ -502,9 +543,13 @@ func main() {
 	fmt.Fprintf(&b, "生产者 %s：第 %d 代 → 第 %d 代\n", next.Producer, prev.Generation, next.Generation)
 	fmt.Fprintf(&b, "判据目录：声明 6 条 [%s] ／ 实现 6 条 [%s]\n", criteriaDeclared, criteriaDeclared)
 	fmt.Fprintf(&b, "读数：上一代 %d 条；这一代 %d 条\n", countMeasured(prev), countMeasured(next))
-	fmt.Fprintf(&b, "指标：比到 %d 个，严格变好 %d 个\n", len(metrics), strict)
+	fmt.Fprintf(&b, "指标：比到 %d 个（目标 %d 个 / 护栏 %d 个），目标严格变好 %d 个\n", len(metrics), objectiveCount, len(metrics)-objectiveCount, objectiveStrict)
 	for _, m := range metrics {
-		fmt.Fprintf(&b, "  · %s：%s → %s（变好=%t）\n", m.Metric, fmtNum(m.Before), fmtNum(m.After), m.Better)
+		tag := ""
+		if m.Role == "guard" {
+			tag = "（护栏：不得变差）"
+		}
+		fmt.Fprintf(&b, "  · %s：%s → %s（变好=%t）%s\n", m.Metric, fmtNum(m.Before), fmtNum(m.After), m.Better, tag)
 	}
 	fmt.Fprintf(&b, "判定：%s\n", verdict)
 	if len(reasons) == 0 {

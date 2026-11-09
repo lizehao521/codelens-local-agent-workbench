@@ -12,6 +12,8 @@
  *   5. 产物哈希造假                  → refused（exit 2）        ← 打掉「伪造证据」
  *   6. 同一代重记不同 manifest       → refused（exit 2）        ← 打掉「改历史」
  *   7. 没有可比指标                  → undecidable（exit 3）    ← 诚实：量不到
+ *   8. 护栏顶在天花板 + 目标变好      → improved（exit 0）      ← 天花板指标不该挡住真进步
+ *   9. 目标变好但护栏退步             → not_improved（exit 1）  ← 能力上升不能拿退化换
  *
  * 用法：node --import tsx scripts/krsi-conformance.ts
  */
@@ -32,6 +34,8 @@ interface Reading {
   direction: 'up' | 'down';
   source?: string;
   why_absent?: string;
+  /** objective = 必须严格变好；guard = 不得变差；缺省 objective。 */
+  role?: 'objective' | 'guard';
 }
 
 interface Manifest {
@@ -196,6 +200,26 @@ runCase(
   3,
 );
 
+// 8. 护栏顶在天花板 + 目标变好 → 仍算真改进。
+// 这是本次修正的核心：成功率/覆盖率到 100% 后不可能再"严格变好"，
+// 若把它们当目标指标，R5 会永远否掉真实的能力提升。
+const GUARD = (n: number): Reading => ({ metric: 'tool_success_rate', n, basis: 1, direction: 'up', role: 'guard' });
+const OBJ = (n: number): Reading => ({ metric: 'goal_term_coverage', n, basis: 1, direction: 'up', role: 'objective' });
+runCase(
+  '⑧ 护栏持平（1→1）+ 目标变好（0.55→0.70）',
+  manifest(17, [GUARD(1), OBJ(0.55)]),
+  manifest(18, [GUARD(1), OBJ(0.7)]),
+  0,
+);
+
+// 9. 目标是变好了，但护栏掉下来 → 不许判 improved（能力上升不能以退化换）
+runCase(
+  '⑨ 目标变好但护栏变差（1→0.8）',
+  manifest(19, [GUARD(1), OBJ(0.55)]),
+  manifest(20, [GUARD(0.8), OBJ(0.7)]),
+  1,
+);
+
 // ── 输出 ────────────────────────────────────────────────────────────────
 
 const icons = (code: number) => (code === 0 ? '✅' : code === 1 ? '🔶' : code === 2 ? '⛔' : '❔');
@@ -217,6 +241,7 @@ const matrix = [
   ['伪造/丢失产物', '无法核验', '拒绝：内容哈希复核（R4）'],
   ['改写历史版本', '无账本', '拒绝：同代两次 manifest 冲突（R6）'],
   ['量不到时', '倾向给个分数', '诚实判 undecidable（exit 3）'],
+  ['指标顶在天花板', '把 1→1 也算"没进步"', '护栏=不得变差；目标=严格变好'],
 ];
 console.log('\n与其它 RSI 路线的区别：\n');
 const width = [22, 22, 34];

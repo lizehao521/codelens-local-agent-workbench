@@ -43,52 +43,76 @@ const BASIS = {
  */
 const METRIC_MAP: Record<
   string,
-  { metric: string; direction: 'up' | 'down'; basis: number }
+  { metric: string; direction: 'up' | 'down'; basis: number; role: 'objective' | 'guard' }
 > = {
+  // ── 护栏（guard）：只要求「不得变差」，不要求每代都变好 ──────────────
+  // 这类指标天生有上限/下限（成功率 100%、审批摩擦 0%、覆盖率 100%），
+  // 到了天花板就不可能再"严格变好"。把它们当目标指标，会让 krsi 的 R5
+  // 永远无法判 improved —— 那是判据设计与指标性质错配，不是 Agent 没进步。
   'tool.success_rate': {
     metric: 'tool_success_rate',
     direction: 'up',
     basis: BASIS.Measured,
+    role: 'guard',
   },
   'approval.friction': {
     metric: 'approval_friction',
     direction: 'down',
     basis: BASIS.Measured,
+    role: 'guard',
   },
-  'budget.efficiency': {
-    metric: 'budget_efficiency',
-    direction: 'down',
+  'tool.discipline.write_gate': {
+    metric: 'tool_write_coverage',
+    direction: 'up',
     basis: BASIS.Measured,
+    role: 'guard',
   },
+  // budget.efficiency 刻意**不**进 RSI readings：
+  // 成本是 L0 闸（用量 > 90% 预算即判 fail），不是「越低越好」的目标。
+  // 把它当目标会与学习直接冲突——π 每多一条经验，prompt 就更长、成本必然上升，
+  // 于是"越学越贵"会被判成"越学越差"。
   'task.terminal': {
     metric: 'task_terminal',
     direction: 'up',
     basis: BASIS.Measured,
+    role: 'guard',
   },
   'loop.health': {
     metric: 'loop_health',
     direction: 'up',
     basis: BASIS.Measured,
+    role: 'guard',
   },
-  // ── 写闸覆盖率（连续值 0-1）──
-  // 让「Agent 自己补测试」这件事在 RSI 里可见：每补一个工具，
-  // tool_write_coverage 就严格上升一格，krsi 的 R5 能据此判 improved。
-  // 若只保留二值 pass/fail，补到 9/10 仍然是 fail，跨代完全看不出进步。
-  'tool.discipline.write_gate': {
-    metric: 'tool_write_coverage',
+  // ── 目标（objective）：必须严格变好，是"能力有没有真的提升"的唯一口径 ──
+  // L2 语义覆盖率：固定探针 + 固定词项 → 连续值 0..1，天然有上升空间。
+  // 来源是规则判据（对真实最终回答做词项覆盖），不是模型自评。
+  'semantic.task_completion': {
+    metric: 'goal_term_coverage',
     direction: 'up',
     basis: BASIS.Measured,
+    role: 'objective',
   },
-  // ── L2 深判（LLM 语义裁判）──
-  // basis=2 Relayed：来自固定 prompt + 固定模型 + temperature=0 的 LLM 判定，
-  // 同一输入复跑会得到相同分数，本质上是"relayed from a known process"，
-  // 不是瞎猜的 model_says（basis=4）。
+  // L2 深判（LLM 语义裁判）：basis=2 Relayed，固定 prompt + 固定模型 + temperature≈0。
   'semantic.completion': {
     metric: 'semantic_completion',
     direction: 'up',
     basis: BASIS.Relayed,
+    role: 'objective',
   },
 };
+
+/**
+ * 必须每代都有读数（哪怕是 absent）的目标指标 —— 它们的判据名。
+ *
+ * 为什么单独列出：krsi 的 R3 规定「上一代有、这一代消失的指标 = 删指标」。
+ * 语义覆盖率在最终回答为空时算不出来，如果这一代直接不写这条 reading，
+ * R3 会把"量不到"误判成"删指标"，整代被拒。写成 basis=5(absent) 既保持
+ * 指标集合稳定，又诚实标注"这一代量不到"。
+ */
+const OBJECTIVE_CRITERIA = new Set([
+  'semantic.task_completion',
+  'semantic.completion',
+]);
 
 /** Agent 判据名 → RSI metric 的反向查表（供测试断言用）。 */
 export const KNOWN_CRITERIA = Object.keys(METRIC_MAP);
@@ -116,6 +140,7 @@ export function criteriaFingerprint(
         metric: c.metric,
         direction: c.direction,
         basis: c.basis,
+        role: c.role,
       }))
       .sort((a, b) => a.criterion.localeCompare(b.criterion)),
     thresholds: Object.keys(effective)
@@ -150,6 +175,8 @@ export interface RsiReading {
   why_absent?: string;
   direction: 'up' | 'down';
   denominator?: number;
+  /** objective = 必须严格变好；guard = 不得变差。缺省按 objective 解释（向后兼容）。 */
+  role?: 'objective' | 'guard';
 }
 
 export interface RsiManifest {
@@ -196,24 +223,39 @@ export function verdictsToReadings(verdicts: CriterionVerdict[]): RsiReading[] {
 
   for (const [criterion, conf] of Object.entries(METRIC_MAP)) {
     const verdict = byCriterion.get(criterion);
-    if (!verdict) continue;
-    if (verdict.score === undefined || verdict.score === null || !Number.isFinite(verdict.score)) {
-      // 没有 score 的判据（task.terminal / loop.health 二值 pass/fail）不进 RSI readings。
-      // krsi R5 判据要求每一个 metric 严格变好才算 improved，
-      // 二值信号在 Agent 判据塔里是区分 pass/fail 用的（三态→决策），
-      // 但作为 RSI 跨代互比指标太粗 —— pass→pass = 1→1 永远"没变"，
-      // fail→pass = 0→1 算变好，但不足以区分"小幅度连续改进"。
-      // Agent 自己的判定逻辑里这些二值判据照常跑，
-      // 只是不进 RSI readings 供 krsi 做代际对比。
+    const scored =
+      verdict !== undefined &&
+      verdict.score !== undefined &&
+      verdict.score !== null &&
+      Number.isFinite(verdict.score);
+
+    if (scored) {
+      out.push({
+        metric: conf.metric,
+        n: verdict!.score as number,
+        basis: conf.basis,
+        direction: conf.direction,
+        role: conf.role,
+      });
       continue;
     }
 
-    out.push({
-      metric: conf.metric,
-      n: verdict.score,
-      basis: conf.basis,
-      direction: conf.direction,
-    });
+    // 目标指标必须每代都在：量不到时写 absent（n=0），而不是整条消失。
+    // 否则 krsi 的 R3 会把"这一代量不到"误判成"删掉难看的指标"。
+    // 只在这条判据**真的被执行过**（verdict 存在）时补 absent；
+    // 判据根本没接（如深判未启用）就不写，避免凭空造一条永远量不到的指标。
+    if (OBJECTIVE_CRITERIA.has(criterion) && verdict) {
+      out.push({
+        metric: conf.metric,
+        n: 0,
+        basis: BASIS.Absent,
+        why_absent: 'agent_verdict_without_score',
+        direction: conf.direction,
+        role: conf.role,
+      });
+    }
+    // 其余判据（二值 pass/fail 的闸）没有 score 就不进 readings：
+    // 它们作为 L0/L1 闸照常影响本轮判决，只是不适合做跨代互比。
   }
 
   return out;

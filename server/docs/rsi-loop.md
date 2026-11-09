@@ -39,17 +39,27 @@ CriterionVerdict[](next)┘                                  ├─► krsi Judg
 `manifest-builder` 是**纯函数、无副作用、无 DB 依赖**，因此可以单测钉死。它把判据名映射成 RSI 指标名，
 这张映射表是「判据名 → RSI 指标名」的**唯一真相源**：
 
-| 判据名 | RSI metric | direction | basis |
-|---|---|---|---|
-| `tool.success_rate` | `tool_success_rate` | up | 1 (measured) |
-| `approval.friction` | `approval_friction` | down | 1 (measured) |
-| `budget.efficiency` | `budget_efficiency` | down | 1 (measured) |
-| `task.terminal` | `task_terminal` | up | 1 (measured) |
-| `loop.health` | `loop_health` | up | 1 (measured) |
-| `tool.discipline.write_gate` | `tool_write_coverage` | up | 1 (measured) |
+| 判据名 | RSI metric | direction | basis | role |
+|---|---|---|---|---|
+| `tool.success_rate` | `tool_success_rate` | up | 1 (measured) | guard |
+| `approval.friction` | `approval_friction` | down | 1 (measured) | guard |
+| `task.terminal` | `task_terminal` | up | 1 (measured) | guard |
+| `loop.health` | `loop_health` | up | 1 (measured) | guard |
+| `tool.discipline.write_gate` | `tool_write_coverage` | up | 1 (measured) | guard |
+| `semantic.task_completion` | `goal_term_coverage` | up | 1 (measured) | objective |
+| `semantic.completion`（深判） | `semantic_completion` | up | 2 (relayed) | objective |
 
-为什么全部 `basis=1`：这些读数都来自**真发生的事件**（真跑的 tool_calls、真发生的审批、真消耗的 token、
-真运行期的终止/熔断），不是转述、估算或模型自述。
+**role 的语义（这是 R5 可判的前提）：**
+
+- `objective`（目标）：必须**严格变好**。它是「能力有没有真的提升」的唯一口径。
+- `guard`（护栏）：只要求**不得变差**，持平可以。成功率 100%、覆盖率 100% 这类指标天生有天花板，
+  到了顶就不可能再「严格变好」；把它们当目标会让 R5 永远否掉真实进步 —— 那是角色错配，不是没进步。
+
+`budget.efficiency` **刻意不进** readings：成本是 L0 闸（用量 > 90% 预算即 fail），不是「越低越好」的目标。
+把它当目标会与学习直接冲突 —— π 每多一条经验，prompt 就更长、成本必然上升，于是「越学越贵」会被判成「越学越差」。
+
+为什么读数全部来自实测：`tool_success_rate` / `approval_friction` / `task_terminal` / `loop_health` 都来自
+**真发生的事件**（真跑的 tool_calls、真发生的审批、真运行期的终止/熔断），不是转述、估算或模型自述。
 
 `basis` 取值域固定为 1–5：
 
