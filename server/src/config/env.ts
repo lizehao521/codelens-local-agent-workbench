@@ -5,6 +5,28 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
+/**
+ * 加载包根目录下的 `.env`（Node ≥22 内置能力，无需 dotenv 依赖）。
+ *
+ * 为什么必须显式加载：`npm start` 是裸 `node dist/app.js`，Node 不会自动读 `.env`。
+ * 之前没加载的直接后果是 `LLM_SERVER_API_KEY` / `DEEP_ASSESSOR_*` 全为空，
+ * RSI 归因器判定 `hasCreds=false` 后静默跳过 —— 闭环里 r → Update 这一环实际上
+ * 从未消费过 RSI 判决，写入 π 的全是规则模板经验（看起来在学，其实没学到点上）。
+ *
+ * 已存在的进程环境变量优先：部署时用真实环境变量覆盖 `.env` 是常规做法。
+ */
+function loadDotEnv(): void {
+  const packageRoot = findPackageRoot(currentModuleDir());
+  const envPath = path.join(packageRoot, '.env');
+  if (!existsSync(envPath)) return;
+  try {
+    process.loadEnvFile(envPath);
+  } catch {
+    // 解析失败不阻断启动：配置校验会在缺关键项时给出明确错误。
+  }
+}
+loadDotEnv();
+
 /** 导出以供测试钉住默认值（C3：默认值也是判据，必须可被打红）。 */
 export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),

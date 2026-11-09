@@ -33,11 +33,18 @@ export interface AttributorDeps {
   baseUrl: string;
   model: string;
   provider?: string;
-  /** 单次调用超时 ms。默认 30s —— 归因需要一点推理时间 */
+  /** 单次调用超时 ms。默认 180s —— 中转网关排队时归因请求实测可等 100s+ */
   timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * 单次归因超时。默认 180s。
+ *
+ * 为什么不是 30s：中转网关在排队时，一次 512 token 的归因请求实测也会等 100s+。
+ * 超时被 catch 后 outcome.wroteRow=false —— 归因看起来"跑过了"，实际一条经验都没落，
+ * 闭环 r → Update 静默断开。宁可多等，也不要让归因被超时静默吞掉。
+ */
+const DEFAULT_TIMEOUT_MS = 180_000;
 
 export interface AttributorOutcome {
   /** 归因经验（可能为空——LLM 返回 LESSON 内容就是这里） */
@@ -101,7 +108,9 @@ export async function attributeDegradation(deps: AttributorDeps): Promise<Attrib
         { role: 'user', content: prompt },
       ],
       temperature: 0.2, // 归因要一点发散（找没见过的根因），但也别太飘
-      maxTokens: 512,
+      // 1024 而不是 512：512 会让中文经验在句中截断（实测 "…只覆盖了顺手能写的词项、"），
+      // 半句话入 π 后无法执行，等于往策略里塞噪声。
+      maxTokens: 1024,
       baseUrl,
       apiKey,
       stream: false,
@@ -120,12 +129,16 @@ export async function attributeDegradation(deps: AttributorDeps): Promise<Attrib
 
   // ── 从 LLM 输出里抽 LESSON ────────────────────────────────────────────
   const lesson = extractLesson(content);
-  outcome.lesson = lesson;
+  // 截断的经验不能入 π：半句话（以逗号/顿号/破折号结尾，或没有句末标点）
+  // 下一轮既读不懂也不可执行，只会稀释 prompt。宁可这代不学，也不学半句。
+  const complete = isCompleteLesson(lesson);
+  outcome.lesson = complete ? lesson : null;
+  if (!complete) outcome.failure = 'incomplete_lesson（输出被截断）';
   outcome.tokens = tokens;
 
   // ── 落库：policy_injections ────────────────────────────────────────────
   // columns: id, session_id, policy_version, lesson, created_at
-  if (lesson) {
+  if (outcome.lesson) {
     try {
       db.run(
         `INSERT INTO policy_injections
@@ -134,7 +147,7 @@ export async function attributeDegradation(deps: AttributorDeps): Promise<Attrib
         [
           sessionId,
           generation,
-          lesson,
+          outcome.lesson,
           Date.now(),
         ],
       );
@@ -192,8 +205,20 @@ ${verdictLines || '  （无有效 verdict）'}
 写一段 1-2 句中文经验，具体、可行动。只输出 \`LESSON: <内容>\`，不要别的。`;
 }
 
+/**
+ * 经验是否完整（有句末标点）。
+ *
+ * 截断判定是必须的：上游 maxTokens 触顶时输出会在句中停止，
+ * 半句话写进 π 后无法执行 —— 那不是在学，是往策略里塞噪声。
+ * null（没抽出东西）不算"被截断"，由调用方按"无输出"处理。
+ */
+export function isCompleteLesson(lesson: string | null): boolean {
+  if (lesson === null) return true;
+  return /[。！？!?.]$/.test(lesson.trim());
+}
+
 /** 从 LLM 输出里抽 LESSON 内容。格式容忍：LESSON: xxx / 经验：xxx / xxx（无前缀） */
-function extractLesson(content: string): string | null {
+export function extractLesson(content: string): string | null {
   const trimmed = content.trim();
   if (!trimmed) return null;
   // LESSON: xxx
