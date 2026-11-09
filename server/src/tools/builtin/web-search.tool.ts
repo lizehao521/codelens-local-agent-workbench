@@ -94,7 +94,9 @@ export const webSearchTool: ToolDefinition = {
       };
     }
     const limit = Math.min(8, Math.max(1, Number(args.limit ?? 5) || 5));
-    const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
+    // mkt/setlang：Bing 的 RSS 会按地区返回本地化结果，默认中文市场下
+    // 技术查询常被词典/百科页占满（实测），显式指定英文市场后相关性明显更好。
+    const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss&mkt=en-US&setlang=en&cc=US`;
 
     try {
       const res = await undiciFetch(url, {

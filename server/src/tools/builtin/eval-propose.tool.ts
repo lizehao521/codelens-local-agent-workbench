@@ -68,9 +68,31 @@ export const evalProposeTool: ToolDefinition = {
     properties: {
       proposal: {
         type: 'object',
-        description:
-          '题包：{id, title, exportName, reference, buggy, publicCases[], hiddenCases[], sourceUrls[]}；' +
-          '用例格式 {name, args[], expected} 或 {name, args[], throws:"错误信息子串"}。',
+        description: '题包：参考实现 + 缺陷实现 + 公开/隐藏用例 + 检索依据',
+        properties: {
+          id: { type: 'string', description: '小写字母/数字/下划线，3-32 字符，不能与已有套件重名' },
+          title: { type: 'string', description: '一句话说明考什么' },
+          exportName: { type: 'string', description: '实现文件里导出的函数名' },
+          reference: { type: 'string', description: '正确的 CommonJS 实现：module.exports = { 函数名 }' },
+          buggy: { type: 'string', description: '同一导出名、但带真实缺陷的实现（会被放进沙箱待修）' },
+          publicCases: {
+            type: 'array',
+            description: '至少 2 条；每条 {name, args:[...], expected} 或 {name, args:[...], throws:"错误信息子串"}',
+            items: { type: 'object' },
+          },
+          hiddenCases: {
+            type: 'array',
+            description: '至少 3 条，必须检验通用性，参数不能与 publicCases 相同',
+            items: { type: 'object' },
+          },
+          sourceUrls: {
+            type: 'array',
+            description: 'web.search 检索到的链接，至少 1 条',
+            items: { type: 'string' },
+          },
+        },
+        required: ['id', 'title', 'exportName', 'reference', 'buggy', 'publicCases', 'hiddenCases', 'sourceUrls'],
+        additionalProperties: false,
       },
     },
     required: ['proposal'],

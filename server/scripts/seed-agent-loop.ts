@@ -263,20 +263,20 @@ const CODE_TASKS = [
 ];
 
 /** 扩题模式：Agent 自己联网检索、自己提案，服务端做变异验证后决定是否晋升。 */
-const PROPOSE_TASK = `你要为自己的评测集新增 2 个任务套件。严格按下面步骤执行，不要发散：
-1) 用 web.search 检索真实缺陷模式，至少检索 2 次，查询要具体（例如 "javascript interval merge bug edge cases"、"query string parser decodeURIComponent common bugs"）；
-2) 从结果里挑两个「能写成确定性输入/输出」的模式（不要选异步、不要选依赖网络的）；
-3) 对每个模式调用 eval.propose 提交一份提案，proposal 字段必须完整：
+const PROPOSE_TASK = `本轮只做一件事：提交 1 个评测套件提案，不要做别的。严格按顺序执行，每步只调用一个工具：
+1) 调用 web.search 一次，query 用英文技术关键词（例如 "javascript string slugify edge cases bug"）；
+2) 从返回结果里取 1-2 条链接放进 sourceUrls；
+3) 立刻调用 eval.propose 提交提案。proposal 的字段：
    - id：小写字母/数字/下划线，3-32 字符，不能与已有套件重名；
    - title：一句话说明考什么；
-   - exportName：实现里导出的函数名；
-   - reference：正确的 CommonJS 实现（module.exports = { 函数名 }）；
-   - buggy：同一导出名、但带**真实缺陷**的实现（会被放进沙箱让下一轮修）；
-   - publicCases：至少 2 条 {name, args, expected}；
-   - hiddenCases：至少 3 条，必须检验通用性，不能和 publicCases 用同样的参数；
-   - sourceUrls：第 1 步检索到的链接（至少 1 条）。
-4) 如果 eval.propose 返回未通过，按未通过项修正后重新提交，最多重试 3 次；
-5) 最后用一句话报告两个提案各自是否通过。`;
+   - exportName：导出的函数名；
+   - reference：**正确的 CommonJS 源码**（module.exports = { 函数名 }），不要写 markdown 围栏；
+   - buggy：同一导出名、但带**真实缺陷**的实现（例如漏掉边界、少 trim、off-by-one）；
+   - publicCases：至少 2 条 {name, args, expected}，必须能暴露 buggy 的缺陷；
+   - hiddenCases：至少 3 条，检验通用性，参数不能与 publicCases 相同；
+   - sourceUrls：第 2 步的链接，至少 1 条。
+4) 如果返回未通过，按未通过项修改后重提，最多 2 次；
+5) 最后用一句话说明结果。`;
 
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
@@ -567,16 +567,20 @@ async function main() {
   // 只跑一轮，不产生代际读数：它量的是「能不能自己造出有判别力的题」，
   // 不是修题能力。晋升后的套件会进入下一批修复链的测量集。
   if (proposeMode) {
-    console.log('▶ 检索 + 提案中（服务端逐条做变异验证）…');
-    const sse = await postStreamWithRetry({
-      ...baseArgs,
-      maxTokens: 6000,
-      maxIterations: 26,
-      message: PROPOSE_TASK,
-      rsiMeasure: false,
-    });
-    const sid = getSessionId(sse);
-    console.log(`  ✅ 提案轮完成 session=${sid}`);
+    // 一次请求只提一个提案：模型在单轮里同时产出两份大 JSON 很容易被截断，
+    // 实测会停在「只检索、没提交」。拆成两轮，每轮目标单一。
+    for (let round = 1; round <= 2; round += 1) {
+      console.log(`▶ 扩题第 ${round}/2 轮：检索 + 提案（服务端做变异验证）…`);
+      const sse = await postStreamWithRetry({
+        ...baseArgs,
+        maxTokens: 8000,
+        maxIterations: 20,
+        message: PROPOSE_TASK,
+        rsiMeasure: false,
+      });
+      const sid = getSessionId(sse);
+      console.log(`  ✅ 第 ${round} 轮完成 session=${sid}`);
+    }
 
     const suiteDir = path.join(ROOT, 'data', 'eval-suites');
     const promoted = existsSync(suiteDir)
