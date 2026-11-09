@@ -91,7 +91,7 @@
   #chart { width: 100%; height: 280px; }
 
   /* ── Metrics mini strip ── */
-  .metric-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 12px; }
+  .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
   @media (max-width: 800px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
   .metric-tile {
     background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
@@ -229,7 +229,8 @@
   <footer>AGENTKERNEL · RSI L1 机械桥 · 演示数据 · 2026</footer>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<!-- async：CDN 不可达时不能阻塞解析，否则整页数据脚本都跑不到 -->
+<script async src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 <script>
 (async () => {
   const sessionId = new URLSearchParams(location.search).get('session') || 'demo-session-001';
@@ -252,59 +253,18 @@
     vt.className = 'verdict-tag ' + latest.verdict;
   }
 
-  // ── Chart ──
-  const chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
-  const gens = data.judgeRuns.map((_, i) => 'g' + (i + 1));
-
-  function series(name, direction, extractor, color) {
-    const raw = data.judgeRuns.map((run) => {
-      const verdicts = v[String(run.id)] || [];
-      const ve = verdicts.find(x => x.criterion === extractor);
-      const val = ve?.score ?? null;
-      return direction === 'down' && val != null ? 1 - val : val; // 反转 down 向指标，让所有曲线"向上=变好"
-    });
-    return {
-      name, type: 'line', smooth: true, data: raw,
-      lineStyle: { width: 2.5, color, shadowBlur: 10, shadowColor: color + '80' },
-      itemStyle: { color, borderWidth: 2, borderColor: '#0a0c0f' },
-      symbolSize: 10,
-      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: color + '30' }, { offset: 1, color: color + '00' }
-      ])},
-    };
-  }
-
-  chart.setOption({
-    grid: { top: 30, left: 50, right: 30, bottom: 30 },
-    tooltip: {
-      backgroundColor: '#111418', borderColor: '#2a3340', textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono' },
-      formatter: (ps) => {
-        const g = gens[ps[0].dataIndex];
-        let s = `<b>${g}</b><br>`;
-        for (const p of ps) if (p.value != null) {
-          const raw = data.judgeRuns[p.dataIndex];
-          const origV = (v[String(raw.id)] || []).find(x => x.criterion ===
-            (p.seriesName === '成功率' ? 'tool.success_rate' :
-             p.seriesName === '审批摩擦（反转）' ? 'approval.friction' :
-             p.seriesName === '预算效率（反转）' ? 'budget.efficiency' : null));
-          const real = origV?.score ?? p.value;
-          s += `<span style="color:${p.color}">●</span> ${p.seriesName}: ${real?.toFixed(3) ?? '—'}<br>`;
-        }
-        return s;
-      }
-    },
-    legend: { textStyle: { color: '#94a3b8', fontFamily: 'JetBrains Mono' }, top: 0, right: 0 },
-    xAxis: { type: 'category', data: gens, axisLine: { lineStyle: { color: '#2a3340' } }, axisLabel: { color: '#94a3b8', fontFamily: 'JetBrains Mono' } },
-    yAxis: { type: 'value', min: 0.4, max: 1, axisLine: { show: false }, splitLine: { lineStyle: { color: '#1a1f25' } }, axisLabel: { color: '#718096', fontFamily: 'JetBrains Mono', formatter: v => v.toFixed(1) } },
-    series: [
-      series('成功率',               'up',   'tool.success_rate',  '#00f5d4'),
-      series('审批摩擦（反转）',       'down', 'approval.friction',  '#ff2d95'),
-      series('预算效率（反转）',       'down', 'budget.efficiency',  '#ffc857'),
-    ],
-  });
-  window.addEventListener('resize', () => chart.resize());
+  // 代码修复族的目标读数：没有代码修复任务时不出这条线，避免空图例。
+  const hasTestPassRate = data.judgeRuns.some((run) =>
+    (v[String(run.id)] || []).some((x) => x.criterion === 'task.test_pass_rate'));
+  const criteriaOf = {
+    '成功率': 'tool.success_rate',
+    '审批摩擦（反转）': 'approval.friction',
+    '预算效率（反转）': 'budget.efficiency',
+    '代码修复通过率': 'task.test_pass_rate',
+  };
 
   // ── Metric strip (last gen vs previous) ──
+  // 先渲染指标条：ECharts 走 CDN，离线时请求可能长时间挂起，不能让它挡住数据。
   const strip = document.getElementById('metric-strip');
   const last2 = data.judgeRuns.slice(-2);
   const last2V = last2.map(r => v[String(r.id)] || []);
@@ -312,6 +272,9 @@
     { label: 'tool.success_rate', key: 'tool.success_rate', color: '#00f5d4' },
     { label: 'approval.friction',  key: 'approval.friction', color: '#ff2d95', invert: true },
     { label: 'budget.efficiency',  key: 'budget.efficiency', color: '#ffc857', invert: true },
+    ...(hasTestPassRate
+      ? [{ label: 'task.test_pass_rate', key: 'task.test_pass_rate', color: '#39ff14' }]
+      : []),
     { label: 'judge score',        key: null, color: '#39ff14' },
     { label: 'coverage',           key: null, color: '#a0aec0' },
   ];
@@ -338,6 +301,64 @@
          <div class="delta ${dClass}">${dStr}</div>
        </div>`);
   }
+
+  // ── Chart ──
+  // 指标条已就绪；这里最多等 6s 让 CDN 的 echarts 落地，拿不到就降级。
+  const chartEl = document.getElementById('chart');
+  let chart = null;
+  for (let i = 0; i < 40 && typeof echarts === 'undefined'; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  if (typeof echarts !== 'undefined') chart = echarts.init(chartEl, null, { renderer: 'canvas' });
+  const gens = data.judgeRuns.map((_, i) => 'g' + (i + 1));
+
+  function series(name, direction, extractor, color) {
+    const raw = data.judgeRuns.map((run) => {
+      const verdicts = v[String(run.id)] || [];
+      const ve = verdicts.find(x => x.criterion === extractor);
+      const val = ve?.score ?? null;
+      return direction === 'down' && val != null ? 1 - val : val; // 反转 down 向指标，让所有曲线"向上=变好"
+    });
+    return {
+      name, type: 'line', smooth: true, data: raw,
+      lineStyle: { width: 2.5, color, shadowBlur: 10, shadowColor: color + '80' },
+      itemStyle: { color, borderWidth: 2, borderColor: '#0a0c0f' },
+      symbolSize: 10,
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: color + '30' }, { offset: 1, color: color + '00' }
+      ])},
+    };
+  }
+
+  if (!chart) {
+    chartEl.innerHTML = '<div style="padding:24px;color:#718096;font-family:JetBrains Mono">ECharts CDN 未加载（离线环境），趋势图不可用；指标条仍可使用。</div>';
+  } else chart.setOption({
+    grid: { top: 30, left: 50, right: 30, bottom: 30 },
+    tooltip: {
+      backgroundColor: '#111418', borderColor: '#2a3340', textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono' },
+      formatter: (ps) => {
+        const g = gens[ps[0].dataIndex];
+        let s = `<b>${g}</b><br>`;
+        for (const p of ps) if (p.value != null) {
+          const raw = data.judgeRuns[p.dataIndex];
+          const origV = (v[String(raw.id)] || []).find(x => x.criterion === criteriaOf[p.seriesName]);
+          const real = origV?.score ?? p.value;
+          s += `<span style="color:${p.color}">●</span> ${p.seriesName}: ${real?.toFixed(3) ?? '—'}<br>`;
+        }
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8', fontFamily: 'JetBrains Mono' }, top: 0, right: 0 },
+    xAxis: { type: 'category', data: gens, axisLine: { lineStyle: { color: '#2a3340' } }, axisLabel: { color: '#94a3b8', fontFamily: 'JetBrains Mono' } },
+    yAxis: { type: 'value', min: 0.4, max: 1, axisLine: { show: false }, splitLine: { lineStyle: { color: '#1a1f25' } }, axisLabel: { color: '#718096', fontFamily: 'JetBrains Mono', formatter: v => v.toFixed(1) } },
+    series: [
+      series('成功率',               'up',   'tool.success_rate',  '#00f5d4'),
+      series('审批摩擦（反转）',       'down', 'approval.friction',  '#ff2d95'),
+      series('预算效率（反转）',       'down', 'budget.efficiency',  '#ffc857'),
+      ...(hasTestPassRate ? [series('代码修复通过率', 'up', 'task.test_pass_rate', '#39ff14')] : []),
+    ],
+  });
+  if (chart) window.addEventListener('resize', () => chart.resize());
 
   // ── RSI list ──
   const list = document.getElementById('rsi-list');

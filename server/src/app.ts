@@ -127,7 +127,11 @@ export function createApp(options: AppOptions = {}): Express {
                                    FROM policy_injections WHERE session_id = ?
                                    ORDER BY id DESC LIMIT 20`, [sessionId]);
 
-      res.json({ session, judgeRuns, verdictsByRun, rsiRuns, attributions });
+      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，
+      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。
+      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);
+
+      res.json({ session, judgeRuns, verdictsByRun: verdictsByRunJson, rsiRuns, attributions });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
     }
