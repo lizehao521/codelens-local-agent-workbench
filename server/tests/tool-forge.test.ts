@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { composeLesson, toolForgeTool, validateForgeSpec } from '../src/tools/builtin/tool-forge.tool.js';
-import { dynamicToolLifecycleGate, reuseStats } from '../src/services/judge/tool-discipline.js';
+import { dynamicToolLifecycleGate, lifecycleStats, reuseStats } from '../src/services/judge/tool-discipline.js';
 import type { JudgeEvidence } from '../src/services/judge/types.js';
 
 const ctx = (sandboxRoot: string, sessionId: string) =>
@@ -180,6 +180,45 @@ describe('dynamicToolLifecycleGate', () => {
     // 任务作用域已空（recycle 删掉了），但能力库还在 → use 命中库。
     const reused = await toolForgeTool.handler({ operation: 'use', name: 'lib_tool' }, c);
     expect(reused.data?.fromLibrary).toBe(true);
+  });
+});
+
+describe('lifecycleStats（造工具纪律）', () => {
+  const full = (ts: number, name: string) => [
+    { ts, event: 'tool_created', name, why: '现有工具一次调用做不到这件事', steps: 1, references: 1 },
+    { ts: ts + 1, event: 'tool_used', name },
+    { ts: ts + 2, event: 'tool_removed', name },
+    { ts: ts + 3, event: 'lesson', name },
+  ] as never[];
+  const abandoned = (ts: number, name: string) =>
+    [{ ts, event: 'tool_created', name, why: '现有工具一次调用做不到这件事', steps: 1, references: 0 }] as never[];
+
+  it('本代新建了工具 → 只评本代，历史欠账不再拖低（scope=generation）', () => {
+    const s = lifecycleStats([
+      ...abandoned(1, 'old_tool'), // 上一代没回收：3/6
+      { ts: 10, event: 'generation_checkpoint' } as never,
+      ...full(11, 'new_tool'), // 本代做完整
+    ]);
+    expect(s?.scope).toBe('generation');
+    expect(s?.score).toBe(1);
+    expect(s?.perTool.map((t) => t.name)).toEqual(['new_tool']);
+  });
+
+  it('本代只复用、没新建 → 回退生涯口径（scope=lifetime），不判退步', () => {
+    const s = lifecycleStats([
+      ...abandoned(1, 'old_tool'),
+      ...full(2, 'kept_tool'),
+      { ts: 10, event: 'generation_checkpoint' } as never,
+      { ts: 11, event: 'tool_used', name: 'kept_tool', from_library: true } as never,
+    ]);
+    expect(s?.scope).toBe('lifetime');
+    // 旧工具 2/6 + 完整工具 6/6 = 8/12
+    expect(s?.score).toBe(0.667);
+    expect(s?.perTool.map((t) => t.name)).toEqual(['old_tool', 'kept_tool']);
+  });
+
+  it('没有任何 tool_created → null（不可测）', () => {
+    expect(lifecycleStats([{ ts: 1, event: 'tool_used', name: 'x', from_library: true } as never])).toBeNull();
   });
 });
 

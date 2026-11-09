@@ -192,6 +192,12 @@ function readDynamicToolEvents(sessionId: string): DynamicToolEvent[] | null {
  * 分数 = 完成阶段数 / 6。这个分数就是「造能力」这件事在 RSI 里的读数：
  * 只造不收 = 0.67，查了再造但没用 = 0.5，什么都不做 = unexec（不是 pass）。
  *
+ * 统计窗口：
+ *   · 本代（最近一条 generation_checkpoint 之后）**新建过工具** → 只评本代造的那些。
+ *     否则上一代没回收的旧工具会一直拖低这一代，让"把新工具做完整"也涨不动分。
+ *   · 本代只复用、没新建 → 回退到生涯口径。纯复用代没有新的纪律债，
+ *     不能因为"没造工具"就记 unexec 或判退步。
+ *
  * 没造过工具时仍记 unexec —— C4：没发生 ≠ 通过。
  */
 export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerdict {
@@ -205,14 +211,8 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
     };
   }
 
-  const created = events.filter((e) => e.event === 'tool_created');
-  const used = new Set(events.filter((e) => e.event === 'tool_used').map((e) => e.name));
-  const removed = new Set(events.filter((e) => e.event === 'tool_removed').map((e) => e.name));
-  const lessons = new Set(events.filter((e) => e.event === 'lesson').map((e) => e.name));
-
-  // 逐工具取最好成绩：一个工具走完 5 阶段即 1.0；多个工具取平均。
-  const names = [...new Set(created.map((e) => e.name).filter((n): n is string => !!n))];
-  if (names.length === 0) {
+  const stats = lifecycleStats(events);
+  if (stats === null) {
     return {
       layer: 'L1',
       criterion: 'tool.discipline.lesson_pairing',
@@ -220,6 +220,39 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
       detail: '有事件文件但没有 tool_created，生命周期不可测',
     };
   }
+
+  const detail = stats.perTool
+    .map((t) => `${t.name}: ${t.hit}/${STAGE_LABELS.length}${t.missing.length ? `（缺 ${t.missing.join('、')}）` : ''}`)
+    .join('；');
+
+  return {
+    layer: 'L1',
+    criterion: 'tool.discipline.lesson_pairing',
+    status: stats.score >= 1 ? 'pass' : 'fail',
+    score: stats.score,
+    detail: `动态工具生命周期 ${detail}${stats.scope === 'generation' ? '（本代窗口）' : '（生涯口径）'}`,
+  };
+}
+
+/** 生命周期统计（纯函数，单测钉死）。scope 标出用的是本代窗口还是生涯口径。 */
+export function lifecycleStats(events: DynamicToolEvent[]): {
+  perTool: Array<{ name: string; hit: number; missing: string[] }>;
+  score: number;
+  scope: 'generation' | 'lifetime';
+} | null {
+  const checkpoint = [...events].reverse().find((e) => e.event === 'generation_checkpoint');
+  const windowEvents = checkpoint ? events.filter((e) => e.ts >= checkpoint.ts) : events;
+  // 本代没建工具 → 用生涯口径：纯复用代不该被判成"没有纪律"
+  const useWindow = windowEvents.some((e) => e.event === 'tool_created' && e.name);
+  const scope = useWindow ? windowEvents : events;
+
+  const created = scope.filter((e) => e.event === 'tool_created');
+  const used = new Set(scope.filter((e) => e.event === 'tool_used').map((e) => e.name));
+  const removed = new Set(scope.filter((e) => e.event === 'tool_removed').map((e) => e.name));
+  const lessons = new Set(scope.filter((e) => e.event === 'lesson').map((e) => e.name));
+
+  const names = [...new Set(created.map((e) => e.name).filter((n): n is string => !!n))];
+  if (names.length === 0) return null;
 
   const perTool = names.map((name) => {
     const c = created.find((e) => e.name === name);
@@ -234,18 +267,11 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
     return { name, hit: stages.filter(Boolean).length, missing: STAGE_LABELS.filter((_, i) => !stages[i]) };
   });
 
-  const score = Math.round((perTool.reduce((s, t) => s + t.hit, 0) / (perTool.length * STAGE_LABELS.length)) * 1000) / 1000;
-  const detail = perTool
-    .map((t) => `${t.name}: ${t.hit}/${STAGE_LABELS.length}${t.missing.length ? `（缺 ${t.missing.join('、')}）` : ''}`)
-    .join('；');
-
-  return {
-    layer: 'L1',
-    criterion: 'tool.discipline.lesson_pairing',
-    status: score >= 1 ? 'pass' : 'fail',
-    score,
-    detail: `动态工具生命周期 ${detail}`,
-  };
+  const score =
+    Math.round(
+      (perTool.reduce((s, t) => s + t.hit, 0) / (perTool.length * STAGE_LABELS.length)) * 1000,
+    ) / 1000;
+  return { perTool, score, scope: useWindow ? 'generation' : 'lifetime' };
 }
 
 /** 六个阶段的名字，顺序与 dynamicToolLifecycleGate 的 stages 数组一致。 */
