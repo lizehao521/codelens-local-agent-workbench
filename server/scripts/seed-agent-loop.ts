@@ -265,16 +265,16 @@ const CODE_TASKS = [
 /** 扩题模式：Agent 自己联网检索、自己提案，服务端做变异验证后决定是否晋升。 */
 const PROPOSE_TASK = `本轮只做一件事：提交 1 个评测套件提案，不要做别的。严格按顺序执行，每步只调用一个工具：
 1) 调用 web.search 一次，query 用英文技术关键词（例如 "javascript string slugify edge cases bug"）；
-2) 从返回结果里取 1-2 条链接放进 sourceUrls；
-3) 立刻调用 eval.propose 提交提案。proposal 的字段：
+2) 从返回结果里取 1-2 条链接记下来；
+3) 立刻调用 eval.propose，参数是**平铺的 8 个字段**（不要包在 proposal 里）：
    - id：小写字母/数字/下划线，3-32 字符，不能与已有套件重名；
    - title：一句话说明考什么；
    - exportName：导出的函数名；
-   - reference：**正确的 CommonJS 源码**（module.exports = { 函数名 }），不要写 markdown 围栏；
-   - buggy：同一导出名、但带**真实缺陷**的实现（例如漏掉边界、少 trim、off-by-one）；
-   - publicCases：至少 2 条 {name, args, expected}，必须能暴露 buggy 的缺陷；
-   - hiddenCases：至少 3 条，检验通用性，参数不能与 publicCases 相同；
-   - sourceUrls：第 2 步的链接，至少 1 条。
+   - reference：**正确的 CommonJS 源码字符串**（module.exports = { 函数名 }），不要 markdown 围栏；
+   - buggy：同一导出名、但带**真实缺陷**的源码字符串（例如漏边界、少 trim、off-by-one）；
+   - publicCases：字符串数组，每条是一个 JSON 字符串，例如 "{\\"name\\":\\"1..3\\",\\"args\\":[1,3],\\"expected\\":6}"，至少 2 条，必须能暴露 buggy 的缺陷；
+   - hiddenCases：字符串数组，格式同上，至少 3 条，参数不能与 publicCases 相同；
+   - sourceUrls：第 2 步拿到的链接数组，至少 1 条。
 4) 如果返回未通过，按未通过项修改后重提，最多 2 次；
 5) 最后用一句话说明结果。`;
 

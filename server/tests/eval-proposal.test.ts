@@ -149,6 +149,15 @@ describe('eval.propose 工具', () => {
   it('工具已注册且参数契约稳定', () => {
     expect(evalProposeTool.wireName).toBe('eval_propose');
     expect(evalProposeTool.approvalMode).toBe('none');
-    expect(evalProposeTool.inputSchema.required).toEqual(['proposal']);
+    expect(evalProposeTool.inputSchema.required).toEqual([
+      'id',
+      'title',
+      'exportName',
+      'reference',
+      'buggy',
+      'publicCases',
+      'hiddenCases',
+      'sourceUrls',
+    ]);
   });
 });

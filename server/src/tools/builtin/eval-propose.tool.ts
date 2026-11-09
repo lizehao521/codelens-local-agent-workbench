@@ -38,7 +38,32 @@ function asString(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
-/** 从模型给的 JSON 里取字段；类型不对就置空，交给验证器判红。 */
+/**
+ * 解析用例数组。
+ *
+ * 刻意接受「JSON 字符串」而不是嵌套对象：部分 OpenAI 兼容网关会把
+ * `array of object` 的 schema 判成不支持，进而把整个工具定义丢掉，
+ * 表现为「模型只检索、从不调用提案工具」。字符串形式所有网关都认。
+ */
+function parseCaseList(raw: unknown): EvalProposal['publicCases'] {
+  if (!Array.isArray(raw)) return [];
+  const out: EvalProposal['publicCases'] = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      try {
+        const parsed = JSON.parse(item) as EvalProposal['publicCases'][number];
+        if (parsed && typeof parsed === 'object') out.push(parsed);
+      } catch {
+        /* 坏 JSON 直接丢弃，由验证器判红 */
+      }
+      continue;
+    }
+    if (item && typeof item === 'object') out.push(item as EvalProposal['publicCases'][number]);
+  }
+  return out;
+}
+
+/** 从工具参数里取字段；类型不对就置空，交给验证器判红。 */
 function coerce(raw: unknown): EvalProposal {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
@@ -47,8 +72,8 @@ function coerce(raw: unknown): EvalProposal {
     exportName: asString(o.exportName),
     reference: asString(o.reference),
     buggy: asString(o.buggy),
-    publicCases: Array.isArray(o.publicCases) ? (o.publicCases as EvalProposal['publicCases']) : [],
-    hiddenCases: Array.isArray(o.hiddenCases) ? (o.hiddenCases as EvalProposal['hiddenCases']) : [],
+    publicCases: parseCaseList(o.publicCases),
+    hiddenCases: parseCaseList(o.hiddenCases),
     sourceUrls: Array.isArray(o.sourceUrls) ? o.sourceUrls.map((u) => String(u)) : [],
   };
 }
@@ -66,36 +91,30 @@ export const evalProposeTool: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
-      proposal: {
-        type: 'object',
-        description: '题包：参考实现 + 缺陷实现 + 公开/隐藏用例 + 检索依据',
-        properties: {
-          id: { type: 'string', description: '小写字母/数字/下划线，3-32 字符，不能与已有套件重名' },
-          title: { type: 'string', description: '一句话说明考什么' },
-          exportName: { type: 'string', description: '实现文件里导出的函数名' },
-          reference: { type: 'string', description: '正确的 CommonJS 实现：module.exports = { 函数名 }' },
-          buggy: { type: 'string', description: '同一导出名、但带真实缺陷的实现（会被放进沙箱待修）' },
-          publicCases: {
-            type: 'array',
-            description: '至少 2 条；每条 {name, args:[...], expected} 或 {name, args:[...], throws:"错误信息子串"}',
-            items: { type: 'object' },
-          },
-          hiddenCases: {
-            type: 'array',
-            description: '至少 3 条，必须检验通用性，参数不能与 publicCases 相同',
-            items: { type: 'object' },
-          },
-          sourceUrls: {
-            type: 'array',
-            description: 'web.search 检索到的链接，至少 1 条',
-            items: { type: 'string' },
-          },
-        },
-        required: ['id', 'title', 'exportName', 'reference', 'buggy', 'publicCases', 'hiddenCases', 'sourceUrls'],
-        additionalProperties: false,
+      id: { type: 'string', description: '小写字母/数字/下划线，3-32 字符，不能与已有套件重名' },
+      title: { type: 'string', description: '一句话说明考什么' },
+      exportName: { type: 'string', description: '实现文件里导出的函数名' },
+      reference: { type: 'string', description: '正确的 CommonJS 实现：module.exports = { 函数名 }' },
+      buggy: { type: 'string', description: '同一导出名、但带真实缺陷的实现（会被放进沙箱待修）' },
+      publicCases: {
+        type: 'array',
+        description:
+          '至少 2 条。每条是一个 JSON 字符串，形如 {"name":"1..3","args":[1,3],"expected":6}；' +
+          '期望抛错时用 {"name":"...","args":[...],"throws":"错误信息子串"}',
+        items: { type: 'string' },
+      },
+      hiddenCases: {
+        type: 'array',
+        description: '至少 3 条，格式同上；参数不能与 publicCases 相同，要检验通用性',
+        items: { type: 'string' },
+      },
+      sourceUrls: {
+        type: 'array',
+        description: 'web.search 检索到的链接，至少 1 条',
+        items: { type: 'string' },
       },
     },
-    required: ['proposal'],
+    required: ['id', 'title', 'exportName', 'reference', 'buggy', 'publicCases', 'hiddenCases', 'sourceUrls'],
     additionalProperties: false,
   },
   timeoutMs: 20000,
@@ -106,7 +125,7 @@ export const evalProposeTool: ToolDefinition = {
   maxResultChars: 5000,
   enabled: (ctx) => Boolean(ctx.sandboxRoot),
   handler: async (args, ctx): Promise<ToolOutcome> => {
-    const proposal = coerce(args.proposal);
+    const proposal = coerce(args);
 
     // 上限闸：先判，避免白跑一轮变异验证。
     if (proposal.id && countPromoted(ctx.sandboxRoot) >= MAX_PROMOTED_SUITES) {
