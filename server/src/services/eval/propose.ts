@@ -220,5 +220,11 @@ export function promoteProposal(
   mkdirSync(path.dirname(suiteAbs), { recursive: true });
   writeFileSync(suiteAbs, `${JSON.stringify(suite, null, 2)}\n`, 'utf8');
 
+  // 同时把缺陷实现留一份到版本库的 fixture 目录：沙箱被回收后，
+  // 启动脚本会从这里把缺失的实现补回沙箱，保证实验可复现。
+  const fixtureAbs = path.join(sandboxRoot, '..', 'eval-fixtures', p.id, 'impl.cjs');
+  mkdirSync(path.dirname(fixtureAbs), { recursive: true });
+  writeFileSync(fixtureAbs, p.buggy, 'utf8');
+
   return { implPath: implRel, suitePath: suiteAbs };
 }

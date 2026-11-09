@@ -278,6 +278,21 @@ const PROPOSE_TASK = `本轮只做一件事：提交 1 个评测套件提案，�
 4) 如果返回未通过，按未通过项修改后重提，最多 2 次；
 5) 最后用一句话说明结果。`;
 
+/**
+ * 自选任务：不再由我们点名修哪个文件，而是让它**先读读数、自己决定修哪个**。
+ *
+ * 这是扩题能力真正闭环的一步：新晋升的套件不需要我们改任务列表，
+ * 它自己从 eval.run 的失败列表里挑目标。
+ * 每轮只允许修一个 —— 这样代际之间才有可比的进步，而不是一轮全修完。
+ */
+const AUTO_TASK = `本轮目标是让固定评测集的通过率提高。严格按顺序执行：
+1) 先调用 eval.run（不传 suite）拿到当前通过率与失败套件列表；
+2) 从失败的套件里挑**一个**（优先选通过率最低的），用 fs.read 读它的实现文件 eval/<套件id>/impl.cjs；
+3) 用 fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）；
+4) 再调用 eval.run 复验这个套件；
+5) 最后用一句话报告：修了哪个套件、复验得分多少。
+本轮**只修一个**套件，不要顺手修其它套件；不要改 src/、不要用 sys.exec、不要新建无关文件。`;
+
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
   `帮你自己写一份能力清单文档。${SELF_RULES}
@@ -508,32 +523,37 @@ async function main() {
   const forgeMode = process.argv.includes('--forge');
   const codeMode = process.argv.includes('--code');
   const proposeMode = process.argv.includes('--propose');
+  const autoMode = process.argv.includes('--auto');
   const selfMode = process.argv.includes('--self') || depthMode;
   // 沙箱可能被回收重来：开跑前先把版本库里的 fixture 补回缺失项。
-  if (codeMode || proposeMode) syncEvalFixtures();
+  if (codeMode || proposeMode || autoMode) syncEvalFixtures();
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
   const onlyIdx = onlyArg ? Number(onlyArg.split('=')[1]) : null;
-  const tasks = codeMode
-    ? CODE_TASKS
-    : forgeMode
-      ? FORGE_TASKS
-      : depthMode
-        ? onlyIdx !== null
-          ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
-          : BEHAVIOR_TASKS
-        : selfMode
-          ? SELF_TASKS
-          : TASKS;
-  const modeLabel = codeMode
-    ? '代码修复：固定评测通过率'
-    : forgeMode
-      ? '造工具：能力生命周期'
-      : depthMode
-        ? '深度自证：行为断言'
-        : selfMode
-          ? '自改进：补测试'
-          : '演示任务';
+  const tasks = autoMode
+    ? [AUTO_TASK]
+    : codeMode
+      ? CODE_TASKS
+      : forgeMode
+        ? FORGE_TASKS
+        : depthMode
+          ? onlyIdx !== null
+            ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
+            : BEHAVIOR_TASKS
+          : selfMode
+            ? SELF_TASKS
+            : TASKS;
+  const modeLabel = autoMode
+    ? '自选任务：按读数挑目标'
+    : codeMode
+      ? '代码修复：固定评测通过率'
+      : forgeMode
+        ? '造工具：能力生命周期'
+        : depthMode
+          ? '深度自证：行为断言'
+          : selfMode
+            ? '自改进：补测试'
+            : '演示任务';
   console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
 
   // --session=<id>：接着已有会话继续推代（不传则新建会话，代际从 g1 起）
@@ -585,7 +605,7 @@ async function main() {
       /* 写不进 checkpoint 就退化为历史窗口，不影响判定 */
     }
   };
-  if (selfMode || codeMode) await enableHeadlessWrites();
+  if (selfMode || codeMode || autoMode) await enableHeadlessWrites();
 
   // ── 扩题轮：Agent 检索 → 提案 → 服务端变异验证 → 通过即晋升 ──────────────
   // 只跑一轮，不产生代际读数：它量的是「能不能自己造出有判别力的题」，
@@ -707,7 +727,7 @@ ${feedback}`
     const probeStart = Date.now();
     // 代码修复族是确定性的：评测通过率由「此刻的文件内容」唯一决定，
     // 没有语义作答的随机波动，采样多次只会让同一代内反复改同一个文件。
-    const probeSamples = codeMode ? 1 : PROBE_SAMPLES;
+    const probeSamples = codeMode || autoMode ? 1 : PROBE_SAMPLES;
     let okSamples = 0;
     for (let s = 1; s <= probeSamples; s++) {
       // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
@@ -722,7 +742,7 @@ ${feedback}`
           ...baseArgs,
           message: forgeMode
             ? FORGE_PROBE
-            : codeMode
+            : codeMode || autoMode
               ? tasks[i % tasks.length]!
               : MEASURE_PROBE,
           // 前 N-1 次只采样（rsiMeasure=false，不进对账），最后一次才落代
