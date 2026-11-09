@@ -13,9 +13,11 @@ import { z } from 'zod';
  * RSI 归因器判定 `hasCreds=false` 后静默跳过 —— 闭环里 r → Update 这一环实际上
  * 从未消费过 RSI 判决，写入 π 的全是规则模板经验（看起来在学，其实没学到点上）。
  *
- * 已存在的进程环境变量优先：部署时用真实环境变量覆盖 `.env` 是常规做法。
+ * 测试环境刻意不加载：单测里有大量「没有凭证 ⇒ unexec / not_configured」的断言，
+ * 一旦读进开发者本机的真实 Key，这些闸门就全部失效 —— 测出来的绿是假的。
  */
 function loadDotEnv(): void {
+  if (process.env.NODE_ENV === 'test') return;
   const packageRoot = findPackageRoot(currentModuleDir());
   const envPath = path.join(packageRoot, '.env');
   if (!existsSync(envPath)) return;

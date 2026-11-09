@@ -204,7 +204,7 @@ runCase(
 // 这是本次修正的核心：成功率/覆盖率到 100% 后不可能再"严格变好"，
 // 若把它们当目标指标，R5 会永远否掉真实的能力提升。
 const GUARD = (n: number): Reading => ({ metric: 'tool_success_rate', n, basis: 1, direction: 'up', role: 'guard' });
-const OBJ = (n: number): Reading => ({ metric: 'goal_term_coverage', n, basis: 1, direction: 'up', role: 'objective' });
+const OBJ = (n: number): Reading => ({ metric: 'completion_score', n, basis: 1, direction: 'up', role: 'objective' });
 runCase(
   '⑧ 护栏持平（1→1）+ 目标变好（0.55→0.70）',
   manifest(17, [GUARD(1), OBJ(0.55)]),

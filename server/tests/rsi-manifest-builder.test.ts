@@ -48,10 +48,10 @@ describe('manifest-builder', () => {
       });
     });
 
-    it('语义覆盖率 → 目标指标（objective）', () => {
-      const readings = verdictsToReadings([PASS_V('semantic.task_completion', 0.615)]);
+    it('语义完成度 → 目标指标（objective）', () => {
+      const readings = verdictsToReadings([PASS_V('semantic.task_completion', 0.6)]);
       expect(readings).toEqual([
-        { metric: 'goal_term_coverage', n: 0.615, basis: 1, direction: 'up', role: 'objective' },
+        { metric: 'completion_score', n: 0.6, basis: 1, direction: 'up', role: 'objective' },
       ]);
     });
 
@@ -59,7 +59,7 @@ describe('manifest-builder', () => {
       const readings = verdictsToReadings([UNEXEC_V('semantic.task_completion')]);
       expect(readings).toHaveLength(1);
       expect(readings[0]).toMatchObject({
-        metric: 'goal_term_coverage',
+        metric: 'completion_score',
         n: 0,
         basis: 5,
         role: 'objective',

@@ -84,10 +84,12 @@ const METRIC_MAP: Record<
     role: 'guard',
   },
   // ── 目标（objective）：必须严格变好，是"能力有没有真的提升"的唯一口径 ──
-  // L2 语义覆盖率：固定探针 + 固定词项 → 连续值 0..1，天然有上升空间。
-  // 来源是规则判据（对真实最终回答做词项覆盖），不是模型自评。
+  // 语义完成度分数。目标里有多问清单时 = 清单命中率（每答对一项 +1/N）；
+  // 否则退化为整段词项覆盖率。两种口径都由规则确定，不含模型自评。
+  // 改名为 completion_score（原 goal_term_coverage）是因为分数量纲变了：
+  // 旧口径奖励篇幅、天花板被文本长度锁死，正是它让 learned π 无法影响读数。
   'semantic.task_completion': {
-    metric: 'goal_term_coverage',
+    metric: 'completion_score',
     direction: 'up',
     basis: BASIS.Measured,
     role: 'objective',

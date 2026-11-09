@@ -46,7 +46,7 @@ CriterionVerdict[](next)┘                                  ├─► krsi Judg
 | `task.terminal` | `task_terminal` | up | 1 (measured) | guard |
 | `loop.health` | `loop_health` | up | 1 (measured) | guard |
 | `tool.discipline.write_gate` | `tool_write_coverage` | up | 1 (measured) | guard |
-| `semantic.task_completion` | `goal_term_coverage` | up | 1 (measured) | objective |
+| `semantic.task_completion` | `completion_score` | up | 1 (measured) | objective |
 | `semantic.completion`（深判） | `semantic_completion` | up | 2 (relayed) | objective |
 
 **role 的语义（这是 R5 可判的前提）：**
