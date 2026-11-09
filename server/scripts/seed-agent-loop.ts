@@ -174,6 +174,34 @@ const MEASURE_PROBE = `请通读 notes/强化Agent.txt，然后逐条回答下�
 /** 每个测量轮采样几次。3 次能把单次作答的覆盖率噪声压到约 1/√3。 */
 const PROBE_SAMPLES = 3;
 
+/**
+ * 造工具任务族 —— 目标是「能力生命周期完成度」，不是问答正确率。
+ *
+ * 为什么换成这个：概念问答三套题都被首代 5/5 打满，指标饱和就没有可学的空间；
+ * 而「造工具」按 notes/强化Agent.txt §6 有 5 个可机械核验的阶段
+ * （创建含理由 → 定义合法 → 真实使用 → 回收 → 沉淀配对），
+ * 第一次几乎不可能全走完，天然留得下进步。
+ */
+const FORGE_TASKS = [
+  `帮你自己的工具库补一个能力：把「读取 notes/强化Agent.txt 前 40 行」封装成可复用工具。
+按工具纪律执行：用 tool.forge 创建（说明现有工具为何不够），再用 operation=use 真实调用一次，
+最后用 operation=recycle 回收并回答沉淀三问（category / to_pi / no_tool_next）。
+工具名用 read_notes_head。`,
+  `再补一个能力并完整走完生命周期：把「统计一段文本的长度并给出是否为空的判断」封装成工具。
+用 tool.forge 创建（name=text_len，steps 用 text.diff 或 fs.read 组合），use 一次，再 recycle 并答沉淀三问。
+注意：现成工具做不到「一次调用拿到长度+空判定」，把这一点写进 why_not_existing。`,
+  `把「读取 notes/强化Agent.txt 并统计其中一行是否包含关键词」封装成工具，名字用 notes_has。
+必须：create（写清现有工具为何不够）→ use（传 input 关键词）→ recycle（回答沉淀三问）。
+回收后不要把工具文件留在沙箱里。`,
+];
+
+/** 造工具族的测量探针：固定任务，量的是「这一代能不能按纪律造出并回收工具」。 */
+const FORGE_PROBE = `请按工具纪律造一个工具并完成整个生命周期，不要只创建就停：
+1) 用 tool.forge、operation=create 创建 probe_echo 工具，steps 只放一步：tool 用 "fs.read"，args 为 {"path":"notes/强化Agent.txt","lineStart":1,"lineEnd":3}；why_not_existing 写「现有工具无法一次调用完成固定的三行读取」。
+2) operation=use 真实执行它一次。
+3) operation=recycle 回收，answers 里回答三问：category=固定三行读取，to_pi=把常用读取窗口记进经验，no_tool_next=下次直接用 fs.read 传行号即可。
+每步都要真的调用工具，不要在回答里假装做过。`;
+
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
   `帮你自己写一份能力清单文档。${SELF_RULES}
@@ -376,18 +404,27 @@ function getSessionId(sse: string): string | null {
 async function main() {
   const target = Math.max(2, parseInt(process.argv[2] || '12', 10));
   const depthMode = process.argv.includes('--depth');
+  const forgeMode = process.argv.includes('--forge');
   const selfMode = process.argv.includes('--self') || depthMode;
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
   const onlyIdx = onlyArg ? Number(onlyArg.split('=')[1]) : null;
-  const tasks = depthMode
-    ? onlyIdx !== null
-      ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
-      : BEHAVIOR_TASKS
-    : selfMode
-      ? SELF_TASKS
-      : TASKS;
-  const modeLabel = depthMode ? '深度自证：行为断言' : selfMode ? '自改进：补测试' : '演示任务';
+  const tasks = forgeMode
+    ? FORGE_TASKS
+    : depthMode
+      ? onlyIdx !== null
+        ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
+        : BEHAVIOR_TASKS
+      : selfMode
+        ? SELF_TASKS
+        : TASKS;
+  const modeLabel = forgeMode
+    ? '造工具：能力生命周期'
+    : depthMode
+      ? '深度自证：行为断言'
+      : selfMode
+        ? '自改进：补测试'
+        : '演示任务';
   console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
 
   // --session=<id>：接着已有会话继续推代（不传则新建会话，代际从 g1 起）
@@ -412,7 +449,20 @@ async function main() {
   };
   /** 上一轮测试失败的摘要 —— 拼到下一轮任务前面，形成「修好再往下」的闭环。 */
   let feedback = '';
-
+  /**
+   * 清掉本会话作用域里的动态工具定义（保留 events.jsonl 作为审计凭据）。
+   * 每次采样前调用：同名工具残留会让 create 报冲突，测出来的就不是「会不会造」。
+   */
+  const clearForgeScope = (sid: string): void => {
+    const dir = path.join(ROOT, 'workspace', 'tmp', 'tools', sid);
+    try {
+      for (const f of readdirSync(dir)) {
+        if (f.endsWith('.json')) unlinkSync(path.join(dir, f));
+      }
+    } catch {
+      /* 目录不存在 = 本来就没工具 */
+    }
+  };
   if (selfMode) await enableHeadlessWrites();
 
   // 开跑前先做一次基线验收：把「当前就红的测试」作为第 1 轮任务，
@@ -490,11 +540,14 @@ ${feedback}`
       // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
       // 采样之间不独立，均值就没意义。
       if (sessionId) clearHistory(sessionId);
+      // 造工具族每次采样都要先清掉作用域里的残留定义，
+      // 否则上一代遗留的 .json 会让 create 直接冲突（同名工具已存在）。
+      if (forgeMode && sessionId) clearForgeScope(sessionId);
       const isLast = s === PROBE_SAMPLES;
       try {
         await postStreamWithRetry({
           ...baseArgs,
-          message: MEASURE_PROBE,
+          message: forgeMode ? FORGE_PROBE : MEASURE_PROBE,
           // 前 N-1 次只采样（rsiMeasure=false，不进对账），最后一次才落代
           rsiMeasure: isLast,
           rsiMeasureSamples: isLast ? Math.max(1, okSamples + 1) : 1,

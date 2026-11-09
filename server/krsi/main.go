@@ -411,6 +411,29 @@ func fmtNum(f float64) string {
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
 }
 
+/**
+ * 目标指标是否已经饱和：所有目标指标都没变好，且都已经顶在 1.0。
+ *
+ * 饱和 ≠ 退步，也 ≠ 没进步。它是「这组题已经考不出差距」——
+ * 此时如实判 undecidable，不要逼出一个"为什么没变好"的理由。
+ */
+func atCeiling(metrics []metricLine) bool {
+	seen := false
+	for _, m := range metrics {
+		if m.Role == "guard" {
+			continue
+		}
+		seen = true
+		if m.Better {
+			return false // 还有目标在变好 → 走 improved 分支
+		}
+		if m.After < 1 {
+			return false // 还有上升空间 → 真的没做好
+		}
+	}
+	return seen
+}
+
 // ── 主流程 ──────────────────────────────────────────────────────────────
 
 func main() {
@@ -498,6 +521,13 @@ func main() {
 				reasons = append(reasons, fmt.Sprintf("R5: 护栏指标 %q 变差（%s → %s）", m.Metric, fmtNum(m.Before), fmtNum(m.After)))
 			}
 		}
+	case atCeiling(metrics):
+		// 目标指标已经顶到 1.0，两代之间不可能再"严格变好"。
+		// 这时判 not_improved 是错的：它不是"退步"，而是"这组题已经考不出差距"。
+		// 按读本铁律——饱和意味着该扩任务空间、加新家族，而不是改判据让它继续绿。
+		// 记 undecidable（诚实的"无法再证明"），避免归因器编造一条"为什么没变好"的假教训。
+		exit, verdict = exitUndecidable, "undecidable"
+		reasons = append(reasons, "R5: 目标指标已达上限（1.0），本任务族已饱和 —— 没有可提升空间；应扩任务空间而不是改判据")
 	case objectiveStrict < objectiveCount:
 		exit, verdict = exitNotImproved, "not_improved"
 		for _, m := range metrics {

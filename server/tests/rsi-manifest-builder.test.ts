@@ -48,18 +48,25 @@ describe('manifest-builder', () => {
       });
     });
 
-    it('语义完成度 → 目标指标（objective）', () => {
+    it('语义完成度不进 RSI readings（饱和且噪声大，只做判据塔信号）', () => {
       const readings = verdictsToReadings([PASS_V('semantic.task_completion', 0.6)]);
+      expect(readings).toEqual([]);
+    });
+
+    it('动态工具生命周期 → 目标指标（objective）', () => {
+      const readings = verdictsToReadings([
+        { layer: 'L1', criterion: 'tool.discipline.lesson_pairing', status: 'pass', score: 0.6 },
+      ]);
       expect(readings).toEqual([
-        { metric: 'completion_score', n: 0.6, basis: 1, direction: 'up', role: 'objective' },
+        { metric: 'tool_lifecycle_score', n: 0.6, basis: 1, direction: 'up', role: 'objective' },
       ]);
     });
 
     it('目标指标量不到 → 写 absent（保持指标集合稳定，防 R3 误判删指标）', () => {
-      const readings = verdictsToReadings([UNEXEC_V('semantic.task_completion')]);
+      const readings = verdictsToReadings([UNEXEC_V('tool.discipline.lesson_pairing')]);
       expect(readings).toHaveLength(1);
       expect(readings[0]).toMatchObject({
-        metric: 'completion_score',
+        metric: 'tool_lifecycle_score',
         n: 0,
         basis: 5,
         role: 'objective',

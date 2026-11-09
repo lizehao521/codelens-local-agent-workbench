@@ -43,7 +43,7 @@ const BASIS = {
  */
 const METRIC_MAP: Record<
   string,
-  { metric: string; direction: 'up' | 'down'; basis: number; role: 'objective' | 'guard' }
+  { metric: string; direction: 'up' | 'down'; basis: number; role: 'objective' | 'guard'; rsi?: boolean }
 > = {
   // ── 护栏（guard）：只要求「不得变差」，不要求每代都变好 ──────────────
   // 这类指标天生有上限/下限（成功率 100%、审批摩擦 0%、覆盖率 100%），
@@ -83,16 +83,26 @@ const METRIC_MAP: Record<
     basis: BASIS.Measured,
     role: 'guard',
   },
-  // ── 目标（objective）：必须严格变好，是"能力有没有真的提升"的唯一口径 ──
-  // 语义完成度分数。目标里有多问清单时 = 清单命中率（每答对一项 +1/N）；
-  // 否则退化为整段词项覆盖率。两种口径都由规则确定，不含模型自评。
-  // 改名为 completion_score（原 goal_term_coverage）是因为分数量纲变了：
-  // 旧口径奖励篇幅、天花板被文本长度锁死，正是它让 learned π 无法影响读数。
+  // ── 目标（objective）：必须严格变好 ─────────────────────────────────────
+  // 「造能力」的生命周期完成度：创建含理由 → 定义合法 → 真实使用 → 回收 → 沉淀配对，
+  // 五个阶段各 0.2。它天然有上升空间（第一次往往只 create 就结束），
+  // 且每一阶段都能被 Judge 从事件文件机械核验，不含模型自评。
+  'tool.discipline.lesson_pairing': {
+    metric: 'tool_lifecycle_score',
+    direction: 'up',
+    basis: BASIS.Measured,
+    role: 'objective',
+  },
+  // 语义完成度（问答评分表）**不进 RSI readings**：
+  // 已实测饱和（概念题首代 5/5），而且它的单代波动 ±0.05 属于噪声。
+  // 把它当护栏，噪声就会把「目标已经到顶」误判成「退步」；
+  // 把它当目标，天花板又锁死了进步。判据塔照常跑它，只是不参与跨代对账。
   'semantic.task_completion': {
     metric: 'completion_score',
     direction: 'up',
     basis: BASIS.Measured,
-    role: 'objective',
+    role: 'guard',
+    rsi: false,
   },
   // L2 深判（LLM 语义裁判）：basis=2 Relayed，固定 prompt + 固定模型 + temperature≈0。
   'semantic.completion': {
@@ -118,6 +128,7 @@ const SCORABLE_CRITERIA = new Set([
   'tool.success_rate',
   'approval.friction',
   'tool.discipline.write_gate',
+  'tool.discipline.lesson_pairing',
   'semantic.task_completion',
   'semantic.completion',
 ]);
@@ -230,6 +241,7 @@ export function verdictsToReadings(verdicts: CriterionVerdict[]): RsiReading[] {
   const out: RsiReading[] = [];
 
   for (const [criterion, conf] of Object.entries(METRIC_MAP)) {
+    if (conf.rsi === false) continue; // 不参与跨代对账（判据照常跑，只是不记读数）
     const verdict = byCriterion.get(criterion);
     const scored =
       verdict !== undefined &&

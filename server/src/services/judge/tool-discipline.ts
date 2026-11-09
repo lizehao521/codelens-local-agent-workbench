@@ -24,6 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUILTIN_TOOLS } from '../../tools/builtin/index.js';
 import { ToolRegistry } from '../tools/registry.service.js';
+import { config } from '../../config/env.js';
 import type { CriterionVerdict, JudgeEvidence } from './types.js';
 
 // ── 路径推导（从 test 文件平移过来，保持同口径）──────────────────────────────
@@ -33,7 +34,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(here, '..', '..', '..');
 const srcDir = path.join(serverRoot, 'src');
 const testsDir = path.join(serverRoot, 'tests');
-const SCOPE_DIR = path.join(serverRoot, 'tmp', 'tools');
 
 // ── 工具标识推导（同 tool-discipline.test.ts 口径）──────────────────────────
 
@@ -109,13 +109,14 @@ export function orphanToolsGate(evidence: JudgeEvidence): CriterionVerdict {
   if (new Set(names).size !== names.length) issues.push(`name 有重复：${names.join(', ')}`);
   if (new Set(wires).size !== wires.length) issues.push(`wireName 有重复：${wires.join(', ')}`);
 
-  // 动态检查：task-scoped 目录必须为空或不存在
-  const scopeDir = path.join(SCOPE_DIR, evidence.sessionId);
+  // 动态检查：**本会话**的任务作用域必须已回收干净（tool.forge 写在沙箱内）。
+  // 只看 .json 定义：events.jsonl 是审计凭据，必须保留，否则生命周期闸无从复算。
+  const scopeDir = path.join(config.sandboxRoot, 'tmp', 'tools', evidence.sessionId);
   if (existsSync(scopeDir)) {
     try {
-      const leftover = readdirSync(scopeDir);
+      const leftover = readdirSync(scopeDir).filter((f) => f.endsWith('.json'));
       if (leftover.length > 0) {
-        issues.push(`任务作用域 ${scopeDir} 非空，存在孤儿工具：${leftover.join(', ')}`);
+        issues.push(`任务作用域 ${scopeDir} 仍有未回收工具：${leftover.join(', ')}`);
       }
     } catch (err) {
       issues.push(`无法读取任务作用域 ${scopeDir}：${err instanceof Error ? err.message : String(err)}`);
@@ -138,68 +139,109 @@ export function orphanToolsGate(evidence: JudgeEvidence): CriterionVerdict {
   };
 }
 
-/**
- * 闸 2 · 沉淀配对闸
- *   tool_removed 必须与一条 lesson 成对出现；只删不记即失败。
- *
- *   当前系统没有动态工具生命周期事件表（tool_created / tool_removed），
- *   所以常态是 unexec——不是「配对了所以通过」，是「根本没创建/删除过工具」。
- *   一旦未来引入动态工具路径，tripwire 会在这里打红，逼沉淀纪律跟上。
- */
-export function lessonPairingGate(evidence: JudgeEvidence): CriterionVerdict {
-  // 检查是否有动态工具写入（tripwire：test 文件闸 3 同口径）
-  //
-  // 必须排除本文件自己：它的注释里就写着 `tmp/tools` / `tool_created` /
-  // `tool_removed` 这些关键词，扫描时会把闸的说明当成"系统真的引入了动态工具"，
-  // 于是这条闸永远为真 —— 正是 C3 警告的「永真闸」。
-  const srcFiles = collectTsFiles(srcDir).filter((f) => !f.endsWith('tool-discipline.ts'));
-  const dynamicWrites = srcFiles.filter((f) => {
-    try {
-      return readFileSync(f, 'utf8').includes('tmp/tools');
-    } catch { return false; }
-  });
+/** 动态工具生命周期事件（tool.forge 写入 tmp/tools/<sessionId>/events.jsonl）。 */
+interface DynamicToolEvent {
+  ts: number;
+  event: 'tool_created' | 'tool_used' | 'tool_failed' | 'tool_removed' | 'lesson';
+  name?: string;
+  why?: string;
+  steps?: number;
+  text?: string;
+  reason?: string;
+}
 
-  if (dynamicWrites.length === 0) {
-    // 静态时代：没触发动态工具路径，本闸无对象可检查 → unexec（不是 pass）
+/** 读当前会话的动态工具事件；目录不存在 = 这个任务没有造过工具。 */
+function readDynamicToolEvents(sessionId: string): DynamicToolEvent[] | null {
+  const file = path.join(config.sandboxRoot, 'tmp', 'tools', sessionId, 'events.jsonl');
+  if (!existsSync(file)) return null;
+  try {
+    return readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => JSON.parse(l) as DynamicToolEvent);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 闸 2 · 动态工具生命周期闸
+ *
+ * 升级自静态时代的「沉淀配对 tripwire」：那时系统根本没有造工具的路径，
+ * 只能永远记 unexec。现在 tool.forge 提供了真实路径，这条闸改成**逐阶段打分**：
+ *
+ *   ① 创建时写了「现有工具为何不够」（why ≥ 8 字）
+ *   ② 定义合法且含步骤（steps ≥ 1）
+ *   ③ 被真实调用成功（tool_used）
+ *   ④ 任务结束被回收（tool_removed）
+ *   ⑤ 回收时回答了沉淀三问，且 lesson 与被删工具配对
+ *
+ * 分数 = 完成阶段数 / 5。这个分数就是「造能力」这件事在 RSI 里的读数：
+ * 只造不收 = 0.6，造了不用 = 0.4，什么都不做 = unexec（不是 pass）。
+ *
+ * 没造过工具时仍记 unexec —— C4：没发生 ≠ 通过。
+ */
+export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerdict {
+  const events = readDynamicToolEvents(evidence.sessionId);
+  if (events === null) {
     return {
       layer: 'L1',
       criterion: 'tool.discipline.lesson_pairing',
       status: 'unexec',
-      detail: `静态工具时代：源码未出现 tmp/tools，无动态工具生命周期事件可配对，按 C4 记 unexec`,
+      detail: '本任务未创建动态工具（无 tmp/tools/<session>/events.jsonl），生命周期不可测，按 C4 记 unexec',
     };
   }
 
-  // 动态工具已引入：检查是否带全套 §6 纪律
-  let hasLifecycleEvents = false;
-  let hasLessonPairing = false;
-  for (const f of srcFiles) {
-    try {
-      const body = readFileSync(f, 'utf8');
-      if (body.includes('tool_created') && body.includes('tool_removed')) hasLifecycleEvents = true;
-      if (/tool_removed[\s\S]{0,400}lesson|lesson[\s\S]{0,400}tool_removed/.test(body)) hasLessonPairing = true;
-    } catch { /* skip */ }
-  }
+  const created = events.filter((e) => e.event === 'tool_created');
+  const used = new Set(events.filter((e) => e.event === 'tool_used').map((e) => e.name));
+  const removed = new Set(events.filter((e) => e.event === 'tool_removed').map((e) => e.name));
+  const lessons = new Set(events.filter((e) => e.event === 'lesson').map((e) => e.name));
 
-  const missing: string[] = [];
-  if (!hasLifecycleEvents) missing.push('tool_created / tool_removed 生命周期事件');
-  if (!hasLessonPairing) missing.push('沉淀配对（tool_removed 必须配对一条 lesson）');
-
-  if (missing.length > 0) {
+  // 逐工具取最好成绩：一个工具走完 5 阶段即 1.0；多个工具取平均。
+  const names = [...new Set(created.map((e) => e.name).filter((n): n is string => !!n))];
+  if (names.length === 0) {
     return {
       layer: 'L1',
       criterion: 'tool.discipline.lesson_pairing',
-      status: 'fail',
-      detail: `源码已引入动态工具（${dynamicWrites.map((f) => path.basename(f)).join(', ')}），但 §6 纪律缺失：${missing.join('、')}`,
+      status: 'unexec',
+      detail: '有事件文件但没有 tool_created，生命周期不可测',
     };
   }
+
+  const perTool = names.map((name) => {
+    const c = created.find((e) => e.name === name);
+    const stages = [
+      !!c && (c.why ?? '').trim().length >= 8,
+      !!c && (c.steps ?? 0) >= 1,
+      used.has(name),
+      removed.has(name),
+      lessons.has(name),
+    ];
+    return { name, hit: stages.filter(Boolean).length, missing: STAGE_LABELS.filter((_, i) => !stages[i]) };
+  });
+
+  const score = Math.round((perTool.reduce((s, t) => s + t.hit, 0) / (perTool.length * 5)) * 1000) / 1000;
+  const detail = perTool
+    .map((t) => `${t.name}: ${t.hit}/5${t.missing.length ? `（缺 ${t.missing.join('、')}）` : ''}`)
+    .join('；');
 
   return {
     layer: 'L1',
     criterion: 'tool.discipline.lesson_pairing',
-    status: 'pass',
-    detail: `动态工具生命周期事件完整 + tool_removed ↔ lesson 配对存在`,
+    status: score >= 1 ? 'pass' : 'fail',
+    score,
+    detail: `动态工具生命周期 ${detail}`,
   };
 }
+
+/** 五个阶段的名字，顺序与 dynamicToolLifecycleGate 的 stages 数组一致。 */
+const STAGE_LABELS = [
+  '创建理由(why_not_existing)',
+  '定义合法(steps)',
+  '真实使用(tool_used)',
+  '回收(tool_removed)',
+  '沉淀配对(lesson)',
+];
 
 /**
  * 闸 3 · 写闸复用
@@ -246,7 +288,7 @@ export function runToolDisciplineGates(evidence: JudgeEvidence): CriterionVerdic
   const out: CriterionVerdict[] = [];
   const gates: Array<() => CriterionVerdict> = [
     () => orphanToolsGate(evidence),
-    () => lessonPairingGate(evidence),
+    () => dynamicToolLifecycleGate(evidence),
     () => writeGateReuse(),
   ];
   for (const gate of gates) {
