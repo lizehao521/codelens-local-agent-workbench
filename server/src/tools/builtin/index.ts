@@ -12,6 +12,7 @@ import { jsonFormatTool } from './json-format.tool.js';
 import { textDiffTool } from './text-diff.tool.js';
 import { sysExecTool } from './sys-exec.tool.js';
 import { toolForgeTool } from './tool-forge.tool.js';
+import { webSearchTool } from './web-search.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -25,4 +26,5 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   textDiffTool,
   sysExecTool,
   toolForgeTool,
+  webSearchTool,
 ];

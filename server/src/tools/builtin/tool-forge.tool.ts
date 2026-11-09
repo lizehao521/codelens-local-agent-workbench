@@ -42,11 +42,19 @@ export interface ForgeStep {
   args: Record<string, unknown>;
 }
 
+/** 造工具前检索到的外部依据（来自 web.search 的结果条目）。 */
+export interface ForgeReference {
+  title: string;
+  url: string;
+}
+
 export interface ForgeSpec {
   name: string;
   description: string;
   why_not_existing: string;
   steps: ForgeStep[];
+  /** 外部依据：先查别人怎么做，再决定造什么。空数组 = 没做检索（会被闸扣一分）。 */
+  references: ForgeReference[];
 }
 
 export interface ForgeValidation {
@@ -97,7 +105,24 @@ export function validateForgeSpec(args: Record<string, unknown>): ForgeValidatio
     }
     steps.push({ tool, args: (stepArgs as Record<string, unknown>) ?? {} });
   }
-  return { ok: true, message: 'ok', spec: { name, description, why_not_existing: why, steps } };
+  return { ok: true, message: 'ok', spec: { name, description, why_not_existing: why, steps, references: validateReferences(args.references) } };
+}
+
+/**
+ * 校验外部依据。非法条目直接丢弃而不是整单拒收：
+ * 检索结果偶尔带非 http 链接，丢一条不该毁掉整个创建请求。
+ */
+function validateReferences(raw: unknown): ForgeReference[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ForgeReference[] = [];
+  for (const item of raw.slice(0, 5)) {
+    const o = (item ?? {}) as Record<string, unknown>;
+    const url = String(o.url ?? '').trim();
+    const title = String(o.title ?? '').trim();
+    if (!/^https?:\/\//i.test(url)) continue;
+    out.push({ title: title || url, url });
+  }
+  return out;
 }
 
 /**
@@ -176,6 +201,10 @@ export const toolForgeTool: ToolDefinition = {
         type: 'array',
         description: 'create：步骤数组 [{tool, args}]，tool 取既有工具的 wireName',
       },
+      references: {
+        type: 'array',
+        description: 'create：外部依据 [{title, url}]，来自 web.search 的结果；先查再造就填这里',
+      },
       input: { type: 'string', description: 'use：传给宏的输入，替换步骤里的 {{input}}', maxLength: 4000 },
       answers: {
         type: 'object',
@@ -230,11 +259,20 @@ export const toolForgeTool: ToolDefinition = {
         name: v.spec.name,
         why: v.spec.why_not_existing,
         steps: v.spec.steps.length,
+        references: v.spec.references.length,
       });
+      const refNote = v.spec.references.length > 0
+        ? `，外部依据 ${v.spec.references.length} 条`
+        : '（未提供外部依据：先用 web.search 查一下同类做法，再补充 references）';
       return {
         ok: true,
-        summary: `已创建动态工具 ${v.spec.name}（${v.spec.steps.length} 步）。下一步用 operation=use 真实调用一次。`,
-        data: { name: v.spec.name, path: path.relative(ctx.sandboxRoot, file), steps: v.spec.steps.length },
+        summary: `已创建动态工具 ${v.spec.name}（${v.spec.steps.length} 步${refNote}）。下一步用 operation=use 真实调用一次。`,
+        data: {
+          name: v.spec.name,
+          path: path.relative(ctx.sandboxRoot, file),
+          steps: v.spec.steps.length,
+          references: v.spec.references,
+        },
       };
     }
 

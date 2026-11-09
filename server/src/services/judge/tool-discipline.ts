@@ -146,6 +146,8 @@ interface DynamicToolEvent {
   name?: string;
   why?: string;
   steps?: number;
+  /** 创建时提交的外部依据条数（web.search 的检索结果）。 */
+  references?: number;
   text?: string;
   reason?: string;
 }
@@ -172,12 +174,13 @@ function readDynamicToolEvents(sessionId: string): DynamicToolEvent[] | null {
  *
  *   ① 创建时写了「现有工具为何不够」（why ≥ 8 字）
  *   ② 定义合法且含步骤（steps ≥ 1）
- *   ③ 被真实调用成功（tool_used）
- *   ④ 任务结束被回收（tool_removed）
- *   ⑤ 回收时回答了沉淀三问，且 lesson 与被删工具配对
+ *   ③ 有外部依据（references ≥ 1，来自 web.search 的检索结果）
+ *   ④ 被真实调用成功（tool_used）
+ *   ⑤ 任务结束被回收（tool_removed）
+ *   ⑥ 回收时回答了沉淀三问，且 lesson 与被删工具配对
  *
- * 分数 = 完成阶段数 / 5。这个分数就是「造能力」这件事在 RSI 里的读数：
- * 只造不收 = 0.6，造了不用 = 0.4，什么都不做 = unexec（不是 pass）。
+ * 分数 = 完成阶段数 / 6。这个分数就是「造能力」这件事在 RSI 里的读数：
+ * 只造不收 = 0.67，查了再造但没用 = 0.5，什么都不做 = unexec（不是 pass）。
  *
  * 没造过工具时仍记 unexec —— C4：没发生 ≠ 通过。
  */
@@ -213,6 +216,7 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
     const stages = [
       !!c && (c.why ?? '').trim().length >= 8,
       !!c && (c.steps ?? 0) >= 1,
+      !!c && (c.references ?? 0) >= 1,
       used.has(name),
       removed.has(name),
       lessons.has(name),
@@ -220,9 +224,9 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
     return { name, hit: stages.filter(Boolean).length, missing: STAGE_LABELS.filter((_, i) => !stages[i]) };
   });
 
-  const score = Math.round((perTool.reduce((s, t) => s + t.hit, 0) / (perTool.length * 5)) * 1000) / 1000;
+  const score = Math.round((perTool.reduce((s, t) => s + t.hit, 0) / (perTool.length * STAGE_LABELS.length)) * 1000) / 1000;
   const detail = perTool
-    .map((t) => `${t.name}: ${t.hit}/5${t.missing.length ? `（缺 ${t.missing.join('、')}）` : ''}`)
+    .map((t) => `${t.name}: ${t.hit}/${STAGE_LABELS.length}${t.missing.length ? `（缺 ${t.missing.join('、')}）` : ''}`)
     .join('；');
 
   return {
@@ -234,10 +238,11 @@ export function dynamicToolLifecycleGate(evidence: JudgeEvidence): CriterionVerd
   };
 }
 
-/** 五个阶段的名字，顺序与 dynamicToolLifecycleGate 的 stages 数组一致。 */
+/** 六个阶段的名字，顺序与 dynamicToolLifecycleGate 的 stages 数组一致。 */
 const STAGE_LABELS = [
   '创建理由(why_not_existing)',
   '定义合法(steps)',
+  '外部依据(references)',
   '真实使用(tool_used)',
   '回收(tool_removed)',
   '沉淀配对(lesson)',

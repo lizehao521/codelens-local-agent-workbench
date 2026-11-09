@@ -183,23 +183,24 @@ const PROBE_SAMPLES = 3;
  * 第一次几乎不可能全走完，天然留得下进步。
  */
 const FORGE_TASKS = [
-  `帮你自己的工具库补一个能力：把「读取 notes/强化Agent.txt 前 40 行」封装成可复用工具。
-按工具纪律执行：用 tool.forge 创建（说明现有工具为何不够），再用 operation=use 真实调用一次，
-最后用 operation=recycle 回收并回答沉淀三问（category / to_pi / no_tool_next）。
-工具名用 read_notes_head。`,
-  `再补一个能力并完整走完生命周期：把「统计一段文本的长度并给出是否为空的判断」封装成工具。
-用 tool.forge 创建（name=text_len，steps 用 text.diff 或 fs.read 组合），use 一次，再 recycle 并答沉淀三问。
-注意：现成工具做不到「一次调用拿到长度+空判定」，把这一点写进 why_not_existing。`,
-  `把「读取 notes/强化Agent.txt 并统计其中一行是否包含关键词」封装成工具，名字用 notes_has。
-必须：create（写清现有工具为何不够）→ use（传 input 关键词）→ recycle（回答沉淀三问）。
+  `帮你自己的工具库补一个能力。先想清楚缺什么，再**联网检索**同类做法，最后才动手造。
+步骤：用 web.search 查「可复用文本处理工具设计 最佳实践」→ 用 tool.forge 创建工具（why_not_existing 说明现有工具为何不够，references 填检索到的结果）→ use 真实调用一次 → recycle 回收并回答沉淀三问。
+工具名用 read_notes_head，作用是把「读取 notes/强化Agent.txt 前 40 行」固化成零参数宏。`,
+  `再补一个能力：把「统计一段文本长度并判断是否为空」封装成工具。
+必须先 web.search 检索「文本长度统计 空判断 工具封装」并挑 1-2 条作为 references，
+再用 tool.forge 创建（name=text_len），use 一次，recycle 并答沉淀三问。
+不要跳过检索这一步。`,
+  `把「判断 notes/强化Agent.txt 某一行是否含关键词」封装成工具，名字用 notes_has。
+顺序固定：web.search 检索（拿 references）→ create → use（传 input 关键词）→ recycle（答三问）。
 回收后不要把工具文件留在沙箱里。`,
 ];
 
 /** 造工具族的测量探针：固定任务，量的是「这一代能不能按纪律造出并回收工具」。 */
 const FORGE_PROBE = `请按工具纪律造一个工具并完成整个生命周期，不要只创建就停：
-1) 用 tool.forge、operation=create 创建 probe_echo 工具，steps 只放一步：tool 用 "fs.read"，args 为 {"path":"notes/强化Agent.txt","lineStart":1,"lineEnd":3}；why_not_existing 写「现有工具无法一次调用完成固定的三行读取」。
-2) operation=use 真实执行它一次。
-3) operation=recycle 回收，answers 里回答三问：category=固定三行读取，to_pi=把常用读取窗口记进经验，no_tool_next=下次直接用 fs.read 传行号即可。
+1) 先用 web.search 检索「宏工具 组合式工具 设计」，把其中 1 条结果的 title 与 url 记为 references。
+2) 用 tool.forge、operation=create 创建 probe_echo 工具：steps 只放一步，tool 用 "fs_read"，args 为 {"path":"notes/强化Agent.txt","lineStart":1,"lineEnd":3}；why_not_existing 写「现有工具无法一次调用完成固定的三行读取」；references 填上一步的结果。
+3) operation=use 真实执行它一次。
+4) operation=recycle 回收，answers 回答三问：category=固定三行读取，to_pi=把常用读取窗口记进经验，no_tool_next=下次直接用 fs.read 传行号即可。
 每步都要真的调用工具，不要在回答里假装做过。`;
 
 const SELF_TASKS = [
