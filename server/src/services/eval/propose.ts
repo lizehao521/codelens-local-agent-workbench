@@ -98,15 +98,16 @@ function casesOf(p: EvalProposal): EvalCase[] {
   return [...p.publicCases, ...p.hiddenCases];
 }
 
-function validateShape(p: EvalProposal): ProposalCheck[] {
+function validateShape(p: EvalProposal, existingIds: readonly string[] = []): ProposalCheck[] {
   const checks: ProposalCheck[] = [];
+  // 已晋升的套件同样算「已占用」：否则 Agent 可以用同名提案覆盖既有套件，
+  // 把一道难题换成一道自己更容易满分的题 —— 判据就回到了被测者手里。
+  // existingIds 由调用方从 allSuites(sandboxRoot) 取（内置 + 已晋升）。
+  const taken = new Set<string>([...EVAL_SUITES.map((s) => s.id), ...existingIds]);
   checks.push({
     name: 'id 合法且不冲突',
-    ok:
-      typeof p.id === 'string' &&
-      ID_RE.test(p.id) &&
-      !EVAL_SUITES.some((s) => s.id === p.id),
-    detail: `id=${String(p.id)}`,
+    ok: typeof p.id === 'string' && ID_RE.test(p.id) && !taken.has(p.id),
+    detail: taken.has(p.id) ? `id=${String(p.id)} 已被占用` : `id=${String(p.id)}`,
   });
   checks.push({
     name: '导出名合法',
@@ -155,8 +156,11 @@ export function mutationScore(p: EvalProposal): MutationReport {
   };
 }
 
-export function validateProposal(p: EvalProposal): ProposalValidation {
-  const checks = validateShape(p);
+export function validateProposal(
+  p: EvalProposal,
+  existingIds: readonly string[] = [],
+): ProposalValidation {
+  const checks = validateShape(p, existingIds);
   const ref = runSourceCases(p.reference, p.exportName, casesOf(p), '<reference>');
   checks.push({
     name: '参考实现全通过',

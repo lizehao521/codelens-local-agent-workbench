@@ -103,6 +103,12 @@ export interface JudgeRunContextSnapshot {
   };
   /** 必须存 status：只有分数无法区分「判据失效」和「判据判红」。 */
   canary: { status: VerdictStatus; goodScore: number; badScore: number };
+  /**
+   * 不可从快照证据重算的判据：工具纪律闸（读当前源码/测试目录）与
+   * task.test_pass_rate（读当前沙箱）。判决时把结论一起快照，复算直接复用；
+   * 重跑它们等于用今天的仓库状态改写历史判决，违背「快照优先」。
+   */
+  extraVerdicts?: CriterionVerdict[];
   evidence: JudgeEvidence | TruncatedEvidence;
   semantic: { assessorId: string; evidence: SemanticEvidence } | null;
   evidenceDigest: string;
@@ -397,5 +403,9 @@ function recomputeVerdicts(snapshot: JudgeRunContextSnapshot, assessor?: Semanti
     snapshot.semantic ? snapshot.semantic.evidence : null,
   );
 
-  return [...l0, l1, l2, l3];
+  // 不可重算的判据（工具纪律闸 / 代码修复族读数）一律取快照里的结论。
+  // 它们依赖「当前仓库」而非本轮证据，现场重跑会让历史判决跟着代码漂移。
+  const extra = snapshot.extraVerdicts ?? [];
+
+  return [...l0, l1, ...extra, l2, l3];
 }

@@ -16,7 +16,7 @@ import {
   validateProposal,
   type EvalProposal,
 } from '../../services/eval/propose.js';
-import { suiteStoreDir } from '../../services/eval/suites.js';
+import { allSuites, suiteStoreDir } from '../../services/eval/suites.js';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 
 /** 已晋升套件的上限：防止无上限扩题把测量集稀释成噪声。 */
@@ -136,7 +136,9 @@ export const evalProposeTool: ToolDefinition = {
       };
     }
 
-    const validation = validateProposal(proposal);
+    // 内置 + 已晋升的套件 id 都算占用：晋升后的套件是测量资产，不能被同名提案覆盖。
+    const existingIds = allSuites(ctx.sandboxRoot).map((s) => s.id);
+    const validation = validateProposal(proposal, existingIds);
 
     // 审计落盘：无论通过与否都留证，方便复盘「它想考什么、为什么没过」。
     try {

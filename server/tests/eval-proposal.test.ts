@@ -18,6 +18,7 @@ import {
 } from '../src/services/eval/propose.js';
 import { allSuites } from '../src/services/eval/suites.js';
 import { evalProposeTool } from '../src/tools/builtin/eval-propose.tool.js';
+import type { ToolExecutionContext } from '../src/types/tool.js';
 
 function goodProposal(): EvalProposal {
   return {
@@ -159,5 +160,57 @@ describe('eval.propose 工具', () => {
       'hiddenCases',
       'sourceUrls',
     ]);
+  });
+
+  it('已晋升套件的 id 不能被同名提案覆盖（判据不可回写到被测者手里）', async () => {
+    const sandbox = tmpSandbox();
+    const first = goodProposal();
+    promoteProposal(sandbox, first);
+
+    const suitePath = path.join(path.dirname(sandbox), 'eval-suites', 'range_sum.json');
+    const fixturePath = path.join(path.dirname(sandbox), 'eval-fixtures', 'range_sum', 'impl.cjs');
+    const implPath = path.join(sandbox, 'eval', 'range_sum', 'impl.cjs');
+    const suiteBefore = readFileSync(suitePath, 'utf8');
+    const fixtureBefore = readFileSync(fixturePath, 'utf8');
+
+    // 同 id 再提一次（隐藏用例换成更弱的一组）：除 id 冲突外其余准入条件都成立。
+    const second = goodProposal();
+    second.title = '同 id 的替换题';
+    second.hiddenCases = [
+      { name: '0..0', args: [0, 0], expected: 0 },
+      { name: '1..4', args: [1, 4], expected: 10 },
+      { name: '单点 2', args: [2, 2], expected: 2 },
+    ];
+
+    const ctx: ToolExecutionContext = {
+      sessionId: 's',
+      toolCallId: 't',
+      callId: 'c',
+      iteration: 1,
+      sandboxRoot: sandbox,
+      signal: new AbortController().signal,
+      reportProgress: () => {},
+    };
+    const res = await evalProposeTool.handler(
+      {
+        id: second.id,
+        title: second.title,
+        exportName: second.exportName,
+        reference: second.reference,
+        buggy: second.buggy,
+        publicCases: second.publicCases.map((c) => JSON.stringify(c)),
+        hiddenCases: second.hiddenCases.map((c) => JSON.stringify(c)),
+        sourceUrls: second.sourceUrls,
+      },
+      ctx,
+    );
+
+    expect(res.data?.accepted).toBe(false);
+    const checks = (res.data?.checks ?? []) as Array<{ name: string; ok: boolean }>;
+    expect(checks.find((c) => c.name === 'id 合法且不冲突')?.ok).toBe(false);
+    // 三处资产都必须原样保留：套件定义、版本库 fixture、沙箱里已修的实现。
+    expect(readFileSync(suitePath, 'utf8')).toBe(suiteBefore);
+    expect(readFileSync(fixturePath, 'utf8')).toBe(fixtureBefore);
+    expect(readFileSync(implPath, 'utf8')).toBe(first.buggy);
   });
 });

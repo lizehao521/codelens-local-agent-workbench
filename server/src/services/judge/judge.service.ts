@@ -346,6 +346,9 @@ export class JudgeService {
           evidence,
           evidenceDigest,
           semantic: semanticEvidence,
+          // 这两组判据读的是「当前仓库 / 当前沙箱」，不是本轮证据；
+          // 必须随快照落库，复算时照抄，否则历史判决会随代码漂移而变心。
+          extraVerdicts: [...discipline, ...(evalRate ? [evalRate] : [])],
         }),
       ),
     });
@@ -938,9 +941,12 @@ export class JudgeService {
       evidence: JudgeEvidence;
       evidenceDigest: string;
       semantic: SemanticEvidence | null;
+      /** 依赖当前仓库/沙箱、无法用快照证据重算的判据结论（工具纪律闸、代码修复族读数）。 */
+      extraVerdicts: CriterionVerdict[];
     },
   ): JudgeRunContextSnapshot & JudgeRuntimeContext {
-    const { profiles, summary, thresholds, canary, evidence, evidenceDigest, semantic } = input;
+    const { profiles, summary, thresholds, canary, evidence, evidenceDigest, semantic, extraVerdicts } =
+      input;
     const truncate =
       evidence.toolCalls.length > MAX_SNAPSHOT_TOOL_CALLS ||
       evidence.approvals.length > MAX_SNAPSHOT_APPROVALS;
@@ -981,6 +987,7 @@ export class JudgeService {
             counts: { toolCalls: evidence.toolCalls.length, approvals: evidence.approvals.length },
           }
         : evidence,
+      extraVerdicts,
       semantic: semantic ? { assessorId: this.deps.semantic?.id ?? 'rules.v1', evidence: semantic } : null,
       evidenceDigest,
       reasons: summary.reasons,
