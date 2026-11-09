@@ -1,6 +1,6 @@
 # RSI 闭环（Recursive Self-Improvement Loop）
 
-> 本文只描述 **L1 机械桥** 已落地的部分，以及 L2（Anchor）的设计意图。
+> 本文只描述 **L1 机械桥** 与 **L2（Anchor）** 已落地的部分。
 > 事实来源：`src/services/rsi/manifest-builder.ts`、`src/services/rsi/rsi-bridge.service.ts`（各读前 80 行）。
 > 凡标注「设计意图 / 未实现」的段落，均**不是**当前代码行为。
 
@@ -117,21 +117,27 @@ bridge 层还有两个**非 krsi** 状态：
 
 ---
 
-## 5. Anchor 哈希链（L2，设计意图）
+## 5. Anchor 哈希链（L2，已落地）
 
-**当前状态：L1 未实现 Anchor。** 账本 JSONL 只作为 artifact 落盘（`dbDir/rsi/` 下，每 session 独立账本），
-`RsiBridgeResult.ledgerPath` 指向它，但**没有**链式锚定。
+**当前状态：L2 Anchor 已实现**（`rsi-bridge.service.ts` 的 `appendAnchor`）。每代判决后向
+`dbDir/rsi/<sessionId>-anchors.jsonl` 追加一行；该文件与 krsi 的私有账本严格分离，
+避免混入外来行导致 krsi 的账本校验从下一代起拒收。
 
-L2 目标：让「第 n 代判决」不可篡改、可离线复算。
+实际链式定义（与早期设计稿不同，以代码为准）：
 
 ```
-anchor_0 = H(genesis)
-anchor_n = H( anchor_{n-1} ‖ H(evidence_preimage_n) )
+manifest_hash = sha256(JSON.stringify(manifest))
+anchor_hash   = sha256(JSON.stringify({
+  prev_anchor_hash, manifest_hash, verdict, exit_code, generation, timestamp
+}))
 ```
 
-- `H` = SHA-256（与 `manifest-builder` / `rsi-bridge.service` 已引入的 `node:crypto` 同源）。
-- 链式性质：改动任意一代的证据，`anchor_n` 及其后所有 anchor 全部失效 → 篡改可检测。
-- 账本每行追加 `{ gen, anchor, prev_anchor, evidence_hash, verdict, exit_code }`，只追加不重写。
+- 账本行字段：`{ type:'anchor', generation, anchor_hash, prev_anchor_hash, manifest_hash, verdict, exit_code, timestamp }`，只追加不重写。
+- 链式性质：改动任意一代的 manifest，`manifest_hash` 变化 → `anchor_hash` 及其后续 `prev_anchor_hash` 全部对不上，篡改可检测。
+- `seed-agent-loop.ts` 每轮结束打印 `chain=✓/✗`，校验相邻 `prev_anchor_hash` 是否衔接。
+
+已知限制：哈希输入是 `JSON.stringify(manifest)`（依赖键序），尚未做 canonical JSON 规范化；
+也还没有独立的离线校验 CLI，目前的校验只在 harness 里做相邻衔接检查。
 
 ---
 
