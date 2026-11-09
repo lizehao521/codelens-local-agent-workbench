@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { runEvalBattery, runSuite, deepEqual } from '../src/services/eval/runner.js';
 import { EVAL_SUITES, EVAL_RUN_DISPLAY_NAME, findSuite } from '../src/services/eval/suites.js';
 import { evalPassRateGate } from '../src/services/judge/eval-rate.js';
+import { hasScoredObjective } from '../src/services/rsi/manifest-builder.js';
 import type { JudgeEvidence } from '../src/services/judge/types.js';
 
 const GOOD: Record<string, string> = {
@@ -192,5 +193,29 @@ describe('task.test_pass_rate 判据', () => {
     expect(verdict!.criterion).toBe('task.test_pass_rate');
     expect(verdict!.status).not.toBe('unexec');
     expect(typeof verdict!.score).toBe('number');
+  });
+});
+
+describe('hasScoredObjective', () => {
+  const v = (criterion: string, score?: number) => ({
+    layer: 'L1' as const,
+    criterion,
+    status: 'fail' as const,
+    ...(score === undefined ? {} : { score }),
+  });
+
+  it('任意 objective 有分即为可测（不只认语义判据）', () => {
+    expect(hasScoredObjective([v('task.test_pass_rate', 0.644)])).toBe(true);
+    expect(hasScoredObjective([v('tool.capability.reuse', 0.5)])).toBe(true);
+  });
+
+  it('护栏有分不算目标读数', () => {
+    expect(hasScoredObjective([v('tool.discipline.lesson_pairing', 1)])).toBe(false);
+    expect(hasScoredObjective([v('tool.success_rate', 1)])).toBe(false);
+  });
+
+  it('目标判据没有数值（unexec/absent）不算', () => {
+    expect(hasScoredObjective([v('task.test_pass_rate')])).toBe(false);
+    expect(hasScoredObjective([])).toBe(false);
   });
 });

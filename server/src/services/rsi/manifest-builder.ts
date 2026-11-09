@@ -156,6 +156,29 @@ const SCORABLE_CRITERIA = new Set([
 export const KNOWN_CRITERIA = Object.keys(METRIC_MAP);
 
 /**
+ * 本轮是否产出了**可跨代比较的目标读数**。
+ *
+ * 不能只认某一条判据：任务族换了，目标判据也换了 —— 代码修复族的目标是
+ * `task.test_pass_rate`，概念问答族的目标是语义完成度。写死任何一条都会让
+ * 另一个任务族整代被当成「无效测量」跳过。
+ *
+ * 判据条件是 role=objective 且有有限数值：护栏分不算（它们不要求变好），
+ * absent 也不算（那是没量到）。
+ */
+export function hasScoredObjective(verdicts: CriterionVerdict[]): boolean {
+  return verdicts.some((v) => {
+    const spec = METRIC_MAP[v.criterion];
+    return (
+      !!spec &&
+      spec.role === 'objective' &&
+      spec.rsi !== false &&
+      typeof v.score === 'number' &&
+      Number.isFinite(v.score)
+    );
+  });
+}
+
+/**
  * 判据集指纹 —— 对整座判据塔的**定义**做真实 sha256。
  *
  * 为什么要真实指纹而不是固定常量：krsi 的 R2 判据靠 criteria_sha256 判断

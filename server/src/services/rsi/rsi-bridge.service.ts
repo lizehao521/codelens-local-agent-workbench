@@ -26,7 +26,7 @@ import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Db } from '../../repositories/db.js';
-import { buildManifest, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
+import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
 import type { CriterionVerdict } from '../judge/types.js';
 
 export type RsiVerdictState = 'improved' | 'not_improved' | 'refused' | 'undecidable' | 'skipped' | 'error';
@@ -111,15 +111,11 @@ export class RsiBridgeService {
         : runVerdicts;
 
     // ── 无效测量不落代 ────────────────────────────────────────────────────────
-    // 探针最终回答为空 / 语义层未执行时，目标指标没有读数。此时若照常落一代，
-    // 链上会堆满 undecidable，generation 被推高却没有任何可比读数。
-    // 正确做法是"这一代不计"：不写 policy_rsi_runs、不推进代序，下一轮重新测。
-    const hasObjectiveScore = effectiveVerdicts.some(
-      (v) =>
-        v.criterion === 'semantic.task_completion' &&
-        typeof v.score === 'number' &&
-        Number.isFinite(v.score),
-    );
+    // 探针没产出**任何**目标读数（空回答 / 全部未执行）时，落代只会堆满
+    // undecidable，generation 被推高却没有任何可比读数。
+    // 注意：不能只认语义判据 —— 代码修复族的目标是 task.test_pass_rate，
+    // 该判据有分就说明这一代确实量到了东西（见 hasScoredObjective）。
+    const hasObjectiveScore = hasScoredObjective(effectiveVerdicts);
     if (!hasObjectiveScore) {
       return {
         state: 'skipped',

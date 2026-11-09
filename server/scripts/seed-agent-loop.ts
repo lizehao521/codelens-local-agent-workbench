@@ -224,19 +224,25 @@ const FORGE_PROBE = `请按下面的顺序执行，每步都要真的调用工�
  * 旧套件保留在轮转里，用来验证「修好的东西不会因为后续改动而回退」。
  */
 const CODE_TASKS = [
-  `修复 eval/interval_merge/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
-步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
-→ 调用 eval.run（suite="interval_merge"）确认全部通过。
+  `修复 eval/interval_merge/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="interval_merge"）拿到当前通过率；
+2) 若有失败用例：fs.read 读实现 → fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）→ 再调 eval.run 复验；
+3) 若已经满分：跳过修改，但第 1 步的 eval.run 仍然必须真的调用过；
+4) 最后用一句话报告 eval.run 的得分，不要给空回答。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
-  `修复 eval/parse_query/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
-步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
-→ 调用 eval.run（suite="parse_query"）确认全部通过。
+  `修复 eval/parse_query/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="parse_query"）拿到当前通过率；
+2) 若有失败用例：fs.read 读实现 → fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）→ 再调 eval.run 复验；
+3) 若已经满分：跳过修改，但第 1 步的 eval.run 仍然必须真的调用过；
+4) 最后用一句话报告 eval.run 的得分，不要给空回答。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
-  `修复 eval/to_roman/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
-步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
-→ 调用 eval.run（suite="to_roman"）确认全部通过。
+  `修复 eval/to_roman/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="to_roman"）拿到当前通过率；
+2) 若有失败用例：fs.read 读实现 → fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）→ 再调 eval.run 复验；
+3) 若已经满分：跳过修改，但第 1 步的 eval.run 仍然必须真的调用过；
+4) 最后用一句话报告 eval.run 的得分，不要给空回答。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
   `修复 eval/slugify/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
