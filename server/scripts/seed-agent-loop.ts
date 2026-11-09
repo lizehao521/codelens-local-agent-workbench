@@ -19,6 +19,9 @@ import { createDb } from '../src/repositories/db.js';
 
 const BASE = 'http://127.0.0.1:8080';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// 凭证已从源码移到环境变量；tsx 不会自动读 .env，脚本自己加载一次。
+const ENV_PATH = path.join(ROOT, '.env');
+if (existsSync(ENV_PATH)) process.loadEnvFile(ENV_PATH);
 const DB_PATH = process.env.AGENT_DB_PATH
   ? path.resolve(process.env.AGENT_DB_PATH)
   : path.join(ROOT, 'data', 'codelens.db');
