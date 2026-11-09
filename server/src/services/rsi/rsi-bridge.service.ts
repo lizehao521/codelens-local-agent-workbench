@@ -164,7 +164,10 @@ export class RsiBridgeService {
         verdicts: enrichedVerdicts,
         artifacts: [
           {
-            path: path.relative(this.dbDir, evidencePath),
+            // 路径要相对 **进程 cwd**：krsi 以继承的 cwd 解析产物路径做内容哈希复核。
+            // 之前写的是相对 dbDir（"rsi/..."），krsi 在 server 根下找不到文件，
+            // R4 就退化成「只校验 64 位格式」—— 看起来在锚定，其实没验内容。
+            path: path.relative(process.cwd(), evidencePath),
             sha256: evidenceSha256,
             bytes: evidenceBytes,
           },
@@ -332,7 +335,8 @@ export class RsiBridgeService {
       const body = await readFile(p);
       return [
         {
-          path: path.relative(this.dbDir, p),
+          // 与 next 侧同口径：相对进程 cwd，krsi 才能真的复核内容哈希
+          path: path.relative(process.cwd(), p),
           sha256: createHash('sha256').update(body).digest('hex'),
           bytes: body.byteLength,
         },
