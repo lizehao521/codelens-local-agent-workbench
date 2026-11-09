@@ -88,6 +88,64 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       { name: '值内含等号', args: ['a=1=2'], expected: { a: '1=2' } },
     ],
   },
+  {
+    id: 'interval_merge',
+    title: '区间合并',
+    implPath: 'eval/interval_merge/impl.cjs',
+    exportName: 'mergeIntervals',
+    publicCases: [
+      {
+        name: '重叠区间合并',
+        args: [[[1, 3], [2, 6], [8, 10], [15, 18]]],
+        expected: [[1, 6], [8, 10], [15, 18]],
+      },
+      { name: '空数组', args: [[]], expected: [] },
+    ],
+    hiddenCases: [
+      { name: '乱序输入先排序', args: [[[5, 7], [1, 3]]], expected: [[1, 3], [5, 7]] },
+      { name: '相接区间也要合并', args: [[[1, 2], [2, 3]]], expected: [[1, 3]] },
+      { name: '被完全包含', args: [[[1, 10], [2, 3]]], expected: [[1, 10]] },
+      { name: '非法区间忽略', args: [[[3, 1], [5, 6]]], expected: [[5, 6]] },
+      { name: '单点区间', args: [[[2, 2]]], expected: [[2, 2]] },
+    ],
+  },
+  {
+    id: 'parse_query',
+    title: 'URL 查询串解析',
+    implPath: 'eval/parse_query/impl.cjs',
+    exportName: 'parseQuery',
+    publicCases: [
+      { name: '剥离问号', args: ['?a=1&b=2'], expected: { a: '1', b: '2' } },
+      { name: '百分号解码', args: ['a=hello%20world'], expected: { a: 'hello world' } },
+    ],
+    hiddenCases: [
+      { name: '无等号的段', args: ['?flag'], expected: { flag: '' } },
+      { name: '同键后者覆盖', args: ['a=1&a=2'], expected: { a: '2' } },
+      { name: '加号转空格', args: ['?a=x+y'], expected: { a: 'x y' } },
+      { name: '跳过空段', args: ['&&a=1&&'], expected: { a: '1' } },
+      { name: '中文解码', args: ['a=%E4%B8%AD'], expected: { a: '中' } },
+      { name: '空输入', args: [''], expected: {} },
+    ],
+  },
+  {
+    id: 'to_roman',
+    title: '整数转罗马数字',
+    implPath: 'eval/to_roman/impl.cjs',
+    exportName: 'toRoman',
+    publicCases: [
+      { name: '减法记法 4', args: [4], expected: 'IV' },
+      { name: '减法记法 9', args: [9], expected: 'IX' },
+    ],
+    hiddenCases: [
+      { name: '最小值 1', args: [1], expected: 'I' },
+      { name: '1994', args: [1994], expected: 'MCMXCIV' },
+      { name: '上限 3999', args: [3999], expected: 'MMMCMXCIX' },
+      { name: '44', args: [44], expected: 'XLIV' },
+      { name: '0 越界', args: [0], throws: 'range' },
+      { name: '4000 越界', args: [4000], throws: 'range' },
+      { name: '非整数', args: [3.5], throws: 'range' },
+    ],
+  },
 ];
 
 /** 按 id 取套件；未知 id 返回 undefined。 */

@@ -40,6 +40,55 @@ module.exports = { chunk };`,
   return out;
 }
 module.exports = { parseKV };`,
+  interval_merge: `function mergeIntervals(list) {
+  const sorted = list
+    .filter((x) => Array.isArray(x) && x.length === 2 && Number.isFinite(x[0]) && Number.isFinite(x[1]) && x[0] <= x[1])
+    .slice()
+    .sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const [s, e] of sorted) {
+    const last = out[out.length - 1];
+    if (last && s <= last[1]) last[1] = Math.max(last[1], e);
+    else out.push([s, e]);
+  }
+  return out;
+}
+module.exports = { mergeIntervals };`,
+  parse_query: `function decode(raw) {
+  const spaced = raw.replace(/\\+/g, ' ');
+  try { return decodeURIComponent(spaced); } catch { return spaced; }
+}
+function parseQuery(input) {
+  const text = String(input);
+  const body = text.startsWith('?') ? text.slice(1) : text;
+  const out = {};
+  for (const part of body.split('&')) {
+    if (!part) continue;
+    const at = part.indexOf('=');
+    const key = decode(at === -1 ? part : part.slice(0, at));
+    const value = at === -1 ? '' : decode(part.slice(at + 1));
+    out[key] = value;
+  }
+  return out;
+}
+module.exports = { parseQuery };`,
+  to_roman: `function toRoman(n) {
+  if (!Number.isInteger(n) || n < 1 || n > 3999) {
+    throw new Error('n out of range: must be an integer in 1..3999');
+  }
+  const table = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+    [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ];
+  let rest = n;
+  let out = '';
+  for (const [value, symbol] of table) {
+    while (rest >= value) { out += symbol; rest -= value; }
+  }
+  return out;
+}
+module.exports = { toRoman };`,
 };
 
 /** 只覆盖公开用例的补丁：两个公开样例硬编码，其余原样返回。 */
@@ -78,8 +127,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('三套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(3);
+  it('六套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(6);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);

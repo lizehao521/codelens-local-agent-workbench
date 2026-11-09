@@ -219,10 +219,26 @@ const FORGE_PROBE = `请按下面的顺序执行，每步都要真的调用工�
  *   · 打分用 public + hidden 全量用例，只针对公开样例打补丁拿不到满分；
  *   · 产物是**代码本身**，会跨代保留 —— 这就是代码域的能力沉淀。
  *
- * 每代只点名一个套件，三代走完 3 个套件，读数应当单调上升：
- *   基线 5/21 → g1(12/21) → g2(16/21) → g3(21/21) → 之后诚实饱和。
+ * 每代只点名一个套件。前三个是扩任务空间后新增的难度套件（全新会话从这里起跑，
+ * 因为扩套件改变了指标分母，不能接在旧链后面比）；后三个是第一批已修好的套件。
+ * 旧套件保留在轮转里，用来验证「修好的东西不会因为后续改动而回退」。
  */
 const CODE_TASKS = [
+  `修复 eval/interval_merge/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="interval_merge"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
+  `修复 eval/parse_query/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="parse_query"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
+  `修复 eval/to_roman/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="to_roman"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
   `修复 eval/slugify/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
 步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
 → 调用 eval.run（suite="slugify"）确认全部通过。
