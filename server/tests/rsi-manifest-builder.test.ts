@@ -53,20 +53,29 @@ describe('manifest-builder', () => {
       expect(readings).toEqual([]);
     });
 
-    it('动态工具生命周期 → 目标指标（objective）', () => {
+    it('动态工具生命周期 → 护栏指标（不许为刷复用率省掉纪律）', () => {
       const readings = verdictsToReadings([
         { layer: 'L1', criterion: 'tool.discipline.lesson_pairing', status: 'pass', score: 0.6 },
       ]);
       expect(readings).toEqual([
-        { metric: 'tool_lifecycle_score', n: 0.6, basis: 1, direction: 'up', role: 'objective' },
+        { metric: 'tool_lifecycle_score', n: 0.6, basis: 1, direction: 'up', role: 'guard' },
+      ]);
+    });
+
+    it('沉淀复用率 → 目标指标（objective）', () => {
+      const readings = verdictsToReadings([
+        { layer: 'L1', criterion: 'tool.capability.reuse', status: 'pass', score: 0.5 },
+      ]);
+      expect(readings).toEqual([
+        { metric: 'capability_reuse_ratio', n: 0.5, basis: 1, direction: 'up', role: 'objective' },
       ]);
     });
 
     it('目标指标量不到 → 写 absent（保持指标集合稳定，防 R3 误判删指标）', () => {
-      const readings = verdictsToReadings([UNEXEC_V('tool.discipline.lesson_pairing')]);
+      const readings = verdictsToReadings([UNEXEC_V('tool.capability.reuse')]);
       expect(readings).toHaveLength(1);
       expect(readings[0]).toMatchObject({
-        metric: 'tool_lifecycle_score',
+        metric: 'capability_reuse_ratio',
         n: 0,
         basis: 5,
         role: 'objective',

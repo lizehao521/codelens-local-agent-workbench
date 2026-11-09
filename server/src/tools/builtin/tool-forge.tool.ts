@@ -155,8 +155,25 @@ function scopeDir(ctx: ToolExecutionContext): string {
   return path.join(ctx.sandboxRoot, 'tmp', 'tools', ctx.sessionId);
 }
 
+/**
+ * 会话级能力库 —— 沉淀下来的能力放这里。
+ *
+ * 与任务作用域的区别（这是「沉淀」能成立的关键）：
+ *   · tmp/tools/<session>/  是**义肢**：任务结束必须回收，否则孤儿闸判红；
+ *   · .codelens/tool-library/<session>/ 是**记忆**：recycle 时选择晋升才写入，
+ *     下一代可以直接 use，不必重建。读本 §6 第 6 步「把答案写回 π / 记忆」
+ *     在机器侧就落在这一层。
+ */
+function libraryDir(ctx: ToolExecutionContext): string {
+  return path.join(ctx.sandboxRoot, '.codelens', 'tool-library', ctx.sessionId);
+}
+
 function defPath(ctx: ToolExecutionContext, name: string): string {
   return path.join(scopeDir(ctx), `${name}.json`);
+}
+
+function libraryPath(ctx: ToolExecutionContext, name: string): string {
+  return path.join(libraryDir(ctx), `${name}.json`);
 }
 
 async function appendEvent(ctx: ToolExecutionContext, event: string, payload: Record<string, unknown>): Promise<void> {
@@ -208,7 +225,7 @@ export const toolForgeTool: ToolDefinition = {
       input: { type: 'string', description: 'use：传给宏的输入，替换步骤里的 {{input}}', maxLength: 4000 },
       answers: {
         type: 'object',
-        description: 'recycle：沉淀三问 {category, to_pi, no_tool_next}',
+        description: 'recycle：沉淀三问 {category, to_pi, no_tool_next, promote}；promote=true 会把定义晋升到会话能力库，下一代可直接复用',
       },
     },
     required: ['operation', 'name'],
@@ -286,14 +303,21 @@ export const toolForgeTool: ToolDefinition = {
     }
     const file = defPath(ctx, name);
     let spec: ForgeSpec;
+    let fromLibrary = false;
     try {
       spec = JSON.parse(await readFile(file, 'utf8')) as ForgeSpec;
     } catch {
-      return {
-        ok: false,
-        summary: `没有名为 ${name} 的动态工具（先 create）`,
-        error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `工具 ${name} 不存在` },
-      };
+      // 任务作用域没有 → 查会话能力库。命中即「复用沉淀下来的能力」，不必重建。
+      try {
+        spec = JSON.parse(await readFile(libraryPath(ctx, name), 'utf8')) as ForgeSpec;
+        fromLibrary = true;
+      } catch {
+        return {
+          ok: false,
+          summary: `没有名为 ${name} 的动态工具：任务作用域与能力库里都没有（先 create，或换一个已有的名字）`,
+          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `工具 ${name} 不存在` },
+        };
+      }
     }
 
     // ── use ───────────────────────────────────────────────────────────────
@@ -324,11 +348,11 @@ export const toolForgeTool: ToolDefinition = {
         prev = outcome.summary;
         summaries.push(`第 ${i + 1} 步：${outcome.summary}`);
       }
-      await appendEvent(ctx, 'tool_used', { name, steps: spec.steps.length });
+      await appendEvent(ctx, 'tool_used', { name, steps: spec.steps.length, from_library: fromLibrary });
       return {
         ok: true,
-        summary: `${name} 执行成功（${spec.steps.length} 步）：${prev}`.slice(0, 800),
-        data: { name, steps: summaries },
+        summary: `${name} 执行成功（${spec.steps.length} 步${fromLibrary ? '，复用能力库' : ''}）：${prev}`.slice(0, 800),
+        data: { name, steps: summaries, fromLibrary },
       };
     }
 
@@ -341,13 +365,28 @@ export const toolForgeTool: ToolDefinition = {
         error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: lesson.message },
       };
     }
+    // 晋升：把定义拷进会话能力库，下一代可以直接 use（不必重建）。
+    // 这是「沉淀」的机器侧落地 —— 义肢（任务作用域文件）仍然删除，能力留在库里。
+    const promote = args.answers && (args.answers as Record<string, unknown>).promote === true;
+    let promoted = false;
+    if (promote) {
+      try {
+        await mkdir(libraryDir(ctx), { recursive: true });
+        await writeFile(libraryPath(ctx, name), `${JSON.stringify(spec, null, 2)}\n`, 'utf8');
+        await appendEvent(ctx, 'tool_promoted', { name });
+        promoted = true;
+      } catch {
+        /* 晋升失败不阻断回收：义肢照删，沉淀少一步 */
+      }
+    }
+
     await rm(file, { force: true });
     await appendEvent(ctx, 'tool_removed', { name });
     await appendEvent(ctx, 'lesson', { name, text: lesson.lesson });
     return {
       ok: true,
-      summary: `已回收 ${name}，沉淀已记录：${lesson.lesson}`.slice(0, 900),
-      data: { name, lesson: lesson.lesson, removed: true },
+      summary: `已回收 ${name}${promoted ? '并晋升到能力库（下一代可直接复用）' : '（未晋升：下次还得重建）'}。沉淀：${lesson.lesson}`.slice(0, 900),
+      data: { name, lesson: lesson.lesson, removed: true, promoted },
     };
   },
 };

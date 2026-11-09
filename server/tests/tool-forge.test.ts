@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { composeLesson, toolForgeTool, validateForgeSpec } from '../src/tools/builtin/tool-forge.tool.js';
-import { dynamicToolLifecycleGate } from '../src/services/judge/tool-discipline.js';
+import { dynamicToolLifecycleGate, reuseStats } from '../src/services/judge/tool-discipline.js';
 import type { JudgeEvidence } from '../src/services/judge/types.js';
 
 const ctx = (sandboxRoot: string, sessionId: string) =>
@@ -129,6 +129,7 @@ describe('dynamicToolLifecycleGate', () => {
         description: '固定三行读取',
         why_not_existing: '现有工具无法一次调用完成固定的三行读取',
         steps: [{ tool: 'fs_read', args: { path: 'notes/x.md', lineStart: 1, lineEnd: 2 } }],
+        references: [{ title: 'ref', url: 'https://example.com/a' }],
       },
       c,
     );
@@ -139,11 +140,127 @@ describe('dynamicToolLifecycleGate', () => {
       {
         operation: 'recycle',
         name: 'probe_echo',
-        answers: { category: '固定三行读取', to_pi: '把窗口记进经验', no_tool_next: '直接传行号' },
+        answers: {
+          category: '固定三行读取',
+          to_pi: '把窗口记进经验',
+          no_tool_next: '直接传行号',
+          promote: true,
+        },
       },
       c,
     );
     expect(recycled.ok).toBe(true);
     expect(recycled.summary).toContain('【动态工具沉淀】');
+    expect(recycled.data?.promoted).toBe(true);
+  });
+
+  it('晋升后可在任务作用域为空时从能力库复用（不必重建）', async () => {
+    const c = ctx(root, sid);
+    mkdirSync(path.join(root, 'notes'), { recursive: true });
+    writeFileSync(path.join(root, 'notes', 'x.md'), '第一行\n第二行\n');
+    await toolForgeTool.handler(
+      {
+        operation: 'create',
+        name: 'lib_tool',
+        description: '读固定行',
+        why_not_existing: '现有工具无法一次调用固定行窗口',
+        steps: [{ tool: 'fs_read', args: { path: 'notes/x.md', lineStart: 1, lineEnd: 1 } }],
+        references: [{ title: 'r', url: 'https://example.com' }],
+      },
+      c,
+    );
+    await toolForgeTool.handler(
+      {
+        operation: 'recycle',
+        name: 'lib_tool',
+        answers: { category: '固定行读取', to_pi: '把窗口记进经验', no_tool_next: '直接传行号', promote: true },
+      },
+      c,
+    );
+    // 任务作用域已空（recycle 删掉了），但能力库还在 → use 命中库。
+    const reused = await toolForgeTool.handler({ operation: 'use', name: 'lib_tool' }, c);
+    expect(reused.data?.fromLibrary).toBe(true);
+  });
+});
+
+describe('reuseStats（能力沉淀复用率）', () => {
+  const ev = (ts: number, event: string, extra: Record<string, unknown> = {}) => ({ ts, event, ...extra }) as never;
+
+  it('没有 checkpoint → 统计全部历史事件', () => {
+    const s = reuseStats([ev(1, 'tool_created', { name: 'a' }), ev(2, 'tool_used', { name: 'b', from_library: true })]);
+    expect(s).toEqual({ rebuilt: 1, reused: 1, score: 0.5 });
+  });
+
+  it('有 checkpoint → 只统计这一代窗口（历史重建不再摊薄本代）', () => {
+    const s = reuseStats([
+      ev(1, 'tool_created', { name: 'a' }),
+      ev(2, 'tool_created', { name: 'b' }),
+      ev(3, 'generation_checkpoint'),
+      ev(4, 'tool_used', { name: 'c', from_library: true }),
+      ev(5, 'tool_used', { name: 'd', from_library: false }),
+    ]);
+    // 窗口内：复用 1 个不同工具、0 次重建 → 1.0；历史那 2 次重建被排除
+    expect(s).toEqual({ rebuilt: 0, reused: 1, score: 1 });
+  });
+
+  it('窗口内有重建也有复用 → 按不同工具数算比值', () => {
+    const s = reuseStats([
+      ev(1, 'generation_checkpoint'),
+      ev(2, 'tool_created', { name: 'a' }),
+      ev(3, 'tool_used', { name: 'b', from_library: true }),
+      ev(4, 'tool_used', { name: 'c', from_library: true }),
+    ]);
+    expect(s).toEqual({ rebuilt: 1, reused: 2, score: 0.667 });
+  });
+
+  it('同一工具反复调用只算一次（调用次数不是沉淀）', () => {
+    const s = reuseStats([
+      ev(1, 'generation_checkpoint'),
+      ev(2, 'tool_used', { name: 'a', from_library: true }),
+      ev(3, 'tool_used', { name: 'a', from_library: true }),
+      ev(4, 'tool_used', { name: 'a', from_library: true }),
+    ]);
+    expect(s).toEqual({ rebuilt: 0, reused: 1, score: 1 });
+  });
+
+  it('本代先建后用的同名工具 → 算重建，不算复用', () => {
+    const s = reuseStats([
+      ev(1, 'generation_checkpoint'),
+      ev(2, 'tool_created', { name: 'a' }),
+      ev(3, 'tool_used', { name: 'a', from_library: true }),
+    ]);
+    expect(s).toEqual({ rebuilt: 1, reused: 0, score: 0 });
+  });
+
+  it('窗口内没有创建也没有复用 → null（不可测，不是 0 分）', () => {
+    expect(reuseStats([ev(1, 'generation_checkpoint'), ev(2, 'tool_promoted', { name: 'a' })])).toBeNull();
+  });
+
+  it('三代模拟：冷启动 0 → 部分复用 0.5 → 全复用 1.0', () => {
+    // 第 1 代：任务造 read_notes_head；探针造 probe_echo（同代先建后用不算复用）
+    const g1 = reuseStats([
+      ev(1, 'tool_created', { name: 'read_notes_head' }),
+      ev(2, 'tool_used', { name: 'read_notes_head', from_library: false }),
+      ev(3, 'tool_promoted', { name: 'read_notes_head' }),
+      ev(4, 'tool_created', { name: 'probe_echo' }),
+      ev(5, 'tool_promoted', { name: 'probe_echo' }),
+      ev(6, 'tool_used', { name: 'probe_echo', from_library: true }),
+    ]);
+    // 第 2 代：任务又造了一个新能力，探针直接用库里的 probe_echo
+    const g2 = reuseStats([
+      ev(11, 'generation_checkpoint'),
+      ev(12, 'tool_created', { name: 'text_len' }),
+      ev(13, 'tool_promoted', { name: 'text_len' }),
+      ev(14, 'tool_used', { name: 'probe_echo', from_library: true }),
+      ev(15, 'tool_used', { name: 'probe_echo', from_library: true }),
+    ]);
+    // 第 3 代：不新建，全部来自能力库
+    const g3 = reuseStats([
+      ev(21, 'generation_checkpoint'),
+      ev(22, 'tool_used', { name: 'probe_echo', from_library: true }),
+      ev(23, 'tool_used', { name: 'text_len', from_library: true }),
+      ev(24, 'tool_used', { name: 'text_len', from_library: true }),
+    ]);
+    expect([g1?.score, g2?.score, g3?.score]).toEqual([0, 0.5, 1]);
   });
 });

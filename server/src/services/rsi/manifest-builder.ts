@@ -84,14 +84,22 @@ const METRIC_MAP: Record<
     role: 'guard',
   },
   // ── 目标（objective）：必须严格变好 ─────────────────────────────────────
-  // 「造能力」的生命周期完成度：创建含理由 → 定义合法 → 真实使用 → 回收 → 沉淀配对，
-  // 五个阶段各 0.2。它天然有上升空间（第一次往往只 create 就结束），
-  // 且每一阶段都能被 Judge 从事件文件机械核验，不含模型自评。
+  // 「沉淀复用率」：这一代的能力使用里，有多少来自能力库积累、多少来自重新造轮子。
+  // 第一代 0（全重建），之后每复用一次就抬高，从不复用则永远停在 0。
+  // 这是唯一能区分「会造」和「越用越省」的读数。
+  'tool.capability.reuse': {
+    metric: 'capability_reuse_ratio',
+    direction: 'up',
+    basis: BASIS.Measured,
+    role: 'objective',
+  },
+  // 造工具的生命周期完成度：作为护栏 —— 不许为了刷复用率而省掉纪律步骤
+  // （例如不建工具、只复用，把重建次数压到 0 却没真正完成任务）。
   'tool.discipline.lesson_pairing': {
     metric: 'tool_lifecycle_score',
     direction: 'up',
     basis: BASIS.Measured,
-    role: 'objective',
+    role: 'guard',
   },
   // 语义完成度（问答评分表）**不进 RSI readings**：
   // 已实测饱和（概念题首代 5/5），而且它的单代波动 ±0.05 属于噪声。
@@ -129,6 +137,7 @@ const SCORABLE_CRITERIA = new Set([
   'approval.friction',
   'tool.discipline.write_gate',
   'tool.discipline.lesson_pairing',
+  'tool.capability.reuse',
   'semantic.task_completion',
   'semantic.completion',
 ]);

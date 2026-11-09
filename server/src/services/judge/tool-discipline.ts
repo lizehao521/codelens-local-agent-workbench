@@ -142,12 +142,22 @@ export function orphanToolsGate(evidence: JudgeEvidence): CriterionVerdict {
 /** 动态工具生命周期事件（tool.forge 写入 tmp/tools/<sessionId>/events.jsonl）。 */
 interface DynamicToolEvent {
   ts: number;
-  event: 'tool_created' | 'tool_used' | 'tool_failed' | 'tool_removed' | 'lesson';
+  event:
+    | 'tool_created'
+    | 'tool_used'
+    | 'tool_failed'
+    | 'tool_removed'
+    | 'lesson'
+    | 'tool_promoted'
+    /** 代际边界：测量/干活开始前由编排层写入，复用率只统计本代窗口。 */
+    | 'generation_checkpoint';
   name?: string;
   why?: string;
   steps?: number;
   /** 创建时提交的外部依据条数（web.search 的检索结果）。 */
   references?: number;
+  /** 这次 use 是否命中的是会话能力库（而不是任务作用域里现造的工具）。 */
+  from_library?: boolean;
   text?: string;
   reason?: string;
 }
@@ -249,6 +259,84 @@ const STAGE_LABELS = [
 ];
 
 /**
+ * 闸 2b · 能力沉淀复用率
+ *
+ * 这是「沉淀有没有真的起作用」的读数：
+ *   复用率 = 从能力库复用次数 / (从能力库复用次数 + 现造工具次数)
+ *
+ * 为什么用比值而不是计数：计数会随轮次单调增长，永远"更好"，那是假进步；
+ * 比值回答的是「这一代的能力使用里，有多少来自积累、多少来自重新造轮子」。
+ *   第一代：0 复用 / 1 重建 = 0
+ *   第二代直接 use 库里的工具：0 重建、+1 复用 → 0.5
+ *   第三代继续复用：0 重建、+1 复用 → 0.67 …
+ * 每次真正复用都会把比值推高，从不复用则永远停在 0。
+ *
+ * 统计窗口 = 最近一条 generation_checkpoint 之后的事件。
+ * 不带窗口就是「历史均值」：前几代的重建次数会一直摊薄这一代的读数，
+ * 明明这代已经全部复用，比值也涨不动 —— 那量的是履历，不是这一代的能力。
+ *
+ * 没有任何事件 → unexec（没发生 ≠ 通过）。
+ * 只有重建、没有任何可复用对象 → 记 0（诚实：一次复用都没有）。
+ */
+export function capabilityReuseGate(evidence: JudgeEvidence): CriterionVerdict {
+  const events = readDynamicToolEvents(evidence.sessionId);
+  if (events === null) {
+    return {
+      layer: 'L1',
+      criterion: 'tool.capability.reuse',
+      status: 'unexec',
+      detail: '本任务没有动态工具事件，沉淀复用率不可测（C4）',
+    };
+  }
+  const stats = reuseStats(events);
+  if (stats === null) {
+    return {
+      layer: 'L1',
+      criterion: 'tool.capability.reuse',
+      status: 'unexec',
+      detail: '有事件但没有创建或复用记录，复用率不可测',
+    };
+  }
+  const { rebuilt, reused, score } = stats;
+  return {
+    layer: 'L1',
+    criterion: 'tool.capability.reuse',
+    status: score >= 0.5 ? 'pass' : 'fail',
+    score,
+    detail: `沉淀复用率 ${score}（复用 ${reused} 次 / 重建 ${rebuilt} 次）`,
+  };
+}
+
+/**
+ * 本代窗口内的复用统计（纯函数，单测钉死）。
+ *
+ * 口径按**不同工具数**而不是调用次数：
+ *   · 同一个工具被调 10 次，只说明它被用得多，不说明沉淀多；
+ *   · 同名工具本代建过 → 算重建，后面再从库里 use 也不算复用（那只是自己刚造的东西）。
+ * 这样读数回答的是「这一代需要的不同能力里，有多少是直接拿库里的、没重新造」。
+ *
+ * 返回 null 表示窗口内既没有创建也没有复用 —— 不可测，而不是 0 分。
+ */
+export function reuseStats(
+  events: DynamicToolEvent[],
+): { rebuilt: number; reused: number; score: number } | null {
+  const checkpoint = [...events].reverse().find((e) => e.event === 'generation_checkpoint');
+  const window = checkpoint ? events.filter((e) => e.ts >= checkpoint.ts) : events;
+  const built = new Set(
+    window.filter((e) => e.event === 'tool_created' && e.name).map((e) => e.name as string),
+  );
+  const fromLibrary = new Set(
+    window
+      .filter((e) => e.event === 'tool_used' && e.from_library === true && e.name)
+      .map((e) => e.name as string),
+  );
+  const reused = [...fromLibrary].filter((name) => !built.has(name)).length;
+  if (built.size + reused === 0) return null;
+  const score = Math.round((reused / (built.size + reused)) * 1000) / 1000;
+  return { rebuilt: built.size, reused, score };
+}
+
+/**
  * 闸 3 · 写闸复用
  *   每个进主树的工具必须被至少一个测试引用（未过自证不许进主树）。
  *   这条闸在静态时代**每次运行都能判定**，是三闸里最不会永真的一条。
@@ -294,6 +382,7 @@ export function runToolDisciplineGates(evidence: JudgeEvidence): CriterionVerdic
   const gates: Array<() => CriterionVerdict> = [
     () => orphanToolsGate(evidence),
     () => dynamicToolLifecycleGate(evidence),
+    () => capabilityReuseGate(evidence),
     () => writeGateReuse(),
   ];
   for (const gate of gates) {

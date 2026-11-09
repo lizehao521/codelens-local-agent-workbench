@@ -13,7 +13,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 
@@ -184,24 +184,32 @@ const PROBE_SAMPLES = 3;
  */
 const FORGE_TASKS = [
   `帮你自己的工具库补一个能力。先想清楚缺什么，再**联网检索**同类做法，最后才动手造。
-步骤：用 web.search 查「可复用文本处理工具设计 最佳实践」→ 用 tool.forge 创建工具（why_not_existing 说明现有工具为何不够，references 填检索到的结果）→ use 真实调用一次 → recycle 回收并回答沉淀三问。
-工具名用 read_notes_head，作用是把「读取 notes/强化Agent.txt 前 40 行」固化成零参数宏。`,
+步骤：用 web.search 查「可复用文本处理工具设计 最佳实践」（**只搜 1 次**，拿到结果就进入下一步，不要反复检索）
+→ 用 tool.forge 创建工具（why_not_existing 说明现有工具为何不够，references 填检索到的结果）
+→ use 真实调用一次 → recycle 回收并回答沉淀三问。
+工具名用 read_notes_head，作用是把「读取 notes/强化Agent.txt 前 40 行」固化成零参数宏。
+回收时 answers 必须带 promote=true —— 把能力晋升到会话能力库，下一代才不用重建。`,
   `再补一个能力：把「统计一段文本长度并判断是否为空」封装成工具。
 必须先 web.search 检索「文本长度统计 空判断 工具封装」并挑 1-2 条作为 references，
-再用 tool.forge 创建（name=text_len），use 一次，recycle 并答沉淀三问。
+再用 tool.forge 创建（name=text_len），use 一次，recycle 并答沉淀三问，同样带 promote=true。
 不要跳过检索这一步。`,
-  `把「判断 notes/强化Agent.txt 某一行是否含关键词」封装成工具，名字用 notes_has。
-顺序固定：web.search 检索（拿 references）→ create → use（传 input 关键词）→ recycle（答三问）。
-回收后不要把工具文件留在沙箱里。`,
+  `这一轮**只做复用，不新建任何工具**：确认沉淀下来的能力真的还能用。
+1) tool.forge、operation=use、name=probe_echo（零参数，已晋升到能力库）——读出固定三行；
+2) 如果能力库里还有 text_len，再 use 一次（input 填第 1 步读到的内容）。
+禁止本轮 create。每一步都真的调用工具，回答里给出执行结果摘要；如果某个工具不在库里，直接说明「未沉淀」并跳过，也不要重建。`,
 ];
 
 /** 造工具族的测量探针：固定任务，量的是「这一代能不能按纪律造出并回收工具」。 */
-const FORGE_PROBE = `请按工具纪律造一个工具并完成整个生命周期，不要只创建就停：
-1) 先用 web.search 检索「宏工具 组合式工具 设计」，把其中 1 条结果的 title 与 url 记为 references。
-2) 用 tool.forge、operation=create 创建 probe_echo 工具：steps 只放一步，tool 用 "fs_read"，args 为 {"path":"notes/强化Agent.txt","lineStart":1,"lineEnd":3}；why_not_existing 写「现有工具无法一次调用完成固定的三行读取」；references 填上一步的结果。
-3) operation=use 真实执行它一次。
-4) operation=recycle 回收，answers 回答三问：category=固定三行读取，to_pi=把常用读取窗口记进经验，no_tool_next=下次直接用 fs.read 传行号即可。
-每步都要真的调用工具，不要在回答里假装做过。`;
+const FORGE_PROBE = `请按下面的顺序执行，每步都要真的调用工具，不要在回答里假装做过：
+1) 先尝试直接复用：调用 tool.forge、operation=use、name=probe_echo。
+2) 如果上面返回「不存在」（说明能力库还没有这个工具），就新建它：
+   a. 先 web.search 检索「宏工具 组合式工具 设计」，取 1 条结果的 title 与 url 作为 references；
+   b. tool.forge operation=create：name=probe_echo，steps 一步（tool="fs_read"，args={"path":"notes/强化Agent.txt","lineStart":1,"lineEnd":3}），
+      why_not_existing 写「现有工具无法一次调用完成固定的三行读取」，references 填 a 的结果；
+   c. operation=use 执行一次；
+   d. operation=recycle 回收，answers 里回答 category="固定三行读取"、to_pi="把常用读取窗口记进经验"、no_tool_next="下次直接用 fs.read 传行号即可"，
+      并且必须带 promote=true —— 把能力晋升到会话能力库，下一代才不用重建。
+3) 如果第 1 步就成功了，说明复用到了沉淀下来的能力，直接结束，不要再重建一次。`;
 
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
@@ -260,7 +268,10 @@ async function postStream(body: Record<string, unknown>): Promise<string> {
       },
     );
     req.on('error', reject);
-    req.setTimeout(180_000, () => { req.destroy(new Error('timeout')); });
+    // 网关排队时单次 4-5 轮工具调用可以轻松超过 180s。
+    // 之前设 180s 会**静默超时后重试**：第 1 次跑了一半被掐断，第 2 次从头再来，
+    // 于是「干活轮」看起来成功、其实一个工具都没造出来（事件为空）。
+    req.setTimeout(600_000, () => { req.destroy(new Error('timeout')); });
     req.write(data);
     req.end();
   });
@@ -464,6 +475,19 @@ async function main() {
       /* 目录不存在 = 本来就没工具 */
     }
   };
+  /**
+   * 代际边界：复用率闸只统计这条 checkpoint 之后的事件。
+   * 否则前几代的重建次数会一直摊薄本代读数 —— 那量的是履历，不是这一代的能力。
+   */
+  const markGeneration = (sid: string): void => {
+    const dir = path.join(ROOT, 'workspace', 'tmp', 'tools', sid);
+    try {
+      mkdirSync(dir, { recursive: true });
+      appendFileSync(path.join(dir, 'events.jsonl'), `${JSON.stringify({ ts: Date.now(), event: 'generation_checkpoint' })}\n`);
+    } catch {
+      /* 写不进 checkpoint 就退化为历史窗口，不影响判定 */
+    }
+  };
   if (selfMode) await enableHeadlessWrites();
 
   // 开跑前先做一次基线验收：把「当前就红的测试」作为第 1 轮任务，
@@ -511,6 +535,10 @@ ${feedback}`
 
     console.log(`\n── ROUND ${i + 1}/${target} ──`);
     console.log(`▶ ${task.slice(0, 80)}…`);
+
+    // 代际边界。第 1 轮 sessionId 还没拿到，不写 checkpoint；
+    // 此时窗口 = 全部事件，正好就是第一代自己产生的那些。
+    if (forgeMode && sessionId) markGeneration(sessionId);
 
     // ── ① 干活轮：只学习，不计入 RSI 测量 ────────────────────────────────
     let sse: string;
