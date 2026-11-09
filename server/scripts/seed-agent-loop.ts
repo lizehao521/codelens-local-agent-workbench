@@ -133,11 +133,33 @@ const ctx = { sandboxRoot: process.cwd() } as any;
 源文件：src/tools/builtin/fs-write.tool.ts、fs-read.tool.ts、fs-list.tool.ts、src/types/tool.ts
 目标文件：tests/behavior-fs.test.ts
 内容要求：在 os.tmpdir() 建临时目录，用 handler 完成 create → read 回读 → list 列到 → overwrite 覆盖，逐步断言内容与条目；最后再断言读取不存在文件的报错路径。`,
-  `为网络与命令策略写行为断言。${BEHAVIOR_RULES}
-源文件：src/tools/builtin/http-request.tool.ts、sys-exec.policy.ts、src/types/tool.ts
-目标文件：tests/behavior-io.test.ts
-内容要求：http.request 至少断言一条**失败/拒绝路径**（非法协议、内网地址或缺失 URL 必须被拒），不要真发外网请求；sys.exec 断言白名单策略对 "git"/"node" 放行、对 "rm -rf /" 拒绝。`,
+  `用 fs.write、operation=create 新建 tests/behavior-io.test.ts。不要读任何文件，按下面契约直接写。
+
+import { describe, it, expect } from "vitest";
+import { httpRequestTool } from "../src/tools/builtin/http-request.tool.js";
+import { evaluateExecCommand, execRequiresTwoStep } from "../src/tools/builtin/sys-exec.policy.js";
+
+const ctx = { sandboxRoot: process.cwd() } as any;
+
+契约（已核实，直接用）：
+1) httpRequestTool.handler({ url: "http://example.com", method: "FOO" }, ctx)
+   → ok=false，error.code === "TOOL_INVALID_ARGS"（非法 method，不发真实请求）
+2) evaluateExecCommand("rm", ["-rf", "/"])
+   → ok=false，code === "SECURITY_DENIED"
+3) evaluateExecCommand("git", ["status"], ["git", "node"])
+   → ok=true
+4) execRequiresTwoStep("node", []) === true；execRequiresTwoStep("git", ["status"]) === false
+
+写 4 个 it()，逐个断言上面这些字段。写完回答 done。`,
 ];
+
+/**
+ * 固定测量探针 —— 每一代都用**同一个**任务量一次。
+ *
+ * 它产生的读数才是进 RSI 的唯一来源；干活轮（rsiMeasure=false）只学习不进对账。
+ * 这样做的好处：代际读数不再被"这一轮干了多大的活"污染，可比性由任务固定保证。
+ */
+const MEASURE_PROBE = `读 notes/强化Agent.txt 的前 5 行，然后用一句话说明它记录了什么。不要写文件，不要列目录。`;
 
 const SELF_TASKS = [
   // ── 能力自省 + 文档 ──────────────────────────────────────────────────────
@@ -342,13 +364,39 @@ async function main() {
   const target = Math.max(2, parseInt(process.argv[2] || '12', 10));
   const depthMode = process.argv.includes('--depth');
   const selfMode = process.argv.includes('--self') || depthMode;
-  const tasks = depthMode ? BEHAVIOR_TASKS : selfMode ? SELF_TASKS : TASKS;
+  // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
+  const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
+  const onlyIdx = onlyArg ? Number(onlyArg.split('=')[1]) : null;
+  const tasks = depthMode
+    ? onlyIdx !== null
+      ? [BEHAVIOR_TASKS[onlyIdx % BEHAVIOR_TASKS.length]!]
+      : BEHAVIOR_TASKS
+    : selfMode
+      ? SELF_TASKS
+      : TASKS;
   const modeLabel = depthMode ? '深度自证：行为断言' : selfMode ? '自改进：补测试' : '演示任务';
   console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
 
-  let sessionId: string | null = null;
+  // --session=<id>：接着已有会话继续推代（不传则新建会话，代际从 g1 起）
+  const sessionArg = process.argv.find((a) => a.startsWith('--session='));
+  let sessionId: string | null = sessionArg ? sessionArg.split('=')[1] || null : null;
   const starts: number[] = [];
   const db = createDb(DB_PATH);
+  /**
+   * 清空会话脚手架（消息 + 工具调用），只保留 π（policy_versions / injections）。
+   *
+   * 测量轮必须在干净上下文里跑：否则「干活轮」的历史会作为 prompt 一起计入用量，
+   * 而每轮干活量不同 → 代际 budget_efficiency 不可比。同一个探针、同样的空上下文，
+   * 才让读数只反映 π 的变化。
+   */
+  const clearHistory = (sid: string): void => {
+    try {
+      db.run('DELETE FROM tool_calls WHERE session_id = ?', [sid]);
+      db.run('DELETE FROM messages WHERE session_id = ?', [sid]);
+    } catch (e) {
+      console.warn(`  ⚠ 清理历史失败（继续）: ${(e as Error).message}`);
+    }
+  };
   /** 上一轮测试失败的摘要 —— 拼到下一轮任务前面，形成「修好再往下」的闭环。 */
   let feedback = '';
 
@@ -400,30 +448,39 @@ ${feedback}`
     console.log(`\n── ROUND ${i + 1}/${target} ──`);
     console.log(`▶ ${task.slice(0, 80)}…`);
 
+    // ── ① 干活轮：只学习，不计入 RSI 测量 ────────────────────────────────
     let sse: string;
     try {
-      sse = await postStreamWithRetry({ ...baseArgs, message: task, ...(sessionId ? { sessionId } : {}) });
+      sse = await postStreamWithRetry({
+        ...baseArgs,
+        message: task,
+        rsiMeasure: false,
+        ...(sessionId ? { sessionId } : {}),
+      });
     } catch (e: any) {
-      console.error(`  ❌ stream failed: ${e?.message ?? e}`);
+      console.error(`  ❌ 干活轮失败: ${e?.message ?? e}`);
       continue;
     }
     if (!sessionId) sessionId = getSessionId(sse);
+    console.log(`  ✅ 干活轮 ${((Date.now() - start) / 1000).toFixed(1)}s  session=${sessionId}`);
 
-    const dur = ((Date.now() - start) / 1000).toFixed(1);
-    // 快速摘要：只看 event 行
-    const events: string[] = [];
-    const lines = sse.split('\n');
-    for (let j = 0; j < lines.length; j++) {
-      const l = lines[j];
-      if (l.startsWith('event:')) {
-        const ev = l.slice(6).trim();
-        if (['run:start', 'run:done', 'error', 'stage'].includes(ev) || ev.startsWith('stage')) {
-          events.push(ev);
-        }
-      }
+    // ── ② 测量轮：固定探针，唯一进 RSI 的读数来源 ──────────────────────────
+    // 固定任务 → 代际读数可比；干活轮不进对账 → 开发噪声不会污染结论。
+    // 这就是「隐藏评测分流」：改目标的过程与量结果的过程分开。
+    // 先清上下文：探针必须在空上下文里量，否则上一段干活历史会混进用量读数。
+    if (sessionId) clearHistory(sessionId);
+    const probeStart = Date.now();
+    try {
+      await postStreamWithRetry({
+        ...baseArgs,
+        message: MEASURE_PROBE,
+        rsiMeasure: true,
+        ...(sessionId ? { sessionId } : {}),
+      });
+      console.log(`  🔬 测量轮 ${((Date.now() - probeStart) / 1000).toFixed(1)}s`);
+    } catch (e: any) {
+      console.error(`  ❌ 测量轮失败: ${e?.message ?? e}`);
     }
-    const lastStages = events.filter((e) => e !== 'run:start').slice(-6);
-    console.log(`  ✅ ${dur}s  stages=[${lastStages.join('|')}]  session=${sessionId}`);
 
     // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），
     // 同时给上游留出限流窗口：连续 12 轮密集请求很容易触发网关熔断。
@@ -481,21 +538,10 @@ ${feedback}`
     }
 
     // ── 隔离测量上下文 ────────────────────────────────────────────────────────
-    // 每一代都要在**干净的上下文**里评测，否则会话历史逐轮累积，
-    // budget_efficiency（用量/预算）会单调上升 —— 数学上永远不可能"严格变好"，
-    // krsi 只能一直判 not_improved。这与「用隐藏集独立测量」是同一条纪律：
-    // 上一代的记忆不该成为下一代测量结果的一部分。
-    //
+    // 清掉本轮残留（探针轮的消息），让下一轮干活从空上下文开始。
     // RSI 真正的学习状态存在 policy_versions / policy_injections 里（会跨轮注入），
     // 聊天消息只是这一次运行的脚手架，清掉不影响闭环。
-    if (sessionId) {
-      try {
-        db.run('DELETE FROM tool_calls WHERE session_id = ?', [sessionId]);
-        db.run('DELETE FROM messages WHERE session_id = ?', [sessionId]);
-      } catch (e) {
-        console.warn(`  ⚠ 清理历史失败（继续）: ${(e as Error).message}`);
-      }
-    }
+    if (sessionId) clearHistory(sessionId);
   }
   db.close();
 

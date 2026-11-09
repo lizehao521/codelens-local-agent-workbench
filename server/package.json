@@ -11,7 +11,8 @@
     "dev": "tsx watch src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:krsi",
+    "test:krsi": "go build -C krsi -o /tmp/krsi . && node --import tsx scripts/krsi-conformance.ts",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-real.mjs"
   },

@@ -18,6 +18,12 @@ export const AgentRequestSchema = z.object({
   message: z.string().min(1).max(32000),
   tools: z.array(z.string().min(1).max(64)).max(64).optional(),
   channelMode: z.enum(['auto', 'native', 'react']).default('auto'),
+  /**
+   * 是否为「测量轮」。默认 true（历史行为）。
+   * 置 false 时本 run 照常判决/学习，但**不**进入 RSI 跨代对账 ——
+   * 用于把「Agent 干活」与「固定探针测量」分开，避免开发轮的噪声污染代际读数。
+   */
+  rsiMeasure: z.boolean().default(true),
   maxIterations: z.number().int().min(5).max(30).default(12),
   temperature: z.number().min(0).max(2).default(0.3),
   maxTokens: z.number().int().min(64).max(8192).default(2048),

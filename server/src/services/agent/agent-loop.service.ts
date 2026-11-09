@@ -73,6 +73,8 @@ export interface AgentRunRequest {
   taskKind?: TaskKind;
   tools?: string[];
   channelMode: 'auto' | 'native' | 'react';
+  /** 是否计入 RSI 测量（缺省 true）。false = 只干活/学习，不参与跨代对账。 */
+  rsiMeasure?: boolean;
   maxIterations: number;
   temperature: number;
   maxTokens: number;
@@ -274,6 +276,11 @@ export class AgentLoopService {
    * 且 run 的所有出口都经过 finally，清理是有保证的。
    */
   private readonly activeTraces = new Map<string, string>();
+  /**
+   * 本次 run 是否**不**计入 RSI 测量（rsiMeasure=false 的"干活轮"）。
+   * 按 sessionId 记录，finish 时清除 —— 干活轮照常判决与学习，只是不进跨代对账。
+   */
+  private readonly nonMeasureSessions = new Set<string>();
   /** 汇报卡每个 run 只发一次（finish 可能被多个出口调用）。 */
   private readonly reportedRuns = new Set<string>();
 
@@ -351,6 +358,10 @@ export class AgentLoopService {
       model: req.model,
       channel: req.channelMode,
     });
+    // 测量分流：rsiMeasure=false 的 run 照常判决/学习，只是不进 RSI 跨代对账。
+    // 用 sessionId 记录，与 activeTraces 同口径，避免并发 run 互相覆盖。
+    if (req.rsiMeasure === false) this.nonMeasureSessions.add(session.id);
+    else this.nonMeasureSessions.delete(session.id);
     this.deps.runState?.stage(runId, 'connecting');
 
     // ── 运行轨迹（可观测面）──────────────────────────────────────────────────
@@ -1256,6 +1267,8 @@ export class AgentLoopService {
 
     // 强化内核闭环：先由 Judge 产出结构化判决 r，再由 Update 消费 r 生成 π 增量。
     this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0);
+    // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
+    this.nonMeasureSessions.delete(session.id);
     this.deps.abortRegistry.release(session.id);
     // P1-2 watchdog: no approval park may outlive its task. Anything still
     // parked at this point is stale (its loop is gone) — settle it so no
@@ -1328,7 +1341,11 @@ export class AgentLoopService {
         // 双轨并存：不阻断现有闭环，只在 Update 跑完之后再补一次跨代对比。
         // RSI bridge 自己 catch 所有异常返回 error/skipped；这里再套一层 try，
         // 确保 bridge 故障不会把 Judge/Update 这步也拖下水。
-        void this.runRsiBridge(session.id, run, traceId ?? null);
+        // 干活轮（rsiMeasure=false）只学习、不测量：跳过跨代对账，
+        // 让固定探针轮成为唯一的代际读数来源（避免开发噪声进 RSI）。
+        if (!this.nonMeasureSessions.has(session.id)) {
+          void this.runRsiBridge(session.id, run, traceId ?? null);
+        }
       } catch (err) {
         // 判决与更新是旁路能力：它失败不应连累任务收尾与用户可见结果。
         // 但绝不静默 —— 留下可诊断的告警，且自证面板的 totalRuns 能看出它没在跑。
