@@ -148,7 +148,11 @@ export function orphanToolsGate(evidence: JudgeEvidence): CriterionVerdict {
  */
 export function lessonPairingGate(evidence: JudgeEvidence): CriterionVerdict {
   // 检查是否有动态工具写入（tripwire：test 文件闸 3 同口径）
-  const srcFiles = collectTsFiles(srcDir);
+  //
+  // 必须排除本文件自己：它的注释里就写着 `tmp/tools` / `tool_created` /
+  // `tool_removed` 这些关键词，扫描时会把闸的说明当成"系统真的引入了动态工具"，
+  // 于是这条闸永远为真 —— 正是 C3 警告的「永真闸」。
+  const srcFiles = collectTsFiles(srcDir).filter((f) => !f.endsWith('tool-discipline.ts'));
   const dynamicWrites = srcFiles.filter((f) => {
     try {
       return readFileSync(f, 'utf8').includes('tmp/tools');
