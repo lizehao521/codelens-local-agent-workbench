@@ -136,8 +136,8 @@ anchor_hash   = sha256(JSON.stringify({
 - 链式性质：改动任意一代的 manifest，`manifest_hash` 变化 → `anchor_hash` 及其后续 `prev_anchor_hash` 全部对不上，篡改可检测。
 - `seed-agent-loop.ts` 每轮结束打印 `chain=✓/✗`，校验相邻 `prev_anchor_hash` 是否衔接。
 
-已知限制：哈希输入是 `JSON.stringify(manifest)`（依赖键序），尚未做 canonical JSON 规范化；
-也还没有独立的离线校验 CLI，目前的校验只在 harness 里做相邻衔接检查。
+已知限制：哈希输入是 `JSON.stringify(manifest)`（依赖键序），尚未做 canonical JSON 规范化。
+离线校验已经补上，见 §6.1。
 
 ---
 
@@ -169,6 +169,31 @@ evidence_preimage_n = canonical_json({
 
 复算流程：从账本取 `prev_manifest` / `next_manifest` / `report_raw` → 重建原像 → 重算 `H` →
 与账本 `evidence_hash` 比对 → 再沿 `prev_anchor` 回溯到 `anchor_0`，全链通过才算证据可信。
+
+### 6.1 离线校验（已落地）
+
+```
+npm run rsi:verify -- <sessionId> [--dir data/rsi] [--db data/codelens.db]
+```
+
+不启 server、不调 krsi，直接按磁盘账本复算四层，任一层对不上就打印 `code` 与代数并以 1 退出：
+
+| 层 | 复算 | 失败 code |
+|---|---|---|
+| 证据文件 | 文件字节 sha256 / 字节数 vs `manifest.artifacts[]` | `evidence_missing` / `evidence_hash_mismatch` / `evidence_bytes_mismatch` |
+| manifest | `sha256(落库的 next_manifest_json)` vs `anchor.manifest_hash` | `manifest_hash_mismatch` |
+| anchor 行 | 用行内字段重算 `anchor_hash` | `anchor_hash_mismatch` |
+| 链 | `prev_anchor_hash` 必须等于上一行 `anchor_hash`，代数严格递增 | `chain_break` / `generation_not_increasing` |
+
+另外两种「不是篡改、但也不能假装通过」的情况：账本为空 → `ledger_empty`；
+库里没有该代 `next_manifest_json`（历史遗留代）→ `manifest_unavailable`。
+
+实现：`src/services/rsi/ledger-verify.ts`（纯函数，可单测）、`scripts/verify-rsi-ledger.ts`（CLI）。
+实测：对 `data/rsi/c23c9a03-…-anchors.jsonl` 全链通过；把副本里的 `verdict` 改成 `improved`
+后两行都报 `anchor_hash_mismatch` 并以 1 退出。
+
+仍未做：canonical JSON 规范化。一旦改哈希口径，历史账本会整条失效，需要给 anchor 行加
+`hash_version` 再按版本分支复算 —— 这属于要单独决策的改动，不在本次范围内。
 
 ---
 
