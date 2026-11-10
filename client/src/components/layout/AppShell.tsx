@@ -14,7 +14,11 @@ import { MobileTabBar } from './MobileTabBar';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
 import { getTrialStatus, type TrialStatus } from '../../services/api';
+import { fetchRelayLocalConfig } from '../../lib/relay';
 import { cn } from '../../lib/cn';
+
+/** 本地中转默认配置只自动套用一次，避免覆盖用户后续手动清空/修改的 Key。 */
+const RELAY_BOOTSTRAP_KEY = 'codeagent.relay.bootstrap.v1';
 
 export function AppShell() {
   const hasApiKey = useSettingsStore((s) => s.settings.apiKey.trim().length > 0);
@@ -45,6 +49,44 @@ export function AppShell() {
       void chatScrollNonce;
     }
   }, [mobileTab, chatScrollNonce]);
+
+  // 首次启动：从 .env.local（经 dev/preview 中间件）载入模型中转默认配置。
+  // 静态部署下接口不存在 → 保持默认值，由设置页手动填写。
+  useEffect(() => {
+    let alive = true;
+    try {
+      if (localStorage.getItem(RELAY_BOOTSTRAP_KEY)) return;
+    } catch {
+      return;
+    }
+    void fetchRelayLocalConfig()
+      .then((cfg) => {
+        if (!alive || !cfg) return;
+        const store = useSettingsStore.getState();
+        // 用户已经自带 Key：不覆盖其配置，只记录已处理。
+        if (store.settings.apiKey.trim()) {
+          localStorage.setItem(RELAY_BOOTSTRAP_KEY, String(Date.now()));
+          return;
+        }
+        store.update({
+          provider: 'custom',
+          customBaseUrl: cfg.baseUrl,
+          model: cfg.model,
+          ...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
+        });
+        localStorage.setItem(RELAY_BOOTSTRAP_KEY, String(Date.now()));
+        useUiStore.getState().pushToast({
+          message: `已载入本地中转配置（${cfg.model}）`,
+          variant: 'success',
+        });
+      })
+      .catch(() => {
+        // 本地配置不可用不是致命错误：留在设置页手动配置即可，不打扰用户。
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg-primary text-text-primary">

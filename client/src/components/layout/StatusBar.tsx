@@ -16,14 +16,20 @@ export function StatusBar() {
   const requestChatScroll = useUiStore((s) => s.requestChatScroll);
   const [connected, setConnected] = useState<boolean | null>(null);
 
-  // 挂载时做一次真实健康检查（spec §5 /api/health，含 db/mcp/sandbox）
+  // 挂载时做真实健康检查（spec §5 /api/health，含 db/mcp/sandbox）；
+  // 周期复检：后端比前端晚启动、或中途重启时，状态点能自行恢复而不是一直停在「未连接」。
   useEffect(() => {
     let cancelled = false;
-    void getHealth()
-      .then((ok) => !cancelled && setConnected(ok.status === 'ok' && ok.db.ok))
-      .catch(() => !cancelled && setConnected(false));
+    const check = (): void => {
+      void getHealth()
+        .then((ok) => !cancelled && setConnected(ok.status === 'ok' && ok.db.ok))
+        .catch(() => !cancelled && setConnected(false));
+    };
+    check();
+    const timer = setInterval(check, 30_000);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, []);
 

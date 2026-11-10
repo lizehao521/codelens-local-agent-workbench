@@ -65,7 +65,14 @@ function LimitItem({ label, value, unit }: { label: string; value: number | null
   );
 }
 
-export function ModelCapabilityPanel({ locked = false }: { locked?: boolean } = {}) {
+export function ModelCapabilityPanel({
+  locked = false,
+  customModelIds,
+}: {
+  locked?: boolean;
+  /** custom Provider 的模型候选（如中转服务实时列表）；输入框仍可自由填写 */
+  customModelIds?: string[];
+} = {}) {
   const settings = useSettingsStore((s) => s.settings);
   const providers = useSettingsStore((s) => s.providers);
   const providersLoading = useSettingsStore((s) => s.providersLoading);
@@ -194,17 +201,27 @@ export function ModelCapabilityPanel({ locked = false }: { locked?: boolean } = 
             disabled={locked}
           />
         ) : (
-          <input
-            value={settings.model}
-            onChange={(e) => update({ model: e.target.value })}
-            disabled={locked}
-            placeholder={
-              syncedMatch
-                ? `手填模型 ID（或点上方「切换」改用 ${syncedMatch.models.length} 个已同步模型）`
-                : '填写 OpenAI 兼容模型 ID（如 deepseek-v4-pro）'
-            }
-            className="w-full rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-base text-text-primary focus:border-accent"
-          />
+          <>
+            <input
+              list={customModelIds && customModelIds.length > 0 ? 'relay-model-candidates' : undefined}
+              value={settings.model}
+              onChange={(e) => update({ model: e.target.value })}
+              disabled={locked}
+              placeholder={
+                syncedMatch
+                  ? `手填模型 ID（或点上方「切换」改用 ${syncedMatch.models.length} 个已同步模型）`
+                  : '填写 OpenAI 兼容模型 ID（如 deepseek-v4-pro）'
+              }
+              className="w-full rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-base text-text-primary focus:border-accent"
+            />
+            {customModelIds && customModelIds.length > 0 ? (
+              <datalist id="relay-model-candidates">
+                {customModelIds.map((id) => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+            ) : null}
+          </>
         )}
       </Field>
 

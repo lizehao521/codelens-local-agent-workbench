@@ -101,6 +101,12 @@ function AssistantSegments({
   // 首 token 之前的空窗：推理模型实测可达十几秒，没有任何中间态时界面看起来像卡死。
   const hasAnswerText = groups.some((g) => g.kind === 'text' && g.text.trim());
   const waiting = streaming && !message.reasoningText && groups.length === 0;
+  // 失败/中止且一个字都没产出：不留一个只有头像的空白气泡，改为明确状态提示。
+  const failedEmpty =
+    !streaming &&
+    groups.length === 0 &&
+    !message.reasoningText &&
+    (message.status === 'error' || message.status === 'aborted');
   // 正文开始输出后，推理块不再算「思考中」，折叠收起把版面让给答案。
   const reasoningActive = streaming && !hasAnswerText;
 
@@ -162,6 +168,11 @@ function AssistantSegments({
       {failures > 0 && (
         <p className="text-xs text-text-tertiary">
           {failures} 次调用未成功（被拒绝 / 跳过的调用不计入）
+        </p>
+      )}
+      {failedEmpty && (
+        <p className="text-xs text-text-tertiary">
+          {message.status === 'aborted' ? '已中止，本轮未生成回复。' : '本轮未生成回复，请根据错误提示重试。'}
         </p>
       )}
       {streaming && <StreamingCursor />}

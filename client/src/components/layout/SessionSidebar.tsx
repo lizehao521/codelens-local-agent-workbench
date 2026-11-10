@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import { KeyRound, MessageSquarePlus, RefreshCw, Search } from 'lucide-react';
+import type { ServerSession } from '../../types';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
 import { useToolCallStore } from '../../stores/toolCallStore';
 import { useApprovalStore } from '../../stores/approvalStore';
@@ -24,6 +25,7 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
   const sessions = useServerSessionStore((s) => s.sessions);
   const activeSessionId = useServerSessionStore((s) => s.activeSessionId);
   const listLoading = useServerSessionStore((s) => s.listLoading);
+  const listError = useServerSessionStore((s) => s.lastError);
   const deviceToken = useServerSessionStore((s) => s.deviceToken);
   const loadList = useServerSessionStore((s) => s.loadList);
   const selectSession = useServerSessionStore((s) => s.selectSession);
@@ -39,6 +41,8 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
   const [recoverOpen, setRecoverOpen] = useState(false);
   const [recoverInput, setRecoverInput] = useState('');
   const [recoverError, setRecoverError] = useState<string | null>(null);
+  /** 待确认删除的会话（删除不可撤销，二次确认后才真正发请求） */
+  const [pendingDelete, setPendingDelete] = useState<ServerSession | null>(null);
 
   const sorted = useMemo(() => [...sessions].sort((a, b) => b.updatedAt - a.updatedAt), [sessions]);
 
@@ -76,6 +80,10 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
   };
 
   const handleDelete = async (id: string): Promise<void> => {
+    // 删除正在运行的会话前先中止本地流，避免后续事件写入已删除会话
+    if (id === activeSessionId && abortActiveRun()) {
+      pushToast({ message: '已停止当前生成', variant: 'info' });
+    }
     try {
       await removeOnServer(id);
       resetToolCalls();
@@ -161,12 +169,29 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {listError && (
+          <div role="alert" className="mx-3 mb-2 rounded-md border border-danger bg-danger-subtle px-2.5 py-2">
+            <p className="break-words text-xs text-danger">会话加载失败：{listError}</p>
+            <button
+              type="button"
+              onClick={() => void loadList()}
+              disabled={listLoading}
+              className="mt-1.5 inline-flex items-center gap-1 rounded border border-danger px-2 py-0.5 text-xs text-danger transition-colors duration-150 hover:bg-danger hover:text-bg-primary disabled:opacity-50"
+            >
+              <RefreshCw size={11} className={cn(listLoading && 'animate-spin')} />
+              {listLoading ? '重试中…' : '重试'}
+            </button>
+          </div>
+        )}
+
         {listLoading && sessions.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-text-secondary">加载中…</p>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-8 text-center">
             {sessions.length === 0 ? (
-              <p className="text-sm text-text-secondary">还没有会话，点击上方「新建会话」开始。</p>
+              <p className="text-sm text-text-secondary">
+                {listError ? '暂时无法加载会话列表，请重试。' : '还没有会话，点击上方「新建会话」开始。'}
+              </p>
             ) : (
               <p className="text-sm text-text-secondary">没有匹配「{query.trim()}」的会话。</p>
             )}
@@ -179,7 +204,7 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
                 session={s}
                 active={s.id === activeSessionId}
                 onSelect={() => void handleSelect(s.id)}
-                onDelete={() => void handleDelete(s.id)}
+                onDelete={() => setPendingDelete(s)}
               />
             ))}
           </ul>
@@ -199,6 +224,40 @@ export function SessionSidebar({ onNavigate, className }: SessionSidebarProps) {
           </button>
         </div>
       )}
+
+      <Modal
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="删除会话"
+        maxWidth={420}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setPendingDelete(null)}
+              className="rounded-md border border-border px-3 py-1.5 text-sm text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = pendingDelete;
+                setPendingDelete(null);
+                if (target) void handleDelete(target.id);
+              }}
+              className="rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-text-on-accent transition-colors duration-150 hover:opacity-90"
+            >
+              删除
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm text-text-primary">
+          将永久删除会话「{pendingDelete?.title ?? ''}」及其全部消息与工具记录。
+        </p>
+        <p className="mt-1.5 text-xs text-text-tertiary">此操作无法撤销。</p>
+      </Modal>
 
       <Modal open={recoverOpen} onClose={() => setRecoverOpen(false)} title="恢复码恢复会话" maxWidth={420}>
         <div className="space-y-3">

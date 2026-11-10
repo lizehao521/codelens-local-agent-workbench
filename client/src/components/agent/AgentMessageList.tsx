@@ -3,6 +3,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { SessionMessageRow } from '../../types';
+import { useUiStore } from '../../stores/uiStore';
 import { AgentMessageItem } from './AgentMessageItem';
 
 export interface AgentMessageListProps {
@@ -18,6 +19,8 @@ export function AgentMessageList({ messages, onRetryStep, onRerunFrom, busy, emp
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const lastCountRef = useRef(0);
+  // 状态栏「跳到最新」：nonce 变化即恢复跟随并锚底
+  const chatScrollNonce = useUiStore((s) => s.chatScrollNonce);
 
   // 用户上滚超过阈值则暂停跟随；滚回底部恢复
   useEffect(() => {
@@ -40,6 +43,14 @@ export function AgentMessageList({ messages, onRetryStep, onRerunFrom, busy, emp
     if (!pinnedRef.current && !growth) return;
     el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  // 「跳到最新」：重新启用自动跟随并滚到底
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    pinnedRef.current = true;
+    el.scrollTop = el.scrollHeight;
+  }, [chatScrollNonce]);
 
   if (messages.length === 0 && empty) {
     return <div className="min-h-0 flex-1 overflow-y-auto">{empty}</div>;

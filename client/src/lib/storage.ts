@@ -6,8 +6,10 @@ import type { Settings, ThemeMode } from '../types';
 export const SETTINGS_KEY = 'codeagent.settings.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
-  provider: 'deepseek',
-  model: 'deepseek-v4-pro',
+  // 默认接入本地模型中转服务；密钥由 client/.env.local 在运行时注入，不写进源码/构建产物。
+  provider: 'custom',
+  model: '平衡',
+  customBaseUrl: 'http://1.92.92.200:8787/v1',
   apiKey: '',
   theme: 'system',
   channelMode: 'auto',
