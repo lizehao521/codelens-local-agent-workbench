@@ -403,6 +403,181 @@ module.exports = { runQueue };`,
 }
 module.exports = { JobQueue };`,
   },
+  bank_ledger: {
+    'impl.cjs': `const { Ledger } = require('./lib/ledger.cjs');
+
+function runLedger(ops) {
+  const ledger = new Ledger();
+  for (const raw of Array.isArray(ops) ? ops : []) {
+    const op = raw && typeof raw === 'object' ? raw : {};
+    if (op.op === 'settle') { ledger.settle(op); continue; }
+    if (op.op !== 'deposit' && op.op !== 'withdraw' && op.op !== 'transfer') continue;
+    ledger.handle(op);
+  }
+  return ledger.report();
+}
+module.exports = { runLedger };`,
+    'lib/ledger.cjs': `class Ledger {
+  constructor() {
+    this.balances = new Map();
+    this.seen = new Set();
+    this.applied = [];
+    this.rejected = [];
+    this.days = new Map();
+    this.settled = new Set();
+  }
+
+  reject(txn, reason) {
+    this.rejected.push({ txn: typeof txn === 'string' ? txn : '', reason });
+  }
+
+  balanceOf(account) {
+    return this.balances.get(account) || 0;
+  }
+
+  add(account, delta) {
+    this.balances.set(account, this.balanceOf(account) + delta);
+  }
+
+  day(date) {
+    let entry = this.days.get(date);
+    if (!entry) {
+      entry = { date, net: 0, count: 0, interest: 0 };
+      this.days.set(date, entry);
+    }
+    return entry;
+  }
+
+  base(op) {
+    if (typeof op.txn !== 'string' || op.txn === '') {
+      this.reject(op.txn, '流水号非法');
+      return false;
+    }
+    if (typeof op.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(op.date)) {
+      this.reject(op.txn, '日期非法');
+      return false;
+    }
+    if (typeof op.amount !== 'number' || !Number.isInteger(op.amount) || op.amount <= 0) {
+      this.reject(op.txn, '金额非法');
+      return false;
+    }
+    return true;
+  }
+
+  accountOf(op) {
+    const names = op.op === 'transfer' ? [op.from, op.to] : [op.account];
+    for (const name of names) {
+      if (typeof name !== 'string' || name === '') {
+        this.reject(op.txn, '账户非法');
+        return false;
+      }
+    }
+    return true;
+  }
+
+  consume(txn) {
+    if (this.seen.has(txn)) {
+      this.reject(txn, '重复流水号');
+      return false;
+    }
+    this.seen.add(txn);
+    return true;
+  }
+
+  handle(op) {
+    if (op.op === 'deposit') this.deposit(op);
+    else if (op.op === 'withdraw') this.withdraw(op);
+    else if (op.op === 'transfer') this.transfer(op);
+  }
+
+  deposit(op) {
+    if (!this.base(op) || !this.accountOf(op) || !this.consume(op.txn)) return;
+    this.add(op.account, op.amount);
+    const entry = this.day(op.date);
+    entry.net += op.amount;
+    entry.count += 1;
+    this.applied.push(op.txn);
+  }
+
+  withdraw(op) {
+    if (!this.base(op) || !this.accountOf(op) || !this.consume(op.txn)) return;
+    if (this.balanceOf(op.account) < op.amount) {
+      this.reject(op.txn, '余额不足');
+      return;
+    }
+    this.add(op.account, -op.amount);
+    const entry = this.day(op.date);
+    entry.net -= op.amount;
+    entry.count += 1;
+    this.applied.push(op.txn);
+  }
+
+  transfer(op) {
+    if (!this.base(op) || !this.accountOf(op) || !this.consume(op.txn)) return;
+    if (op.from === op.to) {
+      this.reject(op.txn, '转出转入相同');
+      return;
+    }
+    if (this.balanceOf(op.from) < op.amount) {
+      this.reject(op.txn, '余额不足');
+      return;
+    }
+    this.add(op.from, -op.amount);
+    this.add(op.to, op.amount);
+    const entry = this.day(op.date);
+    entry.count += 1;
+    this.applied.push(op.txn);
+  }
+
+  settle(op) {
+    if (typeof op.date !== 'string' || !/^\\d{4}-\\d{2}-\\d{2}$/.test(op.date)) {
+      this.reject('', '日期非法');
+      return;
+    }
+    if (this.settled.has(op.date)) {
+      this.reject('', '重复结息');
+      return;
+    }
+    if (
+      typeof op.rateBps !== 'number' ||
+      !Number.isInteger(op.rateBps) ||
+      op.rateBps < 0 ||
+      op.rateBps > 10000
+    ) {
+      this.reject('', '利率非法');
+      return;
+    }
+    this.settled.add(op.date);
+    for (const account of [...this.balances.keys()].sort()) {
+      const balance = this.balanceOf(account);
+      if (balance <= 0) continue;
+      const interest = Math.floor((balance * op.rateBps) / 10000);
+      if (interest <= 0) continue;
+      this.add(account, interest);
+      const entry = this.day(op.date);
+      entry.net += interest;
+      entry.interest += interest;
+    }
+  }
+
+  report() {
+    const balances = {};
+    for (const account of [...this.balances.keys()].sort()) {
+      balances[account] = this.balanceOf(account);
+    }
+    const days = [...this.days.values()].sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+    );
+    return {
+      balances,
+      applied: this.applied.slice(),
+      rejected: this.rejected.slice(),
+      days,
+    };
+  }
+}
+module.exports = { Ledger };`,
+  },
 };
 
 /** 只覆盖公开用例的补丁：两个公开样例硬编码，其余原样返回。 */
@@ -469,8 +644,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('十套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(10);
+  it('十一套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(11);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);

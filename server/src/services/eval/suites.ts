@@ -627,6 +627,292 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       },
     ],
   },
+  {
+    /*
+     * 扩题（第二组）：整数「分」记账 + 幂等流水 + 按日汇总/结息。
+     *
+     * 与前面几组的区别：旧题面的数值口径都是「显示层保留两位小数」，允许浮点在
+     * 中间过程出现；这一题把金额固定为整数分，考的是「不合法的金额必须在入口被
+     * 拒绝」而不是事后四舍五入。另一条轴是幂等：同一笔流水只能入账一次，且被拒
+     * 的流水同样消耗流水号 —— 重放整批交易时不能重复扣款，也不能把拒绝当没发生。
+     * 结息用 floor 到分，配 rateBps 的四条边界，专门抓 Math.round 这类近似实现。
+     */
+    id: 'bank_ledger',
+    title: '银行分账台账（整数分记账 + 幂等流水）',
+    implPath: 'eval/bank_ledger/impl.cjs',
+    files: ['lib/ledger.cjs'],
+    exportName: 'runLedger',
+    publicCases: [
+      {
+        name: '基础存取',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 10000, date: '2026-01-02' },
+            { op: 'withdraw', txn: 't2', account: 'A', amount: 2500, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 7500 },
+          applied: ['t1', 't2'],
+          rejected: [],
+          days: [{ date: '2026-01-02', net: 7500, count: 2, interest: 0 }],
+        },
+      },
+      {
+        name: '余额不足拒绝且不留日记账',
+        args: [
+          [{ op: 'withdraw', txn: 't1', account: 'A', amount: 500, date: '2026-01-02' }],
+        ],
+        expected: {
+          balances: {},
+          applied: [],
+          rejected: [{ txn: 't1', reason: '余额不足' }],
+          days: [],
+        },
+      },
+    ],
+    hiddenCases: [
+      {
+        name: '重复流水号不重复入账',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 10000, date: '2026-01-02' },
+            { op: 'deposit', txn: 't1', account: 'A', amount: 10000, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 10000 },
+          applied: ['t1'],
+          rejected: [{ txn: 't1', reason: '重复流水号' }],
+          days: [{ date: '2026-01-02', net: 10000, count: 1, interest: 0 }],
+        },
+      },
+      {
+        name: '金额必须是正整数分',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 10.5, date: '2026-01-02' },
+            { op: 'deposit', txn: 't2', account: 'A', amount: 0, date: '2026-01-02' },
+            { op: 'deposit', txn: 't3', account: 'A', amount: -1, date: '2026-01-02' },
+            { op: 'deposit', txn: 't4', account: 'A', amount: '100', date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: {},
+          applied: [],
+          rejected: [
+            { txn: 't1', reason: '金额非法' },
+            { txn: 't2', reason: '金额非法' },
+            { txn: 't3', reason: '金额非法' },
+            { txn: 't4', reason: '金额非法' },
+          ],
+          days: [],
+        },
+      },
+      {
+        name: '转账双边记账、当日净额抵销',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 5000, date: '2026-01-02' },
+            { op: 'transfer', txn: 't2', from: 'A', to: 'B', amount: 3000, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 2000, B: 3000 },
+          applied: ['t1', 't2'],
+          rejected: [],
+          days: [{ date: '2026-01-02', net: 5000, count: 2, interest: 0 }],
+        },
+      },
+      {
+        name: '转账超额整笔拒绝',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 5000, date: '2026-01-02' },
+            { op: 'transfer', txn: 't2', from: 'A', to: 'B', amount: 5001, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 5000 },
+          applied: ['t1'],
+          rejected: [{ txn: 't2', reason: '余额不足' }],
+          days: [{ date: '2026-01-02', net: 5000, count: 1, interest: 0 }],
+        },
+      },
+      {
+        name: '转出转入相同被拒',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 5000, date: '2026-01-02' },
+            { op: 'transfer', txn: 't2', from: 'A', to: 'A', amount: 100, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 5000 },
+          applied: ['t1'],
+          rejected: [{ txn: 't2', reason: '转出转入相同' }],
+          days: [{ date: '2026-01-02', net: 5000, count: 1, interest: 0 }],
+        },
+      },
+      {
+        name: '结息向下取整到分',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 1999, date: '2026-01-02' },
+            { op: 'settle', date: '2026-01-03', rateBps: 500 },
+          ],
+        ],
+        expected: {
+          balances: { A: 2098 },
+          applied: ['t1'],
+          rejected: [],
+          days: [
+            { date: '2026-01-02', net: 1999, count: 1, interest: 0 },
+            { date: '2026-01-03', net: 99, count: 0, interest: 99 },
+          ],
+        },
+      },
+      {
+        name: '结息利率必须是 0..10000 的整数',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 1000, date: '2026-01-02' },
+            { op: 'settle', date: '2026-01-03', rateBps: -1 },
+            { op: 'settle', date: '2026-01-03', rateBps: 1.5 },
+            { op: 'settle', date: '2026-01-03', rateBps: 10001 },
+          ],
+        ],
+        expected: {
+          balances: { A: 1000 },
+          applied: ['t1'],
+          rejected: [
+            { txn: '', reason: '利率非法' },
+            { txn: '', reason: '利率非法' },
+            { txn: '', reason: '利率非法' },
+          ],
+          days: [{ date: '2026-01-02', net: 1000, count: 1, interest: 0 }],
+        },
+      },
+      {
+        name: '零余额结息不产生日记账',
+        args: [[{ op: 'settle', date: '2026-01-02', rateBps: 300 }]],
+        expected: { balances: {}, applied: [], rejected: [], days: [] },
+      },
+      {
+        name: '同一日期重复结息被拒',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 10000, date: '2026-01-02' },
+            { op: 'settle', date: '2026-01-02', rateBps: 100 },
+            { op: 'settle', date: '2026-01-02', rateBps: 100 },
+          ],
+        ],
+        expected: {
+          balances: { A: 10100 },
+          applied: ['t1'],
+          rejected: [{ txn: '', reason: '重复结息' }],
+          days: [{ date: '2026-01-02', net: 10100, count: 1, interest: 100 }],
+        },
+      },
+      {
+        name: '按日汇总净额与笔数、日期升序',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 100, date: '2026-01-03' },
+            { op: 'deposit', txn: 't2', account: 'A', amount: 100, date: '2026-01-01' },
+            { op: 'withdraw', txn: 't3', account: 'A', amount: 40, date: '2026-01-01' },
+            { op: 'deposit', txn: 't4', account: 'A', amount: 10, date: '2026-01-03' },
+          ],
+        ],
+        expected: {
+          balances: { A: 170 },
+          applied: ['t1', 't2', 't3', 't4'],
+          rejected: [],
+          days: [
+            { date: '2026-01-01', net: 60, count: 2, interest: 0 },
+            { date: '2026-01-03', net: 110, count: 2, interest: 0 },
+          ],
+        },
+      },
+      {
+        name: '日期必须是 YYYY-MM-DD',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: 'A', amount: 100, date: '2026/01/02' },
+            { op: 'deposit', txn: 't2', account: 'A', amount: 100, date: '2026-1-2' },
+            { op: 'deposit', txn: 't3', account: 'A', amount: 100, date: undefined },
+          ],
+        ],
+        expected: {
+          balances: {},
+          applied: [],
+          rejected: [
+            { txn: 't1', reason: '日期非法' },
+            { txn: 't2', reason: '日期非法' },
+            { txn: 't3', reason: '日期非法' },
+          ],
+          days: [],
+        },
+      },
+      {
+        name: '流水号必须是非空字符串',
+        args: [
+          [
+            { op: 'deposit', txn: undefined, account: 'A', amount: 100, date: '2026-01-02' },
+            { op: 'deposit', txn: '', account: 'A', amount: 100, date: '2026-01-02' },
+            { op: 'deposit', txn: 123, account: 'A', amount: 100, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: {},
+          applied: [],
+          rejected: [
+            { txn: '', reason: '流水号非法' },
+            { txn: '', reason: '流水号非法' },
+            { txn: '', reason: '流水号非法' },
+          ],
+          days: [],
+        },
+      },
+      {
+        name: '账户必须是非空字符串',
+        args: [
+          [
+            { op: 'deposit', txn: 't1', account: '', amount: 100, date: '2026-01-02' },
+            { op: 'deposit', txn: 't2', account: 42, amount: 100, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: {},
+          applied: [],
+          rejected: [
+            { txn: 't1', reason: '账户非法' },
+            { txn: 't2', reason: '账户非法' },
+          ],
+          days: [],
+        },
+      },
+      {
+        name: '被拒交易同样消耗流水号',
+        args: [
+          [
+            { op: 'withdraw', txn: 't1', account: 'A', amount: 500, date: '2026-01-02' },
+            { op: 'deposit', txn: 't2', account: 'A', amount: 1000, date: '2026-01-02' },
+            { op: 'withdraw', txn: 't1', account: 'A', amount: 500, date: '2026-01-02' },
+          ],
+        ],
+        expected: {
+          balances: { A: 1000 },
+          applied: ['t2'],
+          rejected: [
+            { txn: 't1', reason: '余额不足' },
+            { txn: 't1', reason: '重复流水号' },
+          ],
+          days: [{ date: '2026-01-02', net: 1000, count: 1, interest: 0 }],
+        },
+      },
+    ],
+  },
 ];
 
 /** 按 id 取套件；未知 id 返回 undefined。 */

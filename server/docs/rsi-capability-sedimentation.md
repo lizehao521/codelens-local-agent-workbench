@@ -239,7 +239,7 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
    已提到 600s。这项不是 RSI 逻辑问题，但会污染读数。
 4. **代码修复族已落地，题面已从「单文件纯函数」扩到「多文件 / 有状态 / 状态机解析」**：
    `CODE_TASKS` + `eval/**` 提供「改代码 + 真跑测试」的量化族，目标读数是
-   `task.test_pass_rate`。内置套件从 6 个扩到 10 个：
+   `task.test_pass_rate`。内置套件从 6 个扩到 11 个：
    - `inventory_rollup`：入口 + `lib/parse.cjs` + `lib/pricing.cjs` 三文件联动，
      考跨文件调用约定、数值口径（折扣率、两位小数、合并后批量门槛）；
    - `job_queue`：入口 + `lib/queue.cjs` 的 `JobQueue` 状态机，考去重改优先级、
@@ -248,7 +248,10 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
      BOM、只 trim 未引用字段、列数不一致/未闭合引号的行号级报错；
    - `json_patch`：RFC 6901 JSON Pointer + RFC 6902 子集的 `applyPatch`，考 `~1`/`~0`
      转义与非法转义报错、add 在数组下标处插入（不是追加）、`-` 追加、越界报错、
-     remove/replace 的目标必须已存在、test 深比较、未知 op 报错、空指针替换整篇文档。
+     remove/replace 的目标必须已存在、test 深比较、未知 op 报错、空指针替换整篇文档；
+   - `bank_ledger`：入口 + `lib/ledger.cjs` 的整数分台账，考金额必须是整数分、
+     流水号幂等（被拒交易也消耗流水号）、转账双边记账与超额整笔拒绝、按日汇总净额/笔数、
+     结息按 `rateBps` 向下取整到分。
 
    支撑改动：`EvalSuite.files` 声明可加载的同目录白名单，runner 在同一 vm 上下文里
    用极小的 CommonJS loader 加载（只允许相对路径、只允许白名单文件、模块体带 timeout）；
@@ -256,15 +259,18 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
    判据口径未放宽。
 
    读数（同一沙箱的缺陷起跑线）：扩题前 17/52 = 0.327 → 前两组扩完 33/94 = 0.351
-   → 加入 `json_patch` 后 38/110 = 0.345。分母比起点扩大 112%，新题自身通过率
-   （`inventory_rollup` 3/13、`job_queue` 6/12、`csv_import` 7/17、`json_patch` 5/16）
-   均低于旧题均值，说明它们确实在压过拟合，而不是刷分。参考实现的变异体验证：
-   CSV 6/6、JSON Patch 6/6 被隐藏集杀死（JSON Patch 的六个变异体分别是：不解码
-   `~1`/`~0`、test 不校验、replace 不校验存在性、add 改成追加、add 越界不报错、
-   未知 op 静默写入）。因为分母变了，代际比较必须另起一条链。仍未被覆盖的：
+   → 加入 `json_patch` 后 38/110 = 0.345 → 加入 `bank_ledger` 后 43/126 = 0.341。
+   分母比起点扩大 142%，新题自身通过率（`inventory_rollup` 3/13、`job_queue` 6/12、
+   `csv_import` 7/17、`json_patch` 5/16、`bank_ledger` 5/16）均低于旧题均值，
+   说明它们确实在压过拟合，而不是刷分。参考实现的变异体验证：
+   CSV 6/6、JSON Patch 6/6、bank_ledger 11/11 被隐藏集杀死（bank_ledger 的十一个
+   变异体：结息四舍五入、幂等只比对已入账、转账不拦同账户、转账漏记转入侧净额、
+   金额允许小数、日记账不排序、不校验账户、结息不拦重复日期、利率上限放宽、
+   日期格式放宽、流水号接受数字；每个变异体都保持公开用例全绿，只被隐藏集打红）。
+   因为分母变了，代际比较必须另起一条链。仍未被覆盖的：
    异步/事件驱动、真实仓库级多文件重构（需要读写源码树）、以及依赖外部服务的行为。
 
-   **扩题后的端到端自洽校验**（新会话起跑，本地 FakeLlm 离线演练，非真实上游）：
+   **扩题后的端到端自洽校验（json_patch 轮，110 分母）**（新会话起跑，本地 FakeLlm 离线演练，非真实上游）：
    - 套件发现：一次 `eval.run` 报出 11 个套件（10 内置 + 1 晋升的 `slugify_edge_cases`），
      合计 110 例（加入 `json_patch` 前是 10 个 / 94 例，发现与计分走同一条链路，未改代码）；
    - 夹具重建：先删掉 `workspace/eval/{inventory_rollup,job_queue,csv_import}` 再跑，
@@ -277,6 +283,11 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
      Windows 侧没有 Go 工具链，四态判决落成 `verdict=error`（`krsi spawn error ENOENT`）。
      扩题前后任何 session 在本机都是同一个 error —— 读数、代际行与锚链照常落盘，只是没有
      improved/not_improved 的终判。要拿到四态结论需在有 Go 的环境（或用 `KRSI_BIN_PATH` 指到已编译二进制）。
+
+   **bank_ledger 轮（126 分母）的实测**：`allSuites` 发现 12 个套件（11 内置 + 1 晋升），
+   合计 126 例；把 `eval-fixtures/bank_ledger` 同步进沙箱后整机读数为 43/126 = 0.341，
+   新套件自身 5/16（11 条隐藏用例打红），与上表的缺陷起跑线一致。
+   本轮只换了分母与一组题面，未改判决/锚链代码；代际链仍需另起新会话，不能接在 110 分母的旧链后。
 
 ## 8. 看板接口契约（`GET /api/rsi/overview?session=<id>`）
 
