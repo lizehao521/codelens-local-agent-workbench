@@ -545,6 +545,88 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       { name: '中间空字段', args: ['a,,c'], expected: { rows: [['a', '', 'c']], errors: [] } },
     ],
   },
+  {
+    id: 'json_patch',
+    title: 'JSON 补丁应用（RFC 6901 指针 + 6902 子集）',
+    implPath: 'eval/json_patch/impl.cjs',
+    exportName: 'applyPatch',
+    publicCases: [
+      { name: '对象上新增成员', args: [{ a: 1 }, [{ op: 'add', path: '/b', value: 2 }]], expected: { a: 1, b: 2 } },
+      { name: '删除数组元素', args: [{ list: [1, 2, 3] }, [{ op: 'remove', path: '/list/1' }]], expected: { list: [1, 3] } },
+    ],
+    hiddenCases: [
+      {
+        name: '~1 还原为斜杠',
+        args: [{ 'a/b': 1 }, [{ op: 'replace', path: '/a~1b', value: 2 }]],
+        expected: { 'a/b': 2 },
+      },
+      {
+        name: '~0 还原为波浪号',
+        args: [{ 'a~b': 1 }, [{ op: 'replace', path: '/a~0b', value: 2 }]],
+        expected: { 'a~b': 2 },
+      },
+      {
+        name: '非法转义必须报错',
+        args: [{ a: 1 }, [{ op: 'replace', path: '/a~2b', value: 2 }]],
+        throws: '非法路径转义',
+      },
+      {
+        name: '数组下标处插入（不是追加）',
+        args: [{ l: [1, 3] }, [{ op: 'add', path: '/l/1', value: 2 }]],
+        expected: { l: [1, 2, 3] },
+      },
+      {
+        name: 'add 用 - 追加到末尾',
+        args: [{ l: [1] }, [{ op: 'add', path: '/l/-', value: 2 }]],
+        expected: { l: [1, 2] },
+      },
+      {
+        name: 'add 下标越界必须报错',
+        args: [{ l: [1] }, [{ op: 'add', path: '/l/3', value: 2 }]],
+        throws: '数组下标越界',
+      },
+      {
+        name: 'remove 目标不存在必须报错',
+        args: [{ a: 1 }, [{ op: 'remove', path: '/b' }]],
+        throws: '路径不存在',
+      },
+      {
+        name: 'remove 数组首元素',
+        args: [{ l: ['x', 'y'] }, [{ op: 'remove', path: '/l/0' }]],
+        expected: { l: ['y'] },
+      },
+      {
+        name: 'replace 目标不存在必须报错',
+        args: [{ a: 1 }, [{ op: 'replace', path: '/b', value: 2 }]],
+        throws: '路径不存在',
+      },
+      {
+        name: 'test 通过时原样返回',
+        args: [{ a: { b: 1 } }, [{ op: 'test', path: '/a/b', value: 1 }]],
+        expected: { a: { b: 1 } },
+      },
+      {
+        name: 'test 不匹配必须报错',
+        args: [{ a: { b: 1 } }, [{ op: 'test', path: '/a/b', value: 2 }]],
+        throws: 'test 校验失败',
+      },
+      {
+        name: '不支持的 op 必须报错',
+        args: [{ a: 1 }, [{ op: 'move', from: '/a', path: '/b' }]],
+        throws: '不支持的操作',
+      },
+      {
+        name: '空指针替换整个文档',
+        args: [{ a: 1 }, [{ op: 'replace', path: '', value: { b: 2 } }]],
+        expected: { b: 2 },
+      },
+      {
+        name: '嵌套数组里的对象字段',
+        args: [{ a: { l: [{ v: 1 }] } }, [{ op: 'replace', path: '/a/l/0/v', value: 2 }]],
+        expected: { a: { l: [{ v: 2 }] } },
+      },
+    ],
+  },
 ];
 
 /** 按 id 取套件；未知 id 返回 undefined。 */

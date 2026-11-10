@@ -239,21 +239,41 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
    已提到 600s。这项不是 RSI 逻辑问题，但会污染读数。
 4. **代码修复族已落地，题面已从「单文件纯函数」扩到「多文件 / 有状态 / 状态机解析」**：
    `CODE_TASKS` + `eval/**` 提供「改代码 + 真跑测试」的量化族，目标读数是
-   `task.test_pass_rate`。内置套件从 6 个扩到 9 个：
+   `task.test_pass_rate`。内置套件从 6 个扩到 10 个：
    - `inventory_rollup`：入口 + `lib/parse.cjs` + `lib/pricing.cjs` 三文件联动，
      考跨文件调用约定、数值口径（折扣率、两位小数、合并后批量门槛）；
    - `job_queue`：入口 + `lib/queue.cjs` 的 `JobQueue` 状态机，考去重改优先级、
      同优先级 FIFO、取消与重新入队；
    - `csv_import`：原始 CSV 文本解析，考引号、`""` 转义、CRLF、引号内跨行字段、
-     BOM、只 trim 未引用字段、列数不一致/未闭合引号的行号级报错。
+     BOM、只 trim 未引用字段、列数不一致/未闭合引号的行号级报错；
+   - `json_patch`：RFC 6901 JSON Pointer + RFC 6902 子集的 `applyPatch`，考 `~1`/`~0`
+     转义与非法转义报错、add 在数组下标处插入（不是追加）、`-` 追加、越界报错、
+     remove/replace 的目标必须已存在、test 深比较、未知 op 报错、空指针替换整篇文档。
 
    支撑改动：`EvalSuite.files` 声明可加载的同目录白名单，runner 在同一 vm 上下文里
    用极小的 CommonJS loader 加载（只允许相对路径、只允许白名单文件、模块体带 timeout）；
    `syncEvalFixtures` 改为递归复制夹具目录，沙箱重置后能重建多文件夹具；隐藏集与
    判据口径未放宽。
 
-   读数（同一沙箱的缺陷起跑线）：扩题前 17/52 = 0.327 → 两组扩完后 33/94 = 0.351 ——
-   分母扩大 81%，新题自身通过率（`inventory_rollup` 3/13、`job_queue` 6/12、
-   `csv_import` 7/17）低于旧题均值，说明它们确实在压过拟合，而不是刷分。另有 6/6
-   个参考实现变异体被隐藏集杀死。因为分母变了，代际比较必须另起一条链。仍未被覆盖的：
+   读数（同一沙箱的缺陷起跑线）：扩题前 17/52 = 0.327 → 前两组扩完 33/94 = 0.351
+   → 加入 `json_patch` 后 38/110 = 0.345。分母比起点扩大 112%，新题自身通过率
+   （`inventory_rollup` 3/13、`job_queue` 6/12、`csv_import` 7/17、`json_patch` 5/16）
+   均低于旧题均值，说明它们确实在压过拟合，而不是刷分。参考实现的变异体验证：
+   CSV 6/6、JSON Patch 6/6 被隐藏集杀死（JSON Patch 的六个变异体分别是：不解码
+   `~1`/`~0`、test 不校验、replace 不校验存在性、add 改成追加、add 越界不报错、
+   未知 op 静默写入）。因为分母变了，代际比较必须另起一条链。仍未被覆盖的：
    异步/事件驱动、真实仓库级多文件重构（需要读写源码树）、以及依赖外部服务的行为。
+
+   **扩题后的端到端自洽校验**（新会话起跑，本地 FakeLlm 离线演练，非真实上游）：
+   - 套件发现：一次 `eval.run` 报出 10 个套件（9 内置 + 1 晋升的 `slugify_edge_cases`），合计 94 例
+     （本轮加入 `json_patch` 后为 11 个 / 110 例，发现与计分走同一条链路，未改代码）；
+   - 夹具重建：先删掉 `workspace/eval/{inventory_rollup,job_queue,csv_import}` 再跑，
+     `syncEvalFixtures` 逐一恢复（3 / 2 / 1 个文件），多文件套件不再依赖手工准备；
+   - 代际锚链：全新 session 从 g1 起算，`g1 skipped → g2 → g3`，`prev_generation` 连续、
+     anchor 哈希首尾衔接，等于把「另起一条链」落实成了新会话 g1，而不是接在旧分母的链后；
+   - 面板读数：`policy_rsi_runs` 的 readings 里 `test_pass_rate = 0.351`，与判决明细
+     「33/94 通过」一致，看板 `/api/rsi/overview` 原样返回，未出现分母错位。
+   - 已知环境限制（与本轮扩题无关）：krsi 是 Go 二进制（源码 `krsi/main.go`，默认路径 `/tmp/krsi`），
+     Windows 侧没有 Go 工具链，四态判决落成 `verdict=error`（`krsi spawn error ENOENT`）。
+     扩题前后任何 session 在本机都是同一个 error —— 读数、代际行与锚链照常落盘，只是没有
+     improved/not_improved 的终判。要拿到四态结论需在有 Go 的环境（或用 `KRSI_BIN_PATH` 指到已编译二进制）。

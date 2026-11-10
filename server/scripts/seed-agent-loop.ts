@@ -236,9 +236,10 @@ const CODE_PROBE = `本轮只做测量，不要修改任何文件。严格按顺
  *   · 打分用 public + hidden 全量用例，只针对公开样例打补丁拿不到满分；
  *   · 产物是**代码本身**，会跨代保留 —— 这就是代码域的能力沉淀。
  *
- * 每代只点名一个套件。最前面三个是两轮扩题新增的套件：多文件联动、队列状态机、
- * CSV 原始文本解析。分母已从「六个纯函数」换成「九题、含跨文件/有状态/状态机解析」，
- * 因此必须从全新会话起跑，不能接在旧链后面比。中间三个是上一轮扩题新增的难度套件，
+ * 每代只点名一个套件。最前面四个是扩题新增的套件：多文件联动、队列状态机、
+ * CSV 原始文本解析、RFC 6901/6902 的 JSON Patch。分母已从「六个纯函数」换成
+ * 「十题、含跨文件/有状态/状态机解析/指针转义」，因此必须从全新会话起跑，
+ * 不能接在旧链后面比。中间三个是上一轮扩题新增的难度套件，
  * 后三个是第一批已修好的套件；旧套件保留在轮转里，用来验证修好的东西不会回退。
  */
 const CODE_TASKS = [
@@ -274,6 +275,18 @@ BOM、只 trim 未引用字段、列数不一致报错（含物理行号）、�
 5) 最后用一句话报告得分，不要给空回答。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 注意隐藏用例会检验通用性：行号、错误对象与字段内容都参与比对。`,
+  `修复 eval/json_patch/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
+这个套件考的是 RFC 6901 JSON Pointer + RFC 6902 子集：~1 / ~0 转义、非法转义报错、
+add 在数组下标处**插入**而不是追加、'-' 追加、越界报错、remove/replace 的目标必须已存在、
+test 深比较、未知 op 报错、空指针替换整篇文档。
+严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="json_patch"）拿到当前通过率；
+2) 用 fs.read 读 impl.cjs，按文件头注释逐条核对指针解析与四种 op 的语义；
+3) 用 fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）；
+4) 再调 eval.run（suite="json_patch"）复验；
+5) 最后用一句话报告得分，不要给空回答。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
   `修复 eval/interval_merge/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。严格按顺序执行，不许跳步：
 1) 第一步先调用 eval.run（suite="interval_merge"）拿到当前通过率；
 2) 若有失败用例：fs.read 读实现 → fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）→ 再调 eval.run 复验；
@@ -373,10 +386,11 @@ const baseArgs = {
   // 用「平衡」：原生 tool calling 稳定、响应 2-3s、无冗长推理链，
   // 且**最终回答不会空**。实测「旗舰」在同一探针上只回 "\n\n"（completion 58 tokens），
   // 空回答会让 L2 语义覆盖率量不到，整代直接作废 —— 测量面必须选稳定的档位。
-  model: '平衡',
-  customBaseUrl: 'http://1.92.92.200:8787/v1',
+  model: process.env.RSI_MODEL ?? '平衡',
+  // 默认指向试用 relay；需要离线演练时用 RSI_BASE_URL 指到本地 fake 上游（见 tests/fixtures/fake-llm.ts）。
+  customBaseUrl: process.env.RSI_BASE_URL ?? 'http://1.92.92.200:8787/v1',
   // 凭证只从环境变量读（.env / 进程环境），绝不写进源码 —— 源码会进 git。
-  apiKey: process.env.LLM_SERVER_API_KEY ?? '',
+  apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
   channelMode: 'native',
   // 自改进要写整个测试文件：文件正文是 fs.write 的**参数**，算在 completion 里。
   // 1024 会在写到一半被截断 → 工具调用参数不完整 → 什么都写不出来。

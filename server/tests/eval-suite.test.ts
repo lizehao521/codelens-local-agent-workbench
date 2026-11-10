@@ -217,6 +217,83 @@ module.exports = { toRoman };`,
   return { rows, errors };
 }
 module.exports = { parseCsv };`,
+  json_patch: `function clone(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+function same(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+function decodeToken(token) {
+  if (/~(?![01])/.test(token)) throw new Error('非法路径转义');
+  return token.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+function parsePointer(pointer) {
+  const p = String(pointer);
+  if (p === '') return [];
+  if (p[0] !== '/') throw new Error('非法路径');
+  return p.slice(1).split('/').map(decodeToken);
+}
+function applyPatch(doc, ops) {
+  let out = clone(doc);
+  for (const op of Array.isArray(ops) ? ops : []) {
+    const tokens = parsePointer(op.path);
+    const isRoot = tokens.length === 0;
+    if (isRoot) {
+      if (op.op === 'add' || op.op === 'replace') { out = clone(op.value); continue; }
+      throw new Error('不支持的操作');
+    }
+    const last = tokens[tokens.length - 1];
+    let parent = out;
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      const key = tokens[i];
+      if (parent === null || typeof parent !== 'object' || !(key in parent)) throw new Error('路径不存在');
+      parent = parent[key];
+    }
+    if (op.op === 'add') {
+      if (Array.isArray(parent)) {
+        if (last === '-') { parent.push(clone(op.value)); continue; }
+        if (!/^\\d+$/.test(last)) throw new Error('路径不存在');
+        const idx = Number(last);
+        if (idx > parent.length) throw new Error('数组下标越界');
+        parent.splice(idx, 0, clone(op.value));
+      } else {
+        parent[last] = clone(op.value);
+      }
+      continue;
+    }
+    if (op.op === 'remove') {
+      if (parent === null || typeof parent !== 'object' || !(last in parent)) throw new Error('路径不存在');
+      if (Array.isArray(parent)) {
+        if (!/^\\d+$/.test(last)) throw new Error('路径不存在');
+        const idx = Number(last);
+        if (idx >= parent.length) throw new Error('路径不存在');
+        parent.splice(idx, 1);
+      } else {
+        delete parent[last];
+      }
+      continue;
+    }
+    if (op.op === 'replace') {
+      if (parent === null || typeof parent !== 'object' || !(last in parent)) throw new Error('路径不存在');
+      if (Array.isArray(parent)) {
+        if (!/^\\d+$/.test(last)) throw new Error('路径不存在');
+        const idx = Number(last);
+        if (idx >= parent.length) throw new Error('路径不存在');
+        parent[idx] = clone(op.value);
+      } else {
+        parent[last] = clone(op.value);
+      }
+      continue;
+    }
+    if (op.op === 'test') {
+      if (!same(parent[last], op.value)) throw new Error('test 校验失败');
+      continue;
+    }
+    throw new Error('不支持的操作');
+  }
+  return out;
+}
+module.exports = { applyPatch };`,
 };
 
 /** 多文件套件的参考实现：key 是套件目录内的相对路径。 */
@@ -392,8 +469,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('九套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(9);
+  it('十套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(10);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);
@@ -415,7 +492,7 @@ describe('固定评测套件', () => {
   });
 
   it('版本库里的缺陷夹具在隐藏口径下真红（缺陷真红）', () => {
-    const fixtureBacked = ['csv_import', ...Object.keys(GOOD_FILES)];
+    const fixtureBacked = ['csv_import', 'json_patch', ...Object.keys(GOOD_FILES)];
     for (const id of fixtureBacked) {
       const suite = findSuite(id)!;
       const root = tmpRoot();
