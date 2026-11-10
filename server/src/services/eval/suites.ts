@@ -28,6 +28,13 @@ export interface EvalSuite {
   title: string;
   /** 沙箱相对路径：被测实现。 */
   implPath: string;
+  /**
+   * 多文件套件：入口 implPath 允许 require 的同目录文件（相对套件目录）。
+   *
+   * 只有列在这里的文件才能被加载 —— 这是白名单，不是提示。
+   * 缺省（单文件套件）时入口文件不能 require 任何东西。
+   */
+  files?: string[];
   /** 实现文件里要调用的导出名。 */
   exportName: string;
   /** 公开用例：eval.run 会回显它们的失败详情。 */
@@ -147,6 +154,260 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       { name: '0 越界', args: [0], throws: 'range' },
       { name: '4000 越界', args: [4000], throws: 'range' },
       { name: '非整数', args: [3.5], throws: 'range' },
+    ],
+  },
+  {
+    /*
+     * 扩题（第一组）：多文件联动 + 计价口径。
+     *
+     * 旧题面全是「单文件、纯函数、一个函数体」——Agent 只要盯着一个文件改就行。
+     * 这一题的缺陷分散在 parse / pricing / 入口三处：只修入口拿不到分，
+     * 只修一个辅助文件也拿不到分，必须先读懂跨文件的调用约定再联动修改。
+     * 同时引入两位小数与合并后门槛，覆盖旧的字符串/数组题面碰不到的数值口径。
+     */
+    id: 'inventory_rollup',
+    title: '库存汇总（多文件联动）',
+    implPath: 'eval/inventory_rollup/impl.cjs',
+    files: ['lib/parse.cjs', 'lib/pricing.cjs'],
+    exportName: 'rollup',
+    publicCases: [
+      {
+        name: '单行基础金额',
+        args: [['A1,2,3.5']],
+        expected: { items: [{ sku: 'A1', qty: 2, total: 7 }], skipped: 0, total: 7 },
+      },
+      {
+        name: '多 SKU 按 sku 升序输出',
+        args: [['B2,1,10', 'A1,3,2']],
+        expected: {
+          items: [
+            { sku: 'A1', qty: 3, total: 6 },
+            { sku: 'B2', qty: 1, total: 10 },
+          ],
+          skipped: 0,
+          total: 16,
+        },
+      },
+    ],
+    hiddenCases: [
+      {
+        name: '折扣作用在单价上',
+        args: [['A1,2,10,0.25']],
+        expected: { items: [{ sku: 'A1', qty: 2, total: 15 }], skipped: 0, total: 15 },
+      },
+      {
+        name: 'qty=9 不触发批量折扣',
+        args: [['A1,9,1']],
+        expected: { items: [{ sku: 'A1', qty: 9, total: 9 }], skipped: 0, total: 9 },
+      },
+      {
+        name: 'qty=10 触发 95 折',
+        args: [['A1,10,1']],
+        expected: { items: [{ sku: 'A1', qty: 10, total: 9.5 }], skipped: 0, total: 9.5 },
+      },
+      {
+        name: '重复 SKU 合并后按合计 qty 判门槛',
+        args: [['A1,6,1', 'A1,4,1']],
+        expected: { items: [{ sku: 'A1', qty: 10, total: 9.5 }], skipped: 0, total: 9.5 },
+      },
+      {
+        name: '两位小数四舍五入',
+        args: [['A1,1,0.05']],
+        expected: { items: [{ sku: 'A1', qty: 1, total: 0.05 }], skipped: 0, total: 0.05 },
+      },
+      {
+        name: '非法行计入 skipped',
+        args: [['A1,2,10', 'B2,0,5', 'C3,x,1', 'D4,1,-2', 'E5,1,1,1.5']],
+        expected: {
+          items: [{ sku: 'A1', qty: 2, total: 20 }],
+          skipped: 4,
+          total: 20,
+        },
+      },
+      {
+        name: '空行跳过且不计 skipped',
+        args: [['', '   ', 'A1,1,2']],
+        expected: { items: [{ sku: 'A1', qty: 1, total: 2 }], skipped: 0, total: 2 },
+      },
+      {
+        name: '字段两侧空白要 trim',
+        args: [[' A1 , 2 , 3.5 ']],
+        expected: { items: [{ sku: 'A1', qty: 2, total: 7 }], skipped: 0, total: 7 },
+      },
+      {
+        name: '折扣 1 合法（合计为 0）',
+        args: [['A1,2,10,1']],
+        expected: { items: [{ sku: 'A1', qty: 2, total: 0 }], skipped: 0, total: 0 },
+      },
+      {
+        name: '列数过多视为非法行',
+        args: [['A1,1,2,0,x']],
+        expected: { items: [], skipped: 1, total: 0 },
+      },
+      { name: '空输入', args: [[]], expected: { items: [], skipped: 0, total: 0 } },
+    ],
+  },
+  {
+    /*
+     * 扩题（第一组）：有状态实现 + 队列语义。
+     *
+     * 旧题面的被测函数都是一次调用出结果的纯函数；这一题的实现必须在内部维护
+     * 可变状态（入队 / 出队 / 取消 / 改优先级），任何一步写错都会在后续操作里放大。
+     * 同时把「同优先级先进先出」「改优先级不改变排队位置」这类语义写进隐藏集，
+     * 只靠公开的两条操作序列无法覆盖。
+     */
+    id: 'job_queue',
+    title: '任务队列（有状态实现）',
+    implPath: 'eval/job_queue/impl.cjs',
+    files: ['lib/queue.cjs'],
+    exportName: 'runQueue',
+    publicCases: [
+      {
+        name: '按优先级出队',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 3 },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['b'], pending: [{ id: 'a', priority: 1 }] },
+      },
+      {
+        name: '取消后不再执行',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 2 },
+            { op: 'cancel', id: 'b' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a'], pending: [] },
+      },
+    ],
+    hiddenCases: [
+      {
+        name: '同优先级先入先出',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 1 },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a'], pending: [{ id: 'b', priority: 1 }] },
+      },
+      {
+        name: '重复 add 只更新优先级，不重复入队',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 1 },
+            { op: 'add', id: 'a', priority: 5 },
+            { op: 'run' },
+            { op: 'run' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a', 'b'], pending: [] },
+      },
+      {
+        name: '改优先级保留原排队位置',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 2 },
+            { op: 'add', id: 'a', priority: 2 },
+            { op: 'run' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a', 'b'], pending: [] },
+      },
+      {
+        name: '取消不存在的 id 被忽略',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'cancel', id: 'x' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a'], pending: [] },
+      },
+      {
+        name: '缺省优先级为 0',
+        args: [
+          [
+            { op: 'add', id: 'a' },
+            { op: 'add', id: 'b', priority: 1 },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['b'], pending: [{ id: 'a', priority: 0 }] },
+      },
+      {
+        name: '取消后重新 add 排到队尾',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 1 },
+            { op: 'cancel', id: 'a' },
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'run' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['b', 'a'], pending: [] },
+      },
+      {
+        name: '未知 op 忽略',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'nope' },
+            { op: 'run' },
+          ],
+        ],
+        expected: { done: ['a'], pending: [] },
+      },
+      { name: '空队列 run 无副作用', args: [[{ op: 'run' }]], expected: { done: [], pending: [] } },
+      {
+        name: 'pending 按下一个执行顺序排列',
+        args: [
+          [
+            { op: 'add', id: 'a', priority: 1 },
+            { op: 'add', id: 'b', priority: 3 },
+            { op: 'add', id: 'c', priority: 2 },
+          ],
+        ],
+        expected: {
+          done: [],
+          pending: [
+            { id: 'b', priority: 3 },
+            { id: 'c', priority: 2 },
+            { id: 'a', priority: 1 },
+          ],
+        },
+      },
+      {
+        name: '非法 id 与非整数优先级',
+        args: [
+          [
+            { op: 'add', id: '', priority: 1 },
+            { op: 'add', id: 'x', priority: 1.5 },
+            { op: 'add', id: 'y', priority: 2 },
+          ],
+        ],
+        expected: {
+          done: [],
+          pending: [
+            { id: 'y', priority: 2 },
+            { id: 'x', priority: 0 },
+          ],
+        },
+      },
     ],
   },
 ];

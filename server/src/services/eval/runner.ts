@@ -181,6 +181,122 @@ export function runSourceCases(
 }
 
 /**
+ * 多文件套件：在同一个 vm 上下文里按 CommonJS 语义加载入口与相对依赖。
+ *
+ * 为什么不用 require()/import()：那会把宿主机的 require 交给被测实现，
+ * 等于把 fs / process 全部暴露出去。这里只提供一个极小的 loader：
+ *  - 白名单是 suite.files，只有列出的文件能被 require；
+ *  - 只接受相对路径，解析后的绝对路径必须落在白名单里；
+ *  - 模块体同样跑在 vm 里（带 timeout），模块级状态在同一上下文中共享 ——
+ *    这正是「有状态实现」能被真实检验的前提。
+ */
+function runMultiFileCases(
+  suiteDir: string,
+  entryAbs: string,
+  suite: EvalSuite,
+  cases: EvalCase[],
+  hiddenFrom: number,
+): SourceRunResult {
+  const allowed = new Set<string>([path.resolve(entryAbs)]);
+  for (const rel of suite.files ?? []) allowed.add(path.resolve(suiteDir, rel));
+
+  const moduleShim = { exports: {} as Record<string, unknown> };
+  const sandbox: Record<string, unknown> = {
+    module: moduleShim,
+    exports: moduleShim.exports,
+    __name: suite.exportName,
+    __args: [] as unknown[],
+    __result: undefined as unknown,
+    __moduleFn: undefined as unknown,
+    __moduleShim: undefined as unknown,
+    __moduleRequire: undefined as unknown,
+  };
+  const ctx = vm.createContext(sandbox);
+  const cache = new Map<string, { exports: unknown }>();
+
+  const loadModule = (absFile: string): unknown => {
+    const key = path.resolve(absFile);
+    const cached = cache.get(key);
+    if (cached) return cached.exports;
+    if (!allowed.has(key)) {
+      throw new Error(`不允许加载 ${path.relative(suiteDir, key)}（不在套件 files 白名单内）`);
+    }
+    let source: string;
+    try {
+      source = readFileSync(key, 'utf8');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`读取 ${path.relative(suiteDir, key)} 失败：${message}`);
+    }
+    const mod: { exports: unknown } = { exports: {} };
+    cache.set(key, mod); // 先入缓存：循环依赖时拿到的是半成品，而不是无限递归
+    const requireFrom = (spec: unknown): unknown => {
+      if (typeof spec !== 'string' || !spec.startsWith('.')) {
+        throw new Error(`只允许相对路径 require：${String(spec)}`);
+      }
+      return loadModule(path.resolve(path.dirname(key), spec));
+    };
+    const wrapped = `(function (module, exports, require) {\n${source}\n})`;
+    sandbox.__moduleFn = vm.runInContext(wrapped, ctx, {
+      timeout: MODULE_TIMEOUT_MS,
+      filename: key,
+    });
+    sandbox.__moduleShim = mod;
+    sandbox.__moduleRequire = requireFrom;
+    // 必须经由 runInContext 执行模块体：这样 timeout 才管得住死循环。
+    vm.runInContext('__moduleFn(__moduleShim, __moduleShim.exports, __moduleRequire)', ctx, {
+      timeout: MODULE_TIMEOUT_MS,
+      filename: key,
+    });
+    return mod.exports;
+  };
+
+  let entryExports: unknown;
+  try {
+    entryExports = loadModule(entryAbs);
+  } catch (err) {
+    return {
+      passed: 0,
+      total: cases.length,
+      failures: [],
+      error: `加载失败：${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const exportedName = suite.exportName;
+  const fn =
+    entryExports !== null && typeof entryExports === 'object'
+      ? (entryExports as Record<string, unknown>)[exportedName]
+      : undefined;
+  if (typeof fn !== 'function') {
+    return {
+      passed: 0,
+      total: cases.length,
+      failures: [],
+      error: `module.exports.${exportedName} 不是函数（必须保持 CommonJS 导出）`,
+    };
+  }
+  // runCase 统一从 module.exports 取函数：把入口模块挂回上下文即可复用同一口径。
+  sandbox.module = { exports: entryExports };
+
+  let passed = 0;
+  const failures: EvalCaseFailure[] = [];
+  cases.forEach((c, index) => {
+    const outcome = runCase(ctx, c);
+    if (outcome.pass) passed += 1;
+    else {
+      failures.push({
+        name: c.name,
+        expected: outcome.expected,
+        actual: outcome.actual,
+        hidden: index >= hiddenFrom,
+      });
+    }
+  });
+  return { passed, total: cases.length, failures };
+}
+
+/**
  * 跑单套件。
  * @param includeHidden true = 判据口径（public + hidden 全量）；false = Agent 可见口径。
  */
@@ -205,18 +321,23 @@ export function runSuite(
     return { ...base, error: `实现文件不存在：${suite.implPath}` };
   }
 
-  let source: string;
-  try {
-    source = readFileSync(abs, 'utf8');
-  } catch (err) {
-    return { ...base, error: `读取失败：${err instanceof Error ? err.message : String(err)}` };
-  }
-
   const cases = includeHidden
     ? [...suite.publicCases, ...suite.hiddenCases]
     : [...suite.publicCases];
   const hiddenFrom = suite.publicCases.length;
-  const result = runSourceCases(source, suite.exportName, cases, abs, hiddenFrom);
+
+  let result: SourceRunResult;
+  if (suite.files && suite.files.length > 0) {
+    result = runMultiFileCases(path.dirname(abs), abs, suite, cases, hiddenFrom);
+  } else {
+    let source: string;
+    try {
+      source = readFileSync(abs, 'utf8');
+    } catch (err) {
+      return { ...base, error: `读取失败：${err instanceof Error ? err.message : String(err)}` };
+    }
+    result = runSourceCases(source, suite.exportName, cases, abs, hiddenFrom);
+  }
 
   const publicTotal = suite.publicCases.length;
   const publicFailures = result.failures.filter((f) => !f.hidden).length;

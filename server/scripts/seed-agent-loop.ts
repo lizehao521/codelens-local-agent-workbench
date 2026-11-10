@@ -236,11 +236,33 @@ const CODE_PROBE = `本轮只做测量，不要修改任何文件。严格按顺
  *   · 打分用 public + hidden 全量用例，只针对公开样例打补丁拿不到满分；
  *   · 产物是**代码本身**，会跨代保留 —— 这就是代码域的能力沉淀。
  *
- * 每代只点名一个套件。前三个是扩任务空间后新增的难度套件（全新会话从这里起跑，
- * 因为扩套件改变了指标分母，不能接在旧链后面比）；后三个是第一批已修好的套件。
- * 旧套件保留在轮转里，用来验证「修好的东西不会因为后续改动而回退」。
+ * 每代只点名一个套件。最前面两个是扩任务面（第二轮）新增的多文件/有状态套件
+ * ——把分母从「六个纯函数」换成「八题、含跨文件联动与队列状态机」，因此必须从
+ * 全新会话起跑，不能接在旧链后面比。中间三个是上一轮扩题新增的难度套件，
+ * 后三个是第一批已修好的套件；旧套件保留在轮转里，用来验证修好的东西不会回退。
  */
 const CODE_TASKS = [
+  `修复 eval/inventory_rollup/ 下的缺陷，让实现满足入口 impl.cjs 头部注释里的全部规范。
+这个套件是多文件联动：入口 impl.cjs 会 require 同目录的 lib/parse.cjs 与 lib/pricing.cjs。
+严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="inventory_rollup"）拿到当前通过率；
+2) 依次用 fs.read 读 impl.cjs、lib/parse.cjs、lib/pricing.cjs，定位缺陷在哪一层；
+3) 用 fs.write、operation=overwrite 逐个写回修复版；三个文件都必须保持 CommonJS 的 module.exports 导出，
+   也不要改动文件路径与相对 require 的写法；
+4) 再调 eval.run（suite="inventory_rollup"）复验；
+5) 最后用一句话报告得分，不要给空回答。
+只允许改这三个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
+  `修复 eval/job_queue/ 下的缺陷，让实现满足入口 impl.cjs 头部注释里的全部规范。
+这个套件是有状态实现：入口 impl.cjs 会 require 同目录的 lib/queue.cjs（JobQueue 类）。
+严格按顺序执行，不许跳步：
+1) 第一步先调用 eval.run（suite="job_queue"）拿到当前通过率；
+2) 用 fs.read 读 impl.cjs 与 lib/queue.cjs，按文件头注释逐条核对队列语义（去重、同优先级 FIFO、取消、重新入队）；
+3) 用 fs.write、operation=overwrite 写回修复版（两个文件都要保持 CommonJS 的 module.exports 导出）；
+4) 再调 eval.run（suite="job_queue"）复验；
+5) 最后用一句话报告得分，不要给空回答。
+只允许改这两个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
   `修复 eval/interval_merge/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。严格按顺序执行，不许跳步：
 1) 第一步先调用 eval.run（suite="interval_merge"）拿到当前通过率；
 2) 若有失败用例：fs.read 读实现 → fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）→ 再调 eval.run 复验；
@@ -305,6 +327,7 @@ const PROPOSE_TASK = `本轮只做一件事：提交 1 个评测套件提案，�
 const AUTO_TASK = `本轮目标是让固定评测集的通过率提高。严格按顺序执行：
 1) 先调用 eval.run（不传 suite）拿到当前通过率与失败套件列表；
 2) 从失败的套件里挑**一个**（优先选通过率最低的），用 fs.read 读它的实现文件 eval/<套件id>/impl.cjs；
+   如果同目录还有 lib/ 子目录，也要一并读 —— 多文件套件的缺陷可能不在入口文件里；
 3) 用 fs.write、operation=overwrite 写回修复版（必须保持 CommonJS 的 module.exports 导出）；
 4) 再调用 eval.run 复验这个套件；
 5) 最后用一句话报告：修了哪个套件、复验得分多少。
@@ -358,18 +381,37 @@ const baseArgs = {
  * 只补**缺失**的文件，绝不覆盖已有文件：已经修好的实现必须跨轮、跨代保留，
  * 否则每一轮都从带缺陷的初始版本重新开始，读数就永远在原地打转。
  * 沙箱被回收后重新起跑时，这一步让实验可复现。
+ *
+ * 递归复制整个套件目录（多文件套件有 lib/ 子目录），逐个文件判断是否存在；
+ * 不整目录覆盖，避免把 Agent 已修好的文件回退成带缺陷版本。
  */
+function copyMissingFiles(fromDir: string, toDir: string): number {
+  let copied = 0;
+  for (const entry of readdirSync(fromDir, { withFileTypes: true })) {
+    const from = path.join(fromDir, entry.name);
+    const to = path.join(toDir, entry.name);
+    if (entry.isDirectory()) {
+      mkdirSync(to, { recursive: true });
+      copied += copyMissingFiles(from, to);
+    } else if (!existsSync(to)) {
+      mkdirSync(path.dirname(to), { recursive: true });
+      copyFileSync(from, to);
+      copied += 1;
+    }
+  }
+  return copied;
+}
+
 function syncEvalFixtures(): void {
   const src = path.join(ROOT, 'eval-fixtures');
   if (!existsSync(src)) return;
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const from = path.join(src, entry.name, 'impl.cjs');
-    const to = path.join(ROOT, 'workspace', 'eval', entry.name, 'impl.cjs');
-    if (!existsSync(from) || existsSync(to)) continue;
-    mkdirSync(path.dirname(to), { recursive: true });
-    copyFileSync(from, to);
-    console.log(`  ↩ 恢复评测实现：${entry.name}`);
+    const copied = copyMissingFiles(
+      path.join(src, entry.name),
+      path.join(ROOT, 'workspace', 'eval', entry.name),
+    );
+    if (copied > 0) console.log(`  ↩ 恢复评测实现：${entry.name}（${copied} 个文件）`);
   }
 }
 

@@ -7,9 +7,10 @@
  *  3) 本轮没跑过 eval.run → 不产出判据（不污染无关会话的覆盖率）。
  */
 
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { runEvalBattery, runSuite, deepEqual } from '../src/services/eval/runner.js';
 import { EVAL_SUITES, EVAL_RUN_DISPLAY_NAME, findSuite } from '../src/services/eval/suites.js';
@@ -92,6 +93,115 @@ module.exports = { parseQuery };`,
 module.exports = { toRoman };`,
 };
 
+/** 多文件套件的参考实现：key 是套件目录内的相对路径。 */
+const GOOD_FILES: Record<string, Record<string, string>> = {
+  inventory_rollup: {
+    'impl.cjs': `const { parseRow, isBlank } = require('./lib/parse.cjs');
+const { round2, lineGross, applyTier } = require('./lib/pricing.cjs');
+
+function rollup(lines) {
+  const list = Array.isArray(lines) ? lines : [];
+  const merged = new Map();
+  let skipped = 0;
+  for (const line of list) {
+    if (isBlank(line)) continue;
+    const row = parseRow(line);
+    if (!row) { skipped += 1; continue; }
+    const cur = merged.get(row.sku);
+    if (cur) { cur.qty += row.qty; cur.gross += lineGross(row); }
+    else merged.set(row.sku, { qty: row.qty, gross: lineGross(row) });
+  }
+  const items = [...merged.entries()]
+    .map(([sku, agg]) => ({ sku, qty: agg.qty, total: round2(applyTier(agg.qty, agg.gross)) }))
+    .sort((a, b) => (a.sku < b.sku ? -1 : a.sku > b.sku ? 1 : 0));
+  const total = round2(items.reduce((sum, it) => sum + it.total, 0));
+  return { items, skipped, total };
+}
+module.exports = { rollup };`,
+    'lib/parse.cjs': `function parseRow(line) {
+  if (typeof line !== 'string') return null;
+  const parts = line.split(',');
+  if (parts.length < 3 || parts.length > 4) return null;
+  const sku = parts[0].trim();
+  const qtyRaw = parts[1].trim();
+  const priceRaw = parts[2].trim();
+  const discountRaw = parts.length === 4 ? parts[3].trim() : '0';
+  if (!sku || !/^\\d+$/.test(qtyRaw) || priceRaw === '' || discountRaw === '') return null;
+  const qty = Number(qtyRaw);
+  const unitPrice = Number(priceRaw);
+  const discount = Number(discountRaw);
+  if (qty < 1) return null;
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) return null;
+  if (!Number.isFinite(discount) || discount < 0 || discount > 1) return null;
+  return { sku, qty, unitPrice, discount };
+}
+function isBlank(line) {
+  return typeof line !== 'string' || line.trim() === '';
+}
+module.exports = { parseRow, isBlank };`,
+    'lib/pricing.cjs': `function round2(x) {
+  return Math.round(x * 100) / 100;
+}
+function lineGross(row) {
+  return row.qty * row.unitPrice * (1 - row.discount);
+}
+function applyTier(qty, gross) {
+  return qty >= 10 ? gross * 0.95 : gross;
+}
+module.exports = { round2, lineGross, applyTier };`,
+  },
+  job_queue: {
+    'impl.cjs': `const { JobQueue } = require('./lib/queue.cjs');
+
+function runQueue(ops) {
+  const queue = new JobQueue();
+  for (const op of Array.isArray(ops) ? ops : []) {
+    if (!op || typeof op !== 'object') continue;
+    if (op.op === 'add') queue.add(op.id, op.priority);
+    else if (op.op === 'run') queue.run();
+    else if (op.op === 'cancel') queue.cancel(op.id);
+  }
+  return { done: queue.done.slice(), pending: queue.snapshot() };
+}
+module.exports = { runQueue };`,
+    'lib/queue.cjs': `class JobQueue {
+  constructor() {
+    this.items = [];
+    this.done = [];
+    this.seq = 0;
+  }
+  add(id, priority) {
+    if (typeof id !== 'string' || id === '') return;
+    const prio = Number.isInteger(priority) ? priority : 0;
+    const existing = this.items.find((it) => it.id === id);
+    if (existing) { existing.priority = prio; return; }
+    this.items.push({ id, priority: prio, seq: this.seq++ });
+  }
+  run() {
+    if (this.items.length === 0) return;
+    let best = 0;
+    for (let i = 1; i < this.items.length; i += 1) {
+      const a = this.items[i];
+      const b = this.items[best];
+      if (a.priority > b.priority || (a.priority === b.priority && a.seq < b.seq)) best = i;
+    }
+    this.done.push(this.items[best].id);
+    this.items.splice(best, 1);
+  }
+  cancel(id) {
+    this.items = this.items.filter((it) => it.id !== id);
+  }
+  snapshot() {
+    return this.items
+      .slice()
+      .sort((a, b) => (b.priority - a.priority) || (a.seq - b.seq))
+      .map((it) => ({ id: it.id, priority: it.priority }));
+  }
+}
+module.exports = { JobQueue };`,
+  },
+};
+
 /** 只覆盖公开用例的补丁：两个公开样例硬编码，其余原样返回。 */
 const OVERFIT: Record<string, string> = {
   slugify: `function slugify(input) {
@@ -114,6 +224,34 @@ function writeImpl(root: string, suiteId: string, source: string): void {
   writeFileSync(abs, source, 'utf8');
 }
 
+/** 写多文件套件：路径相对套件目录。 */
+function writeSuiteFiles(root: string, suiteId: string, files: Record<string, string>): void {
+  const suite = findSuite(suiteId)!;
+  const suiteDir = path.dirname(path.join(root, suite.implPath));
+  for (const [rel, source] of Object.entries(files)) {
+    const abs = path.join(suiteDir, rel);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, source, 'utf8');
+  }
+}
+
+const FIXTURES_DIR = fileURLToPath(new URL('../eval-fixtures', import.meta.url));
+
+/**
+ * 递归复制夹具目录。
+ * 不用 node:fs 的 cpSync：当前 Node 构建在 Windows 上调用它会原生崩溃（0xC0000005），
+ * 手动复制两个目录足够，且行为可预期。
+ */
+function copyDir(from: string, to: string): void {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const src = path.join(from, entry.name);
+    const dst = path.join(to, entry.name);
+    if (entry.isDirectory()) copyDir(src, dst);
+    else writeFileSync(dst, readFileSync(src));
+  }
+}
+
 function evidence(toolNames: string[]): JudgeEvidence {
   return {
     sessionId: 's-eval',
@@ -128,8 +266,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('六套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(6);
+  it('八套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(8);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);
@@ -138,12 +276,48 @@ describe('固定评测套件', () => {
 
   it('正确实现拿满分（判据可绿）', () => {
     const root = tmpRoot();
-    for (const suite of EVAL_SUITES) writeImpl(root, suite.id, GOOD[suite.id]!);
+    for (const suite of EVAL_SUITES) {
+      const files = GOOD_FILES[suite.id];
+      if (files) writeSuiteFiles(root, suite.id, files);
+      else writeImpl(root, suite.id, GOOD[suite.id]!);
+    }
 
     const battery = runEvalBattery(root, { includeHidden: true });
     expect(battery.total).toBeGreaterThan(0);
     expect(battery.passed).toBe(battery.total);
     expect(battery.score).toBe(1);
+  });
+
+  it('版本库里的缺陷夹具在隐藏口径下真红（缺陷真红）', () => {
+    for (const id of Object.keys(GOOD_FILES)) {
+      const suite = findSuite(id)!;
+      const root = tmpRoot();
+      copyDir(
+        path.join(FIXTURES_DIR, id),
+        path.dirname(path.join(root, suite.implPath)),
+      );
+
+      const full = runSuite(root, suite, true);
+      expect(full.error).toBeUndefined();
+      expect(full.ok).toBe(false);
+      // 缺陷必须能被隐藏用例抓住：只有公开用例红说明隐藏集没起作用。
+      expect(full.failures.some((f) => f.hidden)).toBe(true);
+    }
+  });
+
+  it('多文件套件只允许 require files 白名单内的相对路径', () => {
+    const suite = findSuite('inventory_rollup')!;
+
+    for (const badSpec of ['./lib/secret.cjs', 'fs']) {
+      const root = tmpRoot();
+      writeSuiteFiles(root, 'inventory_rollup', {
+        'impl.cjs': `const s = require(${JSON.stringify(badSpec)});\nmodule.exports = { rollup: () => s };`,
+        'lib/secret.cjs': 'module.exports = { secret: true };',
+      });
+      const full = runSuite(root, suite, true);
+      expect(full.ok).toBe(false);
+      expect(full.error).toContain(badSpec === 'fs' ? '相对路径' : '白名单');
+    }
   });
 
   it('只针对公开用例打补丁 → 隐藏用例打红（判据可红）', () => {
