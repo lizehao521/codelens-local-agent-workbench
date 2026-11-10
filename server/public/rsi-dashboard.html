@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>RSI · 自回归看板</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg-0: #0a0c0f;
+    --bg-1: #111418;
+    --bg-2: #1a1f25;
+    --bg-3: #252c35;
+    --cyan: #00f5d4;
+    --cyan-dim: #00a88f;
+    --magenta: #ff2d95;
+    --magenta-dim: #b81f6b;
+    --amber: #ffc857;
+    --amber-dim: #b88f3c;
+    --green: #39ff14;
+    --red: #ff3b3b;
+    --gray-1: #4a5568;
+    --gray-2: #718096;
+    --gray-3: #a0aec0;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --border: #2a3340;
+    --border-bright: #3d4a5c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-0); color: var(--text); font-family: 'JetBrains Mono', ui-monospace, monospace; min-height: 100vh; }
+  body {
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 0%, rgba(0,245,212,0.08), transparent 60%),
+      radial-gradient(ellipse 50% 50% at 90% 100%, rgba(255,45,149,0.07), transparent 55%),
+      var(--bg-0);
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 28px 48px; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: flex-end; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  header .logo { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 28px; letter-spacing: -0.5px; }
+  header .logo .dot { color: var(--magenta); }
+  header .logo .rsi { color: var(--cyan); }
+  header .session-title { font-size: 14px; color: var(--gray-3); margin-bottom: 3px; }
+  header .sub { font-size: 11px; color: var(--gray-2); }
+
+  .badges { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+  .badge {
+    font-size: 11px; font-weight: 500; padding: 5px 12px; border-radius: 999px;
+    border: 1px solid var(--border-bright); background: var(--bg-2);
+    letter-spacing: 0.5px;
+  }
+  .badge.gen { color: var(--amber); border-color: rgba(255,200,87,0.3); }
+  .badge.gen b { color: var(--amber); font-weight: 700; font-size: 16px; }
+
+  .verdict-tag {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 13px;
+    padding: 6px 16px; border-radius: 6px; border: 1px solid; letter-spacing: 1px;
+  }
+  .verdict-tag.improved      { background: rgba(57,255,20,0.08); color: var(--green);   border-color: rgba(57,255,20,0.3); }
+  .verdict-tag.not_improved  { background: rgba(255,200,87,0.08); color: var(--amber);   border-color: rgba(255,200,87,0.3); }
+  .verdict-tag.refused       { background: rgba(255,59,59,0.08);  color: var(--red);     border-color: rgba(255,59,59,0.3); }
+  .verdict-tag.undecidable   { background: rgba(113,128,150,0.08); color: var(--gray-2); border-color: rgba(113,128,150,0.3); }
+  .verdict-tag.error          { background: rgba(255,45,149,0.08); color: var(--magenta); border-color: rgba(255,45,149,0.3); }
+
+  /* ── Grid ── */
+  main { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--bg-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+  }
+  .card-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 600;
+    color: var(--gray-2); text-transform: uppercase; letter-spacing: 1.5px;
+    margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .card-title::before { content: '▸'; color: var(--cyan); font-weight: 700; }
+
+  /* ── Chart ── */
+  .chart-card { grid-column: span 2; min-height: 320px; }
+  @media (max-width: 1100px) { .chart-card { grid-column: span 1; } }
+  #chart { width: 100%; height: 280px; }
+
+  /* ── Metrics mini strip ── */
+  .metric-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px; }
+  @media (max-width: 800px) { .metric-strip { grid-template-columns: repeat(2, 1fr); } }
+  .metric-tile {
+    background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .metric-tile .label { font-size: 10px; color: var(--gray-2); text-transform: uppercase; letter-spacing: 1px; }
+  .metric-tile .val { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 22px; color: var(--cyan); margin-top: 2px; }
+  .metric-tile .delta { font-size: 11px; margin-top: 2px; }
+  .metric-tile .delta.up { color: var(--green); }
+  .metric-tile .delta.down { color: var(--red); }
+
+  /* ── RSI Runs ── */
+  .rsi-list { display: flex; flex-direction: column; gap: 10px; }
+  .rsi-item {
+    border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+    background: var(--bg-2); display: flex; align-items: flex-start; gap: 14px;
+    transition: border-color 0.15s;
+  }
+  .rsi-item:hover { border-color: var(--border-bright); }
+  .rsi-item .g { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 11px; color: var(--gray-2); min-width: 70px; padding-top: 2px; }
+  .rsi-item .g b { color: var(--amber); font-size: 16px; }
+  .rsi-item .v-tag { flex-shrink: 0; padding: 4px 10px; border-radius: 5px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  .rsi-item .v-tag.improved      { background: rgba(57,255,20,0.12); color: var(--green); }
+  .rsi-item .v-tag.not_improved  { background: rgba(255,200,87,0.12); color: var(--amber); }
+  .rsi-item .v-tag.refused       { background: rgba(255,59,59,0.12);  color: var(--red); }
+  .rsi-item .v-tag.undecidable   { background: rgba(113,128,150,0.12); color: var(--gray-3); }
+  .rsi-item .v-tag.error          { background: rgba(255,45,149,0.12); color: var(--magenta); }
+  .rsi-item .reasons { flex: 1; font-size: 12px; color: var(--gray-2); }
+  .rsi-item .reasons li { list-style: none; padding-left: 12px; position: relative; line-height: 1.6; }
+  .rsi-item .reasons li::before { content: '▸'; position: absolute; left: 0; color: var(--magenta); }
+  .rsi-item .reasons li.ok::before { content: '◉'; color: var(--cyan); }
+  .rsi-item .reasons li { color: var(--text-dim); }
+  .rsi-item .reasons li.ok { color: var(--cyan-dim); }
+  .rsi-item .exit { font-size: 10px; color: var(--gray-2); padding-top: 4px; }
+
+  /* ── Sidebar ── */
+  .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+  .stat-row .k { color: var(--gray-2); }
+  .stat-row .v { font-weight: 700; color: var(--cyan); }
+  .exit-bars { display: flex; gap: 4px; margin-top: 12px; }
+  .exit-bar {
+    flex: 1; height: 40px; border-radius: 4px; display: flex; align-items: flex-end; justify-content: center;
+    font-size: 10px; font-weight: 700; padding-bottom: 4px; color: rgba(0,0,0,0.8);
+  }
+  .exit-bar.e0 { background: var(--green); }
+  .exit-bar.e1 { background: var(--amber); }
+  .exit-bar.e2 { background: var(--red); }
+  .exit-bar.e3 { background: var(--gray-2); }
+
+  .run-item {
+    padding: 8px 12px; border-radius: 6px; font-size: 11px; display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--border); margin-bottom: 6px;
+  }
+  .run-item.pass { background: rgba(57,255,20,0.06); border-color: rgba(57,255,20,0.2); }
+  .run-item.fail { background: rgba(255,59,59,0.06);  border-color: rgba(255,59,59,0.2); }
+  .run-item.inconclusive { background: rgba(113,128,150,0.06); border-color: rgba(113,128,150,0.2); }
+  .run-item .g { color: var(--amber); font-weight: 700; }
+  .run-item .sv { color: var(--gray-2); font-family: 'Space Grotesk', sans-serif; }
+
+  .attr-item {
+    padding: 10px 12px; border-radius: 6px; font-size: 11px;
+    border: 1px solid var(--border); margin-bottom: 6px;
+    background: rgba(0,245,212,0.04); border-color: rgba(0,245,212,0.2);
+    line-height: 1.6;
+  }
+  .attr-item .g { color: var(--magenta); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .attr-item .lesson { color: var(--text-dim); margin-top: 4px; }
+  .attr-item .lesson strong { color: var(--cyan); }
+  .attr-item .ts { font-size: 9px; color: var(--gray-2); margin-top: 4px; }
+
+  /* ── Footer ── */
+  footer { margin-top: 28px; font-size: 11px; color: var(--gray-2); text-align: center; letter-spacing: 1px; }
+
+  /* spinner */
+  .loader { text-align: center; padding: 60px; color: var(--gray-2); }
+  .loader::before { content: '◌◌◌'; color: var(--cyan); animation: spin 1.2s linear infinite; }
+  @keyframes spin { to { content: '●●●'; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header id="hdr">
+    <div>
+      <div class="logo"><span class="rsi">RSI</span><span class="dot">·</span>SELF-AUTO</div>
+      <div class="session-title" id="session-title">——</div>
+      <div class="sub" id="session-meta">加载中…</div>
+    </div>
+    <div class="badges">
+      <div class="badge gen">世代 <b id="gen-count">—</b></div>
+      <div class="verdict-tag" id="latest-verdict">—</div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="card chart-card">
+      <div class="card-title">判据塔评估信号 · 跨代趋势</div>
+      <div id="chart"></div>
+      <div class="metric-strip" id="metric-strip"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">krsi · 两代对账</div>
+      <div class="rsi-list" id="rsi-list">
+        <div class="loader">正在拉取账本</div>
+      </div>
+    </section>
+
+    <aside class="card" style="grid-row: span 2;">
+      <div class="card-title">账本 · 侧栏</div>
+
+      <div class="stat-row"><span class="k">improved</span><span class="v" id="s-improved" style="color:var(--green)">0</span></div>
+      <div class="stat-row"><span class="k">not_improved</span><span class="v" id="s-not" style="color:var(--amber)">0</span></div>
+      <div class="stat-row"><span class="k">refused</span><span class="v" id="s-refused" style="color:var(--red)">0</span></div>
+      <div class="stat-row"><span class="k">undecidable</span><span class="v" id="s-und" style="color:var(--gray-3)">0</span></div>
+
+      <div class="card-title" style="margin-top:20px">退出码 · 柱状</div>
+      <div class="exit-bars" id="exit-bars">
+        <div class="exit-bar e0" title="improved (0)">0</div>
+        <div class="exit-bar e1" title="not_improved (1)">0</div>
+        <div class="exit-bar e2" title="refused (2)">0</div>
+        <div class="exit-bar e3" title="undecidable (3)">0</div>
+      </div>
+
+      <div class="card-title" style="margin-top:20px">判据塔 · 每代汇总</div>
+      <div id="run-list"></div>
+
+      <div class="card-title" style="margin-top:20px">归因经验 · π'</div>
+      <div id="attr-list">
+        <div style="font-size:11px;color:var(--gray-2);font-style:italic">等待归因…</div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>AGENTKERNEL · RSI L1 机械桥 · 演示数据 · 2026</footer>
+</div>
+
+<!-- async：CDN 不可达时不能阻塞解析，否则整页数据脚本都跑不到 -->
+<script async src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+(async () => {
+  const sessionId = new URLSearchParams(location.search).get('session') || 'demo-session-001';
+  const res = await fetch(`/api/rsi/overview?session=${sessionId}`);
+  if (!res.ok) { document.body.innerHTML = '<div style="padding:40px;color:#ff3b3b">API failed: ' + await res.text() + '</div>'; return; }
+  const data = await res.json();
+
+  const v = data.verdictsByRun;
+
+  // ── Header ──
+  document.getElementById('session-title').textContent = data.session.title;
+  document.getElementById('session-meta').textContent =
+    `${data.session.provider} / ${data.session.model}  ·  session_id=${data.session.id}`;
+  document.getElementById('gen-count').textContent = data.judgeRuns.length;
+
+  const latest = data.rsiRuns.at(-1);
+  if (latest) {
+    const vt = document.getElementById('latest-verdict');
+    vt.textContent = latest.verdict.toUpperCase();
+    vt.className = 'verdict-tag ' + latest.verdict;
+  }
+
+  // 代码修复族的目标读数：没有代码修复任务时不出这条线，避免空图例。
+  const hasTestPassRate = data.judgeRuns.some((run) =>
+    (v[String(run.id)] || []).some((x) => x.criterion === 'task.test_pass_rate'));
+  const criteriaOf = {
+    '成功率': 'tool.success_rate',
+    '审批摩擦（反转）': 'approval.friction',
+    '预算效率（反转）': 'budget.efficiency',
+    '代码修复通过率': 'task.test_pass_rate',
+  };
+
+  // ── Metric strip (last gen vs previous) ──
+  // 先渲染指标条：ECharts 走 CDN，离线时请求可能长时间挂起，不能让它挡住数据。
+  const strip = document.getElementById('metric-strip');
+  const last2 = data.judgeRuns.slice(-2);
+  const last2V = last2.map(r => v[String(r.id)] || []);
+  const tiles = [
+    { label: 'tool.success_rate', key: 'tool.success_rate', color: '#00f5d4' },
+    { label: 'approval.friction',  key: 'approval.friction', color: '#ff2d95', invert: true },
+    { label: 'budget.efficiency',  key: 'budget.efficiency', color: '#ffc857', invert: true },
+    ...(hasTestPassRate
+      ? [{ label: 'task.test_pass_rate', key: 'task.test_pass_rate', color: '#39ff14' }]
+      : []),
+    { label: 'judge score',        key: null, color: '#39ff14' },
+    { label: 'coverage',           key: null, color: '#a0aec0' },
+  ];
+  const lastGen = data.judgeRuns[data.judgeRuns.length - 1];
+  const prevGen = data.judgeRuns[data.judgeRuns.length - 2];
+  for (const t of tiles) {
+    let val, prev;
+    if (t.key) {
+      val = last2V[1].find(x => x.criterion === t.key)?.score ?? null;
+      prev = last2V[0].find(x => x.criterion === t.key)?.score ?? null;
+    } else if (t.label === 'judge score') {
+      val = lastGen?.score ?? null; prev = prevGen?.score ?? null;
+    } else {
+      val = lastGen?.coverage ?? null; prev = prevGen?.coverage ?? null;
+    }
+    if (t.invert) { val = val != null ? 1 - val : null; prev = prev != null ? 1 - prev : null; }
+    const d = val != null && prev != null ? (val - prev) : null;
+    const dStr = d != null ? (d > 0 ? `▲ ${d.toFixed(3)}` : `▼ ${Math.abs(d).toFixed(3)}`) : '';
+    const dClass = d != null ? (d > 0 ? 'up' : d < 0 ? 'down' : '') : '';
+    strip.insertAdjacentHTML('beforeend',
+      `<div class="metric-tile">
+         <div class="label">${t.label}</div>
+         <div class="val" style="color:${t.color}">${val != null ? val.toFixed(3) : '—'}</div>
+         <div class="delta ${dClass}">${dStr}</div>
+       </div>`);
+  }
+
+  // ── Chart ──
+  // 指标条已就绪；这里最多等 6s 让 CDN 的 echarts 落地，拿不到就降级。
+  const chartEl = document.getElementById('chart');
+  let chart = null;
+  for (let i = 0; i < 40 && typeof echarts === 'undefined'; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  if (typeof echarts !== 'undefined') chart = echarts.init(chartEl, null, { renderer: 'canvas' });
+  const gens = data.judgeRuns.map((_, i) => 'g' + (i + 1));
+
+  function series(name, direction, extractor, color) {
+    const raw = data.judgeRuns.map((run) => {
+      const verdicts = v[String(run.id)] || [];
+      const ve = verdicts.find(x => x.criterion === extractor);
+      const val = ve?.score ?? null;
+      return direction === 'down' && val != null ? 1 - val : val; // 反转 down 向指标，让所有曲线"向上=变好"
+    });
+    return {
+      name, type: 'line', smooth: true, data: raw,
+      lineStyle: { width: 2.5, color, shadowBlur: 10, shadowColor: color + '80' },
+      itemStyle: { color, borderWidth: 2, borderColor: '#0a0c0f' },
+      symbolSize: 10,
+      areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: color + '30' }, { offset: 1, color: color + '00' }
+      ])},
+    };
+  }
+
+  if (!chart) {
+    chartEl.innerHTML = '<div style="padding:24px;color:#718096;font-family:JetBrains Mono">ECharts CDN 未加载（离线环境），趋势图不可用；指标条仍可使用。</div>';
+  } else chart.setOption({
+    grid: { top: 30, left: 50, right: 30, bottom: 30 },
+    tooltip: {
+      backgroundColor: '#111418', borderColor: '#2a3340', textStyle: { color: '#e2e8f0', fontFamily: 'JetBrains Mono' },
+      formatter: (ps) => {
+        const g = gens[ps[0].dataIndex];
+        let s = `<b>${g}</b><br>`;
+        for (const p of ps) if (p.value != null) {
+          const raw = data.judgeRuns[p.dataIndex];
+          const origV = (v[String(raw.id)] || []).find(x => x.criterion === criteriaOf[p.seriesName]);
+          const real = origV?.score ?? p.value;
+          s += `<span style="color:${p.color}">●</span> ${p.seriesName}: ${real?.toFixed(3) ?? '—'}<br>`;
+        }
+        return s;
+      }
+    },
+    legend: { textStyle: { color: '#94a3b8', fontFamily: 'JetBrains Mono' }, top: 0, right: 0 },
+    xAxis: { type: 'category', data: gens, axisLine: { lineStyle: { color: '#2a3340' } }, axisLabel: { color: '#94a3b8', fontFamily: 'JetBrains Mono' } },
+    yAxis: { type: 'value', min: 0.4, max: 1, axisLine: { show: false }, splitLine: { lineStyle: { color: '#1a1f25' } }, axisLabel: { color: '#718096', fontFamily: 'JetBrains Mono', formatter: v => v.toFixed(1) } },
+    series: [
+      series('成功率',               'up',   'tool.success_rate',  '#00f5d4'),
+      series('审批摩擦（反转）',       'down', 'approval.friction',  '#ff2d95'),
+      series('预算效率（反转）',       'down', 'budget.efficiency',  '#ffc857'),
+      ...(hasTestPassRate ? [series('代码修复通过率', 'up', 'task.test_pass_rate', '#39ff14')] : []),
+    ],
+  });
+  if (chart) window.addEventListener('resize', () => chart.resize());
+
+  // ── RSI list ──
+  const list = document.getElementById('rsi-list');
+  list.innerHTML = '';
+  for (const r of data.rsiRuns) {
+    const reasons = JSON.parse(r.reasons_json || '[]');
+    const items = reasons.map(reason => {
+      const isOk = !reason.includes('R5') && !reason.includes('R1') && !reason.includes('R3') && !reason.includes('R4') && !reason.includes('R6');
+      return `<li class="${isOk ? 'ok' : ''}">${reason}</li>`;
+    }).join('');
+    const emptyMsg = r.verdict === 'improved' ? '<li class="ok">全部指标严格变好</li>' : '';
+    list.insertAdjacentHTML('beforeend',
+      `<div class="rsi-item">
+         <div class="g"><b>${r.prev_generation}</b> → <b>${r.generation}</b></div>
+         <div class="v-tag ${r.verdict}">${r.verdict}</div>
+         <div class="reasons">${items || emptyMsg}</div>
+         <div class="exit">exit ${r.exit_code ?? '?'}</div>
+       </div>`);
+  }
+
+  // ── Sidebar stats ──
+  const counts = {};
+  for (const r of data.rsiRuns) counts[r.verdict] = (counts[r.verdict] || 0) + 1;
+  document.getElementById('s-improved').textContent = counts.improved || 0;
+  document.getElementById('s-not').textContent = counts.not_improved || 0;
+  document.getElementById('s-refused').textContent = counts.refused || 0;
+  document.getElementById('s-und').textContent = counts.undecidable || 0;
+
+  // Exit bars
+  const exitCounts = {};
+  for (const r of data.rsiRuns) exitCounts[r.exit_code] = (exitCounts[r.exit_code] || 0) + 1;
+  const total = data.rsiRuns.length || 1;
+  for (const code of [0, 1, 2, 3]) {
+    const cnt = exitCounts[code] || 0;
+    const h = Math.max(10, (cnt / total) * 100);
+    const bar = document.querySelector(`.exit-bar.e${code}`);
+    bar.style.height = h + '%';
+    bar.textContent = cnt;
+  }
+
+  // Run list
+  const rl = document.getElementById('run-list');
+  rl.innerHTML = '';
+  data.judgeRuns.forEach((run, i) => {
+    rl.insertAdjacentHTML('beforeend',
+      `<div class="run-item ${run.verdict}">
+         <span class="g">g${i+1}</span>
+         <span style="color:#718096">·</span>
+         <span>${run.verdict}</span>
+         <span class="sv" style="margin-left:auto">score ${(run.score*100).toFixed(1)}%</span>
+       </div>`);
+  });
+
+  // Attributions list (π' 增量)
+  const al = document.getElementById('attr-list');
+  al.innerHTML = '';
+  const attrs = data.attributions || [];
+  if (attrs.length === 0) {
+    al.innerHTML = '<div style="font-size:11px;color:var(--gray-2);font-style:italic">暂无归因经验</div>';
+  } else {
+    attrs.forEach(a => {
+      const lessonHtml = a.lesson
+        .replace(/(tool|approval|budget|success_rate|friction|efficiency)/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+      const ts = new Date(a.created_at).toLocaleTimeString();
+      al.insertAdjacentHTML('beforeend',
+        `<div class="attr-item">
+           <div class="g">policy_version ${a.policy_version}</div>
+           <div class="lesson">${lessonHtml}</div>
+           <div class="ts">${ts}</div>
+         </div>`);
+    });
+  }
+})();
+</script>
+</body>
+</html>

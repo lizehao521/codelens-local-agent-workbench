@@ -59,6 +59,7 @@ import { SandboxGrantService } from './services/tools/sandbox-grant.service.js';
 import { SandboxGrantsController } from './controllers/sandbox-grants.controller.js';
 import { RunsController } from './controllers/runs.controller.js';
 import { probeSandboxWritable } from './utils/sandbox-probe.js';
+import { RsiBridgeService } from './services/rsi/rsi-bridge.service.js';
 
 export interface Runtime {
   db: Db;
@@ -78,6 +79,7 @@ export interface Runtime {
   judgeController: JudgeController;
   judge: JudgeService;
   policy: UpdateService;
+  rsi?: RsiBridgeService;
   modelSync: ModelSyncService;
   /** 可观测面（只读）：能力开关目录 / 运行轨迹 / 技能库。 */
   capabilityRegistry: CapabilityRegistryService;
@@ -183,6 +185,10 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     semantic: ruleSemanticAssessor,
     // 事后深判拿不到当时的请求上下文，只能用服务端兜底凭证（客户端可在请求体里覆盖）。
     serverApiKey: config.serverApiKey,
+    // L2 专用兜底：会话 provider/model 是 demo/placeholder 时直接用 env 配的网关。
+    deepAssessorBaseUrl: config.deepAssessorBaseUrl,
+    deepAssessorModel: config.deepAssessorModel,
+    deepAssessorProvider: config.deepAssessorProvider,
   });
   const policy = new UpdateService(db, judge.repository);
   judge.setThresholdsProvider(() => policy.getPolicy().thresholds);
@@ -201,6 +207,12 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
       injected: row.injected,
     })),
   );
+  // RSI L1 旁路对账：从 agentDbPath 的目录推导账本存储位置。
+  // 内存库（:memory:）无目录，RSI bridge 跳过 —— 它的账本文件本来就无处可放。
+  const dbDir = path.dirname(dbPath);
+  const rsi = dbPath !== ':memory:'
+    ? new RsiBridgeService({ db, dbDir, krsiPath: process.env.KRSI_BIN_PATH })
+    : undefined;
   // 运行轨迹服务（可观测面）：构造顺序上必须早于 loop —— loop 要往里写 span。
   const traceService = new TraceService({ db, enabled: config.observabilityEnabled });
   // 独立复核：不可逆调用同步等结论，可逆调用并行回填；每次调用记录真实 token/耗时。
@@ -257,6 +269,17 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     // 强化内核闭环：π（版本化策略）+ Judge（产 r）+ Update（r → π'）。
     policy,
     judge,
+    // RSI 旁路对账（L1 机械桥）：消费同一批 verdicts，生成跨代四态 verdict；
+    // 双轨并存，不阻断现有闭环。内存库时 rsi=undefined，loop 跳过。
+    rsi,
+    // RSI 归因器要直接写 policy_injections，必须把 db 传下去 ——
+    // 之前没传，归因整段被 `&& db` 静默跳过（对账有结果、经验一条没沉淀）。
+    db,
+    // RSI 归因器 LLM 凭证：krsi 判 not_improved / refused 时触发 LLM 归因，
+    // 归因经验直接写 policy_injections 作为 π'。未配凭证时只跑对账不跑归因。
+    rsiAttributorApiKey: config.serverApiKey || undefined,
+    rsiAttributorBaseUrl: config.deepAssessorBaseUrl || undefined,
+    rsiAttributorModel: config.deepAssessorModel || undefined,
     // 沙箱权限：持久化配置（放开沙箱外目录 + 审批豁免），运行时实时读取。
     sandboxPermissions,
     // 运行轨迹：loop 在 act / judge / update 三处埋点；未启用时整条链路自动退化为不埋点。
@@ -396,6 +419,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     judgeController,
     judge,
     policy,
+    rsi,
     modelSync,
     capabilityRegistry,
     capabilitiesController,

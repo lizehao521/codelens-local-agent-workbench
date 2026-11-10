@@ -411,7 +411,9 @@ export async function assessDeep(
           { role: 'user', content: prompt.user },
         ],
         temperature: 0,
-        maxTokens: 512,
+        // 2048 而非 512：部分网关把 claude/gemini 等模型路由到带 reasoning 的变体，
+        // 思考 token 会先吃掉预算，512 时 content 可能被截成空串（finish_reason=length）。
+        maxTokens: 2048,
         stream: false,
       },
       undefined,

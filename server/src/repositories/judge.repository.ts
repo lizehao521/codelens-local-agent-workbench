@@ -127,9 +127,19 @@ export class JudgeRepository {
     const now = Date.now();
     for (const v of verdicts) {
       this.db.run(
-        `INSERT INTO judge_verdicts (run_id, session_id, layer, criterion, status, score, detail, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [runId, sessionId, v.layer, v.criterion, v.status, v.score ?? null, v.detail ?? null, now],
+        `INSERT INTO judge_verdicts (run_id, session_id, layer, criterion, status, score, detail, data_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          runId,
+          sessionId,
+          v.layer,
+          v.criterion,
+          v.status,
+          v.score ?? null,
+          v.detail ?? null,
+          v.data ? JSON.stringify(v.data) : null,
+          now,
+        ],
       );
     }
   }

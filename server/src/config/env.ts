@@ -5,6 +5,30 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
+/**
+ * 加载包根目录下的 `.env`（Node ≥22 内置能力，无需 dotenv 依赖）。
+ *
+ * 为什么必须显式加载：`npm start` 是裸 `node dist/app.js`，Node 不会自动读 `.env`。
+ * 之前没加载的直接后果是 `LLM_SERVER_API_KEY` / `DEEP_ASSESSOR_*` 全为空，
+ * RSI 归因器判定 `hasCreds=false` 后静默跳过 —— 闭环里 r → Update 这一环实际上
+ * 从未消费过 RSI 判决，写入 π 的全是规则模板经验（看起来在学，其实没学到点上）。
+ *
+ * 测试环境刻意不加载：单测里有大量「没有凭证 ⇒ unexec / not_configured」的断言，
+ * 一旦读进开发者本机的真实 Key，这些闸门就全部失效 —— 测出来的绿是假的。
+ */
+function loadDotEnv(): void {
+  if (process.env.NODE_ENV === 'test') return;
+  const packageRoot = findPackageRoot(currentModuleDir());
+  const envPath = path.join(packageRoot, '.env');
+  if (!existsSync(envPath)) return;
+  try {
+    process.loadEnvFile(envPath);
+  } catch {
+    // 解析失败不阻断启动：配置校验会在缺关键项时给出明确错误。
+  }
+}
+loadDotEnv();
+
 /** 导出以供测试钉住默认值（C3：默认值也是判据，必须可被打红）。 */
 export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
@@ -18,6 +42,10 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   ALLOWED_ORIGINS: z.string().default(''),
   LLM_SERVER_API_KEY: z.string().default(''),
+  // ── L2 深判专用（会话 provider/model 不命中时用这些兜底） ──
+  DEEP_ASSESSOR_BASE_URL: z.string().default(''),
+  DEEP_ASSESSOR_MODEL: z.string().default(''),
+  DEEP_ASSESSOR_PROVIDER: z.string().default(''),
   TRUST_PROXY: z.string().default(''),
   CLIENT_DIST_DIR: z.string().default(''),
   // Agent platform additions
@@ -142,6 +170,10 @@ export interface AppConfig {
   nodeEnv: 'development' | 'production' | 'test';
   allowedOrigins: string[];
   serverApiKey: string;
+  /** L2 深判兜底 provider/model/baseUrl（会话不命中时用）。 */
+  deepAssessorProvider: string;
+  deepAssessorModel: string;
+  deepAssessorBaseUrl: string;
   trustProxy: boolean;
   /** Static client build directory served by Express (SPA fallback). */
   clientDistDir: string;
@@ -305,6 +337,9 @@ function buildConfig(source: NodeJS.ProcessEnv): AppConfig {
     nodeEnv: env.NODE_ENV,
     allowedOrigins: parseAllowedOrigins(env.ALLOWED_ORIGINS),
     serverApiKey: env.LLM_SERVER_API_KEY.trim(),
+    deepAssessorProvider: env.DEEP_ASSESSOR_PROVIDER.trim(),
+    deepAssessorModel: env.DEEP_ASSESSOR_MODEL.trim(),
+    deepAssessorBaseUrl: env.DEEP_ASSESSOR_BASE_URL.trim(),
     trustProxy: env.TRUST_PROXY.trim().toLowerCase() === 'true',
     clientDistDir: env.CLIENT_DIST_DIR ? path.resolve(env.CLIENT_DIST_DIR) : defaultClientDistDir(),
     agentDbPath: env.AGENT_DB_PATH

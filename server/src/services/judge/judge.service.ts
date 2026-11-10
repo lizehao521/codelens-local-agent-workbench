@@ -22,6 +22,8 @@ import type { ToolCallRepository } from '../memory/tool-call.repository.js';
 import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
 import { L0_CRITERIA, resolveThresholds, type L0Thresholds } from './criteria.js';
 import { runCanary, type CanaryOutcome } from './canary.js';
+import { runToolDisciplineGates } from './tool-discipline.js';
+import { evalPassRateGate } from './eval-rate.js';
 import { buildSemanticEvidence, type SemanticAssessor, type SemanticEvidence } from './semantic.js';
 import { summarize } from './summarize.js';
 import { encodeSnapshot } from './snapshot-codec.js';
@@ -82,6 +84,13 @@ export interface JudgeDeps {
    * 这里刻意只存值不存来源，来源由调用方声明（keySource）。
    */
   serverApiKey?: string;
+  /**
+   * 深判 L2 专用兜底配置（会话 provider/model 不命中时用）。
+   * 对应环境变量 DEEP_ASSESSOR_BASE_URL / _MODEL / _PROVIDER。
+   */
+  deepAssessorBaseUrl?: string;
+  deepAssessorModel?: string;
+  deepAssessorProvider?: string;
 }
 
 /** 判据塔自证报告：回答「我现在还有没有资格判断别人」。 */
@@ -298,7 +307,18 @@ export class JudgeService {
       ? adversarialClaimEvidence(evidence, semanticEvidence)
       : unwiredL3();
 
-    const verdicts: CriterionVerdict[] = [...l0, canary.verdict, l2, l3];
+    const discipline = runToolDisciplineGates(evidence);
+    // 代码修复族的目标读数：只在「本轮真跑过 eval.run」时产出，
+    // 否则不产出判据（见 eval-rate.ts 的说明），避免污染无关会话的覆盖率。
+    const evalRate = evalPassRateGate(evidence);
+    const verdicts: CriterionVerdict[] = [
+      ...l0,
+      canary.verdict,
+      ...discipline,
+      ...(evalRate ? [evalRate] : []),
+      l2,
+      l3,
+    ];
     const summary = summarize(verdicts, profiles);
 
     // 复算所需的证据摘要：超限时只留 digest，但 digest 本身照样算全量，
@@ -326,6 +346,9 @@ export class JudgeService {
           evidence,
           evidenceDigest,
           semantic: semanticEvidence,
+          // 这两组判据读的是「当前仓库 / 当前沙箱」，不是本轮证据；
+          // 必须随快照落库，复算时照抄，否则历史判决会随代码漂移而变心。
+          extraVerdicts: [...discipline, ...(evalRate ? [evalRate] : [])],
         }),
       ),
     });
@@ -398,8 +421,56 @@ export class JudgeService {
       return { ...base, status: 'unexec', runId: null, failure: 'run_not_found', reasons: ['run_not_found'] };
     }
 
-    const snapshot = parseContextSnapshot(row.context_json);
-    if (!snapshot || snapshot.coverageVersion !== COVERAGE_VERSION || !snapshot.semantic) {
+    const rawCtx = row.context_json;
+    let snapshot = parseContextSnapshot(rawCtx);
+    let snapshotValid =
+      !!snapshot && snapshot.coverageVersion === COVERAGE_VERSION && !!snapshot.semantic;
+    // 宽松兜底：种子 / 迁移前的判决可能没有完整快照结构（coverageVersion 缺失 / 旧版），
+    // 但只要能抽出 { goal, finalAnswer } 就足以跑 L2 深判（这是 L2 的最小证据集）。
+    if (!snapshotValid) {
+      try {
+        const obj: Record<string, unknown> = rawCtx ? JSON.parse(rawCtx) : {};
+        const flatNested = (obj.semantic as Record<string, unknown> | undefined) ?? {};
+        const goal =
+          typeof flatNested.goal === 'string' ? flatNested.goal
+          : typeof obj.goal === 'string' ? obj.goal
+          : null;
+        const finalAnswer =
+          typeof flatNested.finalAnswer === 'string' ? flatNested.finalAnswer
+          : typeof obj.finalAnswer === 'string' ? obj.finalAnswer
+          : null;
+        if (goal && finalAnswer) {
+          snapshot = {
+            coverageVersion: COVERAGE_VERSION,
+            judgeVersion: { coverageVersion: COVERAGE_VERSION, rulesVersion: 0 },
+            profiles: [],
+            unavailableLayers: [],
+            towerCoverage: 0,
+            circuitOpened: false,
+            canary: { status: 'pass' as const, goodScore: 0, badScore: 0 },
+            evidence: { toolCalls: [], approvals: [], truncated: false },
+            semantic: {
+              assessorId: 'seed-fallback-semantic',
+              evidence: {
+                goal,
+                finalAnswer,
+                assistantTurns: typeof flatNested.assistantTurns === 'number' ? flatNested.assistantTurns : 1,
+                toolSummary:
+                  (flatNested.toolSummary as { total?: number; success?: number; failed?: number } | undefined) ??
+                  { total: 0, success: 0, failed: 0 },
+                finishReason:
+                  typeof flatNested.finishReason === 'string' ? flatNested.finishReason
+                  : typeof obj.finishReason === 'string' ? obj.finishReason
+                  : 'unknown',
+              },
+            },
+            evidenceDigest: '',
+          } as unknown as JudgeRunContextSnapshot;
+          snapshotValid = true;
+        }
+      } catch { /* parse 失败就继续走 not_eligible */ }
+    }
+    if (!snapshotValid || !snapshot) {
       // v1 判决 / 无快照 / 规则层没留下语义证据：不是「失败」，是「不可深判」。
       return {
         ...base,
@@ -482,15 +553,32 @@ export class JudgeService {
       };
     }
 
-    // ── provider / model / baseUrl ──────────────────────────────────────────
+    // ── provider / model / baseUrl（会话优先，env 兜底） ─────────────────────
     const session = this.deps.db.get<{ provider: string; model: string }>(
       `SELECT provider, model FROM sessions WHERE id = ?`,
       [row.session_id],
     );
-    const providerId = (opts.provider ?? '').trim() || (session?.provider ?? '').trim();
-    const model = (opts.model ?? '').trim() || (session?.model ?? '').trim();
-    const modelSource: DeepModelSource = (opts.model ?? '').trim() ? 'request' : 'session';
-    const baseUrl = (opts.baseUrl ?? '').trim() || (providerId ? resolveBaseUrl(providerId) : '');
+    // 会话里的 provider 可能是 demo/placeholder（演示 / 内存库），用 env 兜底。
+    const providerId =
+      (opts.provider ?? '').trim() ||
+      (session?.provider && session.provider !== 'demo' ? session.provider.trim() : '') ||
+      this.deps.deepAssessorProvider?.trim() ||
+      '';
+    const model =
+      (opts.model ?? '').trim() ||
+      (session?.model && session.model !== 'demo-model' ? session.model.trim() : '') ||
+      this.deps.deepAssessorModel?.trim() ||
+      '';
+    const modelSource: DeepModelSource =
+      (opts.model ?? '').trim()
+        ? 'request'
+        : session?.model && session.model !== 'demo-model'
+          ? 'session'
+          : 'env';
+    let baseUrl = (opts.baseUrl ?? '').trim() || this.deps.deepAssessorBaseUrl?.trim() || '';
+    if (!baseUrl && providerId) {
+      try { baseUrl = resolveBaseUrl(providerId); } catch { /* provider 不在目录，继续走 custom 兜底 */ }
+    }
 
     if (!providerId || !model) {
       return { ...base, status: 'unexec', runId: null, deep: null, failure: 'not_configured', reason: 'no_provider_or_model', reasons: ['no_provider_or_model'] };
@@ -853,9 +941,12 @@ export class JudgeService {
       evidence: JudgeEvidence;
       evidenceDigest: string;
       semantic: SemanticEvidence | null;
+      /** 依赖当前仓库/沙箱、无法用快照证据重算的判据结论（工具纪律闸、代码修复族读数）。 */
+      extraVerdicts: CriterionVerdict[];
     },
   ): JudgeRunContextSnapshot & JudgeRuntimeContext {
-    const { profiles, summary, thresholds, canary, evidence, evidenceDigest, semantic } = input;
+    const { profiles, summary, thresholds, canary, evidence, evidenceDigest, semantic, extraVerdicts } =
+      input;
     const truncate =
       evidence.toolCalls.length > MAX_SNAPSHOT_TOOL_CALLS ||
       evidence.approvals.length > MAX_SNAPSHOT_APPROVALS;
@@ -896,6 +987,7 @@ export class JudgeService {
             counts: { toolCalls: evidence.toolCalls.length, approvals: evidence.approvals.length },
           }
         : evidence,
+      extraVerdicts,
       semantic: semantic ? { assessorId: this.deps.semantic?.id ?? 'rules.v1', evidence: semantic } : null,
       evidenceDigest,
       reasons: summary.reasons,

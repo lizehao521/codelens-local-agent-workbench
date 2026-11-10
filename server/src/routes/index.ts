@@ -64,7 +64,10 @@ export function createApiRouter(deps: ApiRouterDeps): Router {
   v1.use(createToolsRoutes(deps.tools));
   v1.use(createMcpRoutes(deps.mcp));
   v1.use(createProvidersRoutes(deps.providers));
-  v1.use(createSandboxPermissionsRoutes(deps.sandboxPermissions));
+  // 注意要带前缀：路由文件里是 router.get('/') / router.put('/')，
+  // 直接 v1.use(router) 会把它挂到 /api/v1/ 根上，
+  // 于是文档里的 PUT /api/v1/sandbox-permissions 返回 404。
+  v1.use('/sandbox-permissions', createSandboxPermissionsRoutes(deps.sandboxPermissions));
   v1.use(createJudgeRoutes(deps.judge));
   v1.use(createCapabilitiesRoutes({ capabilities: deps.capabilities }));
   v1.use(createTracesRoutes({ traces: deps.traces }));

@@ -883,3 +883,249 @@ export async function listSkills(
     skills: res.matches ?? res.skills ?? [],
   };
 }
+
+// ─── RSI 判据读数 ────────────────────────────────────────────────────────
+// 数据源：GET /api/rsi/overview?session=<id>（注意：不是 /api/v1 前缀）。
+// 服务端返回的是逐会话的判据塔判决 + RSI 代际 + 归因；字段名以实际响应为准，
+// 这里统一转成 camelCase，组件层不再接触 snake_case。
+
+/** 判据塔的一次判决（judge_runs 行）。 */
+export interface RsiJudgeRun {
+  id: number;
+  verdict: JudgeRunVerdict;
+  /** 整体加权得分 0..1 */
+  score: number;
+  /** 必需层覆盖率 0..1 */
+  coverage: number;
+  executed: number;
+  total: number;
+  createdAt: number;
+}
+
+/** 套件级结构化结果（eval.suites[] / verdict.data.suites[]）。 */
+export interface RsiEvalSuite {
+  id: string;
+  title: string;
+  ok: boolean;
+  passed: number;
+  total: number;
+  publicPassed: number;
+  publicTotal: number;
+  /** 套件级错误（仅失败时可能有） */
+  error: string | null;
+}
+
+/**
+ * task.test_pass_rate 的结构化读数。
+ * 旧会话（source=detail_only）数值全为 null、suites 为空，不能把 null 当 0。
+ */
+export interface RsiEvalData {
+  passed: number | null;
+  total: number | null;
+  denominator: number | null;
+  score: number | null;
+  suites: RsiEvalSuite[];
+}
+
+/** 接口顶层的 eval 读数：结构化数据或旧格式的 detail 回退说明。 */
+export interface RsiEval extends RsiEvalData {
+  runId: number;
+  status: JudgeVerdictStatus;
+  detail: string | null;
+  measuredAt: number;
+  /** structured = 有结构化套件/分母；detail_only = 旧会话，只有文本 */
+  source: string;
+}
+
+/** 单条判据结果（judge_verdicts 行）。 */
+export interface RsiVerdictRow {
+  runId: number;
+  layer: string;
+  criterion: string;
+  status: JudgeVerdictStatus;
+  score: number | null;
+  detail: string | null;
+  /** 判据的结构化数据；旧会话为 null */
+  data: RsiEvalData | null;
+}
+
+/** 一次 RSI 代际对比（policy_rsi_runs 行）。 */
+export interface RsiRunRow {
+  generation: number;
+  prevGeneration: number | null;
+  verdict: string;
+  exitCode: number | null;
+  reasons: string[];
+}
+
+/** 一条 RSI 归因经验（policy_rsi_attributions 行）。 */
+export interface RsiAttributionRow {
+  id: number;
+  policyVersion: number | null;
+  lesson: string;
+  createdAt: number;
+}
+
+export interface RsiOverview {
+  session: {
+    id: string;
+    title: string;
+    provider: string;
+    model: string;
+    createdAt: number;
+  };
+  /** 按创建时间升序的判据塔判决 */
+  judgeRuns: RsiJudgeRun[];
+  /** runId -> 该次判决的全部判据 */
+  verdictsByRun: Record<number, RsiVerdictRow[]>;
+  /** 最近一次 task.test_pass_rate 读数（结构化或 detail_only）；老库可能没有 */
+  eval: RsiEval | null;
+  rsiRuns: RsiRunRow[];
+  attributions: RsiAttributionRow[];
+}
+
+/** 把 suites[] 的 snake_case / 缺省值归一化。 */
+function mapEvalSuites(raw: unknown): RsiEvalSuite[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    const row = (item ?? {}) as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ''),
+      title: String(row.title ?? row.id ?? ''),
+      ok: row.ok === true,
+      passed: Number(row.passed ?? 0),
+      total: Number(row.total ?? 0),
+      publicPassed: Number(row.public_passed ?? row.publicPassed ?? 0),
+      publicTotal: Number(row.public_total ?? row.publicTotal ?? 0),
+      error: typeof row.error === 'string' ? row.error : null,
+    };
+  });
+}
+
+/** 结构化读数：数值保持 null 语义（旧格式不能当 0）。 */
+function mapEvalData(raw: unknown): RsiEvalData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  return {
+    passed: typeof row.passed === 'number' ? row.passed : null,
+    total: typeof row.total === 'number' ? row.total : null,
+    denominator: typeof row.denominator === 'number' ? row.denominator : null,
+    score: typeof row.score === 'number' ? row.score : null,
+    suites: mapEvalSuites(row.suites),
+  };
+}
+
+function mapEval(raw: unknown): RsiEval | null {
+  const base = mapEvalData(raw);
+  if (!base) return null;
+  const row = raw as Record<string, unknown>;
+  return {
+    ...base,
+    runId: Number(row.runId ?? row.run_id ?? 0),
+    status: String(row.status ?? 'unexec') as JudgeVerdictStatus,
+    detail: typeof row.detail === 'string' ? row.detail : null,
+    measuredAt: Number(row.measuredAt ?? row.measured_at ?? 0),
+    source: String(row.source ?? ''),
+  };
+}
+
+function parseReasons(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 读取当前会话的 RSI 读数。
+ *
+ * 网络层失败（后端没启动 / 端口不通）单独抛 `BACKEND_UNREACHABLE`，
+ * 方便界面区分「服务不可达」与「接口报错」，而不是统一显示 Failed to fetch。
+ */
+export async function getRsiOverview(sessionId: string): Promise<RsiOverview> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/rsi/overview?session=${encodeURIComponent(sessionId)}`, { cache: 'no-store' });
+  } catch {
+    throw new ApiError(
+      'BACKEND_UNREACHABLE',
+      '无法连接后端服务（可能未启动或端口不通），启动后点「重试」即可。',
+      0,
+    );
+  }
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new ApiError('SESSION_NOT_FOUND', '会话不存在或已被删除，无法读取 RSI 读数。', 404);
+    }
+    throw await parseErrorResponse(res);
+  }
+  let raw: unknown;
+  try {
+    raw = await res.json();
+  } catch {
+    throw new ApiError('BAD_RESPONSE', 'RSI 接口返回格式异常（不是合法 JSON）。', res.status);
+  }
+  const data = raw as {
+    session?: Record<string, unknown>;
+    judgeRuns?: Array<Record<string, unknown>>;
+    verdictsByRun?: Record<string, Array<Record<string, unknown>>>;
+    eval?: unknown;
+    rsiRuns?: Array<Record<string, unknown>>;
+    attributions?: Array<Record<string, unknown>>;
+  } | null;
+  if (!data || typeof data !== 'object' || !data.session || !Array.isArray(data.judgeRuns)) {
+    throw new ApiError('BAD_RESPONSE', 'RSI 接口返回格式异常：缺少 session / judgeRuns。', res.status);
+  }
+
+  const verdictsByRun: Record<number, RsiVerdictRow[]> = {};
+  for (const [key, rows] of Object.entries(data.verdictsByRun ?? {})) {
+    const runId = Number(key);
+    if (!Number.isFinite(runId) || !Array.isArray(rows)) continue;
+    verdictsByRun[runId] = rows.map((row) => ({
+      runId: Number(row.run_id ?? runId),
+      layer: String(row.layer ?? ''),
+      criterion: String(row.criterion ?? ''),
+      status: row.status as JudgeVerdictStatus,
+      score: typeof row.score === 'number' ? row.score : null,
+      detail: typeof row.detail === 'string' ? row.detail : null,
+      data: mapEvalData(row.data),
+    }));
+  }
+
+  return {
+    session: {
+      id: String(data.session.id ?? ''),
+      title: String(data.session.title ?? '未命名会话'),
+      provider: String(data.session.provider ?? ''),
+      model: String(data.session.model ?? ''),
+      createdAt: Number(data.session.created_at ?? 0),
+    },
+    judgeRuns: data.judgeRuns.map((run) => ({
+      id: Number(run.id),
+      verdict: run.verdict as JudgeRunVerdict,
+      score: typeof run.score === 'number' ? run.score : 0,
+      coverage: typeof run.coverage === 'number' ? run.coverage : 0,
+      executed: Number(run.executed ?? 0),
+      total: Number(run.total ?? 0),
+      createdAt: Number(run.created_at ?? 0),
+    })),
+    verdictsByRun,
+    eval: mapEval(data.eval),
+    rsiRuns: (data.rsiRuns ?? []).map((run) => ({
+      generation: Number(run.generation ?? 0),
+      prevGeneration: typeof run.prev_generation === 'number' ? run.prev_generation : null,
+      verdict: String(run.verdict ?? ''),
+      exitCode: typeof run.exit_code === 'number' ? run.exit_code : null,
+      reasons: parseReasons(run.reasons_json),
+    })),
+    attributions: (data.attributions ?? []).map((row) => ({
+      id: Number(row.id ?? 0),
+      policyVersion: typeof row.policy_version === 'number' ? row.policy_version : null,
+      lesson: String(row.lesson ?? ''),
+      createdAt: Number(row.created_at ?? 0),
+    })),
+  };
+}

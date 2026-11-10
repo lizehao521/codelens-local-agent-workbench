@@ -73,6 +73,10 @@ export interface AgentRunRequest {
   taskKind?: TaskKind;
   tools?: string[];
   channelMode: 'auto' | 'native' | 'react';
+  /** 是否计入 RSI 测量（缺省 true）。false = 只干活/学习，不参与跨代对账。 */
+  rsiMeasure?: boolean;
+  /** 测量采样次数（缺省 1）。>1 时 RSI 读数取最近 N 次同探针判决的均值。 */
+  rsiMeasureSamples?: number;
   maxIterations: number;
   temperature: number;
   maxTokens: number;
@@ -113,6 +117,30 @@ export interface AgentLoopDeps {
    * 不提供时退化为按工具失败计数沉积经验的历史行为。
    */
   judge?: JudgeService;
+  /**
+   * RSI 跨代对账（可选，L1 机械桥）。提供时，任务收尾会在 Judge 判决 + Update 写 π 之后，
+   * 再走一次 RSI bridge：把当前 run 的 verdicts 转成 RSI Manifest，查上一代 manifest，
+   * 调 krsi CLI 做四态对比。
+   *
+   * 双轨并存：RSI verdict **不**阻断现有闭环，UpdateService 照常写 π 增量。
+   * RSI 只落 policy_rsi_runs 审计表供事后复盘。
+   *
+   * 不提供时完全跳过（零影响，向后兼容）。
+   */
+  rsi?: import('../rsi/rsi-bridge.service.js').RsiBridgeService;
+  /**
+   * SQLite 句柄（可选）。RSI 归因器直接向 policy_injections 落审计行，
+   * 需要它才能工作。不传时归因整段跳过 —— 表现为「对账有结果、但没有经验沉淀」。
+   */
+  db?: import('../../repositories/db.js').Db;
+  /**
+   * RSI 归因器 LLM 凭证（可选）。提供时：krsi 判 not_improved / refused 后，
+   * 会调 LLM 归因并把归因经验写回 policy_injections 作为 π'。
+   * 不提供时跳过归因，RSI 只有旁路对账（零影响，向后兼容）。
+   */
+  rsiAttributorApiKey?: string;
+  rsiAttributorBaseUrl?: string;
+  rsiAttributorModel?: string;
   /**
    * 沙箱权限服务（可选）：提供 allowDirs（沙箱外白名单）与 autoApprove（审批豁免）。
    * 提供时，运行时 gateway / executor 实时读取最新配置（PUT 后立即生效，无需重启）。
@@ -250,6 +278,16 @@ export class AgentLoopService {
    * 且 run 的所有出口都经过 finally，清理是有保证的。
    */
   private readonly activeTraces = new Map<string, string>();
+  /**
+   * 本次 run 是否**不**计入 RSI 测量（rsiMeasure=false 的"干活轮"）。
+   * 按 sessionId 记录，finish 时清除 —— 干活轮照常判决与学习，只是不进跨代对账。
+   */
+  private readonly nonMeasureSessions = new Set<string>();
+  /**
+   * 测量采样次数（按 sessionId）。测量轮由请求带入；finish 时清除。
+   * 只在 rsiMeasure=true 的 run 上生效，交给 RsiBridgeService 做多样本均值。
+   */
+  private readonly measureSampleCounts = new Map<string, number>();
   /** 汇报卡每个 run 只发一次（finish 可能被多个出口调用）。 */
   private readonly reportedRuns = new Set<string>();
 
@@ -327,6 +365,15 @@ export class AgentLoopService {
       model: req.model,
       channel: req.channelMode,
     });
+    // 测量分流：rsiMeasure=false 的 run 照常判决/学习，只是不进 RSI 跨代对账。
+    // 用 sessionId 记录，与 activeTraces 同口径，避免并发 run 互相覆盖。
+    if (req.rsiMeasure === false) {
+      this.nonMeasureSessions.add(session.id);
+      this.measureSampleCounts.delete(session.id);
+    } else {
+      this.nonMeasureSessions.delete(session.id);
+      this.measureSampleCounts.set(session.id, Math.max(1, req.rsiMeasureSamples ?? 1));
+    }
     this.deps.runState?.stage(runId, 'connecting');
 
     // ── 运行轨迹（可观测面）──────────────────────────────────────────────────
@@ -1232,6 +1279,9 @@ export class AgentLoopService {
 
     // 强化内核闭环：先由 Judge 产出结构化判决 r，再由 Update 消费 r 生成 π 增量。
     this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0);
+    // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
+    this.nonMeasureSessions.delete(session.id);
+    this.measureSampleCounts.delete(session.id);
     this.deps.abortRegistry.release(session.id);
     // P1-2 watchdog: no approval park may outlive its task. Anything still
     // parked at this point is stale (its loop is gone) — settle it so no
@@ -1300,6 +1350,15 @@ export class AgentLoopService {
             detail: `更新后经验共 ${nextPolicy.lessons.length} 条`,
           });
         }
+        // ── RSI 旁路对账（L1 机械桥）─────────────────────────────────────────
+        // 双轨并存：不阻断现有闭环，只在 Update 跑完之后再补一次跨代对比。
+        // RSI bridge 自己 catch 所有异常返回 error/skipped；这里再套一层 try，
+        // 确保 bridge 故障不会把 Judge/Update 这步也拖下水。
+        // 干活轮（rsiMeasure=false）只学习、不测量：跳过跨代对账，
+        // 让固定探针轮成为唯一的代际读数来源（避免开发噪声进 RSI）。
+        if (!this.nonMeasureSessions.has(session.id)) {
+          void this.runRsiBridge(session.id, run, traceId ?? null);
+        }
       } catch (err) {
         // 判决与更新是旁路能力：它失败不应连累任务收尾与用户可见结果。
         // 但绝不静默 —— 留下可诊断的告警，且自证面板的 totalRuns 能看出它没在跑。
@@ -1322,5 +1381,109 @@ export class AgentLoopService {
       },
       `tool_outcome:${corrective.length}:${finishReason}`,
     );
+  }
+
+  /**
+   * RSI 旁路对账：消费同一次 Judge 判决，生成跨代四态 verdict 并落审计表。
+   *
+   * 为什么是 async + void：spawn krsi 有 IO + subprocess 成本，放 run 收尾的同步路径
+   * 里会让 SSE done 事件卡一下。fire-and-forget，靠 RsiBridgeService 内部 catch。
+   *
+   * 跳过条件（返回空 promise）：
+   *   - rsi 没注入（内存库 / 没开 L1）
+   *   - 本轮 verdict 没有 runId（Judge 自己判成 inconclusive 但没写行 —— 不应该发生，
+   *     以防万一还是跳）
+   */
+  private runRsiBridge(
+    sessionId: string,
+    run: { verdicts: import('../judge/types.js').CriterionVerdict[]; runId?: number },
+    traceId: string | null,
+  ): void {
+    if (!this.deps.rsi) return;
+    if (!run.runId || run.runId <= 0) return;
+    // 采样次数：测量轮由请求带入（>1 = 把最近 N 次同探针判决取均值）。
+    const samples = this.measureSampleCounts.get(sessionId) ?? 1;
+
+    // session-scoped generation 由 RsiBridgeService 自己算（基于 policy_rsi_runs 表），
+    // 这里只传 hint（0 即可），彻底和 PolicyRepository 解耦。
+    const db = (this.deps as { db?: import('../../repositories/db.js').Db }).db;
+    void this.deps.rsi
+      .compare(sessionId, 0, run.verdicts, run.runId, samples)
+      .then(async (result) => {
+        // 轨迹里记一笔：improved=ok，其他状态也 ok（都是有效判定，不区分 ok/error）
+        // 但 error 单独标 error —— 它表示桥接自身故障，不是 RSI 判定结果
+        this.recordSpan(traceId, {
+          kind: 'judge', // 复用 judge span kind（它也是判决类行为）
+          name: `RSI 对账（session内最新代）`,
+          status: result.state === 'error' ? 'error' : 'ok',
+          detail: `verdict=${result.state}${result.exitCode !== null ? ` exit=${result.exitCode}` : ''}`,
+        });
+
+        // ── LLM 归因：not_improved / refused 时触发 ──────────────────────────
+        // 归因经验直接写 policy_injections 作为 π'，下一轮 run 会被 getInjectableView() 喂进 prompt。
+        // 归因失败 catch 住不阻断主流程。
+        const needsAttribution = result.state === 'not_improved' || result.state === 'refused';
+        const hasCreds =
+          !!this.deps.rsiAttributorApiKey &&
+          !!this.deps.rsiAttributorBaseUrl &&
+          !!this.deps.rsiAttributorModel;
+        if (needsAttribution && hasCreds && db) {
+          try {
+            const { attributeDegradation } = await import('../rsi/rsi-attributor.js');
+            // generation 对归因不是必需——policy_injections 用 policy_version 字段写，
+            // 真实 session 的 policy 版本由 UpdateService.applyFromJudge 管理；
+            // 我们这里传 1 只是满足类型，归因的关键输入是 result.reasons + run.verdicts
+            const attrOut = await attributeDegradation({
+              db,
+              sessionId,
+              // 审计表里的 policy_version 要写真实的 π 版本号，否则看板上
+              // 「这条经验属于哪一版策略」永远指向 1，无法回溯。
+              generation: this.deps.policy?.currentVersion() ?? 0,
+              runVerdicts: run.verdicts,
+              rsiResult: result,
+              apiKey: this.deps.rsiAttributorApiKey!,
+              baseUrl: this.deps.rsiAttributorBaseUrl!,
+              model: this.deps.rsiAttributorModel!,
+            });
+            // 轨迹里再记一笔归因结果
+            this.recordSpan(traceId, {
+              kind: 'update',
+              name: `RSI 归因`,
+              status: attrOut.wroteRow ? 'ok' : (attrOut.failure ? 'error' : 'ok'),
+              detail: attrOut.wroteRow
+                ? `归因已落库: ${attrOut.lesson?.slice(0, 60) ?? ''}`
+                : attrOut.failure ?? '无输出',
+            });
+
+            // ── 闭环最后一环：把归因经验真正并入 π' ────────────────────────
+            // policy_injections 只是审计表；UpdateService.getPolicy() 只读
+            // policy_versions。只写审计表的话，这条经验下一轮的 system prompt
+            // 里根本不会出现 —— 那就是宣言点名的「r 没有真的改变 π'」。
+            // 只有写进 policy_versions，getInjectableView() 才会把它注入下一次 Act。
+            if (attrOut.wroteRow && attrOut.lesson && this.deps.policy) {
+              try {
+                const next = this.deps.policy.applyUpdate(
+                  { addLessons: [attrOut.lesson] },
+                  `rsi:${result.state}:${attrOut.lesson.slice(0, 48)}`,
+                );
+                this.recordSpan(traceId, {
+                  kind: 'update',
+                  name: `RSI 经验入 π`,
+                  status: 'ok',
+                  detail: `π' 现有 ${next.lessons.length} 条经验（下一轮 Act 会注入）`,
+                });
+              } catch (err) {
+                console.warn('[rsi-attributor] 归因经验写入 π 失败:', err instanceof Error ? err.message : err);
+              }
+            }
+          } catch (err) {
+            console.warn('[rsi-attributor] 归因异常:', err instanceof Error ? err.message : err);
+          }
+        }
+      })
+      .catch((err) => {
+        // 理论上 RsiBridgeService 内部已经 catch 了，但万一构造函数抛了
+        console.warn('[rsi-bridge] 未预期异常（主路径兜底）:', err instanceof Error ? err.message : err);
+      });
   }
 }

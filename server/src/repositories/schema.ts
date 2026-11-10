@@ -250,6 +250,9 @@ CREATE TABLE IF NOT EXISTS judge_verdicts (
   status     TEXT    NOT NULL CHECK (status IN ('pass', 'fail', 'unexec')),
   score      REAL,
   detail     TEXT,
+  -- 结构化读数（JSON）。detail 是给人看的文本，前端不该靠正则解析它拿分母；
+  -- 新版判据把 { passed, total, denominator, suites[] } 写在这里，旧行为 NULL。
+  data_json  TEXT,
   created_at INTEGER NOT NULL
 );
 
@@ -270,6 +273,37 @@ CREATE TABLE IF NOT EXISTS policy_injections (
 
 CREATE INDEX IF NOT EXISTS idx_policy_injections_lesson  ON policy_injections(lesson, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_policy_injections_session ON policy_injections(session_id);
+
+-- ── RSI 对账旁路（L1 机械桥）───────────────────────────────────────────────
+-- Agent 的 Judge 判据塔 verdicts → RSI Manifest → krsi 跨代对比。
+-- 双轨并存：UpdateService 照常写 π 增量，RSI verdict 只落审计表供事后复盘。
+-- verdict 六态中 skipped 是「无可对比的上一代」，error 是桥接自身故障，
+-- 两者都不是 RSI 的判定结果（improved/not_improved/refused/undecidable）。
+CREATE TABLE IF NOT EXISTS policy_rsi_runs (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  judge_run_id      INTEGER NOT NULL,
+  session_id        TEXT    NOT NULL,
+  generation        INTEGER NOT NULL,
+  prev_generation   INTEGER,
+  verdict           TEXT    NOT NULL
+                              CHECK (verdict IN ('improved', 'not_improved', 'refused',
+                                                  'undecidable', 'skipped', 'error')),
+  exit_code         INTEGER,
+  reasons_json      TEXT,
+  metrics_json      TEXT,
+  prev_readings_json  TEXT,
+  next_readings_json  TEXT,
+  -- 本代 manifest 的**原文**。下一代做 prev 时必须复用它，不能从 verdicts 重建：
+  -- krsi 的 R6 会比对链上已记录的同一代 manifest，重建出的字节只要有一处不同
+  -- 就会被判「同一代有两份 manifest」而整代拒收。
+  next_manifest_json  TEXT,
+  ledger_path       TEXT,
+  created_at        INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_session ON policy_rsi_runs(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_generation ON policy_rsi_runs(session_id, generation DESC);
+CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_judge ON policy_rsi_runs(judge_run_id);
 
 -- ── 可观测面：工作区快照 / 运行轨迹 / 技能库 ──────────────────────────────
 -- 三张表对应「能力洞察」观测层的三个支柱：可回滚（checkpoint）、可回放（trace）、
@@ -416,7 +450,7 @@ INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 VALUES (1, '001-initial-agent-schema', 1761234567890);
 `;
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * 增量迁移（幂等）。`SCHEMA_SQL` 只管「从零建表」，已有库的列变更必须走这里 ——
@@ -503,6 +537,52 @@ export function applyMigrations(db: MigrationDb): number[] {
       [Date.now()],
     );
     applied.push(4);
+  }
+
+  // ── 005：RSI 对账旁路（policy_rsi_runs）──────────────────────────────────
+  // 新表已由 SCHEMA_SQL 里的 CREATE TABLE IF NOT EXISTS 幂等建出（L1 旁路审计）。
+  // 这里显式保证索引 + 版本记账，旧库升上来后不会漏。
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_session ON policy_rsi_runs(session_id, created_at DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_generation ON policy_rsi_runs(session_id, generation DESC)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_policy_rsi_runs_judge ON policy_rsi_runs(judge_run_id)');
+  // 006：policy_rsi_runs.next_manifest_json —— 复用上一代 manifest 原文
+  // （CREATE IF NOT EXISTS 不会给旧表补列，必须显式 ADD）
+  const rsiColumns = db.all<{ name: string }>('PRAGMA table_info(policy_rsi_runs)');
+  if (rsiColumns.length > 0 && !rsiColumns.some((c) => c.name === 'next_manifest_json')) {
+    db.exec('ALTER TABLE policy_rsi_runs ADD COLUMN next_manifest_json TEXT');
+  }
+  const v6 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 6');
+  if ((v6?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (6, '006-rsi-manifest-reuse', ?)`,
+      [Date.now()],
+    );
+    applied.push(6);
+  }
+  const v5 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 5');
+  if ((v5?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (5, '005-rsi-bridge-l1', ?)`,
+      [Date.now()],
+    );
+    applied.push(5);
+  }
+
+  // ── 007：judge_verdicts.data_json —— 判据的结构化读数 ────────────────────
+  // 在此之前只有 detail 文本（如「固定评测套件 21/23 通过…」），看板要拿分母
+  // 只能正则解析这句话，文案一改前端就断。结构化的分母/通过数/套件清单改走这一列。
+  // 旧库补列后旧行是 NULL，读侧必须容忍（overview 会退化成 detail_only）。
+  const verdictColumns = db.all<{ name: string }>('PRAGMA table_info(judge_verdicts)');
+  if (verdictColumns.length > 0 && !verdictColumns.some((c) => c.name === 'data_json')) {
+    db.exec('ALTER TABLE judge_verdicts ADD COLUMN data_json TEXT');
+  }
+  const v7 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 7');
+  if ((v7?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (7, '007-judge-verdict-data', ?)`,
+      [Date.now()],
+    );
+    applied.push(7);
   }
 
   return applied;

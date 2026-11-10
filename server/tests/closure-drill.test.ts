@@ -184,9 +184,10 @@ describe('闭环演练：π → Act → τ → Judge → r → Update → π′'
     expect(runsAfter2).toHaveLength(2);
     const latest = runsAfter2[0]!; // listRuns 按 id DESC
     expect(latest.verdict).toBe('pass');
-    // 8 条判据里 7 条有结论：L3 需要回答里出现「已完成某动作」的声明才可校验，
-    // 这条回答只是笼统的「已完成该任务」，所以如实记 unexec（不是通过）。
-    expect(latest.coverage).toBe(0.875);
+    // 12 条判据里 9 条有结论：L3 需要回答里出现「已完成某动作」的声明才可校验，
+    // 这条回答只是笼统的「已完成该任务」，所以如实记 unexec（不是通过）；
+    // 另有 2 条工具纪律闸在静态时代无适用证据，同样记 unexec。
+    expect(latest.coverage).toBe(0.75);
 
     // pass 不该产生新版本（Update 只从 fail 判据学习，不制造噪声版本）。
     expect(runtime.policy.listVersions()).toHaveLength(1);

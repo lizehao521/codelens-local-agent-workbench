@@ -3,7 +3,7 @@
 // AC-10 干预：打断（输入框停止钮）/ 单步重试 / 从某步重跑 / 改参数（审批条内）全部接 agent/stream
 
 import { useCallback, useState } from 'react';
-import { AlertTriangle, Gauge, History, MessageSquare, ShieldAlert, Sparkles, Wrench } from 'lucide-react';
+import { AlertTriangle, Gauge, History, LineChart, MessageSquare, ShieldAlert, Sparkles, Wrench } from 'lucide-react';
 import type { AgentStreamRequest, SessionMessageRow, Task } from '../../types';
 import { buildAgentStreamRequest, rerunFromPatch, TASK_MODES } from '../../lib/agent-request';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -24,6 +24,7 @@ import { AuditView } from './AuditView';
 import { SandboxGrantBar } from './SandboxGrantBar';
 import { SandboxPermissionModal } from '../settings/SandboxPermissionModal';
 import { JudgePanelModal } from './JudgePanelModal';
+import { RsiDashboardModal } from './RsiDashboardModal';
 import { cn } from '../../lib/cn';
 
 const SUGGESTIONS = [
@@ -100,7 +101,9 @@ export function AgentWorkbench() {
   const [taskKind, setTaskKind] = useState<Task | null>(null);
   const [permOpen, setPermOpen] = useState(false);
   const [judgeOpen, setJudgeOpen] = useState(false);
+  const [rsiOpen, setRsiOpen] = useState(false);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
+  const showRecoveryCode = useUiStore((s) => s.showRecoveryCode);
   // F：主视图切换（会话 / 审计台）。审计台按当前 runId 取数，不另存一份运行态。
   const [view, setView] = useState<'chat' | 'audit'>('chat');
   const runId = useRunStore((s) => s.runId);
@@ -119,13 +122,14 @@ export function AgentWorkbench() {
     if (session) return session.id;
     try {
       const created = await createOnServer({ provider: settings.provider, model: settings.model });
-      window.dispatchEvent(new CustomEvent('codelens:recovery-code', { detail: created.recoveryCode }));
+      // 与侧栏「新建会话」一致：恢复码只在创建时明文一次，必须立刻弹窗，不能丢。
+      showRecoveryCode(created.recoveryCode);
       return created.session.id;
     } catch (err) {
       setSessionError(err instanceof Error ? err.message : '会话创建失败');
       return null;
     }
-  }, [session, createOnServer, settings.provider, settings.model]);
+  }, [session, createOnServer, settings.provider, settings.model, showRecoveryCode]);
 
   const runTask = useCallback(
     async (text: string, patch?: Partial<AgentStreamRequest>, dropFromMessageId?: string): Promise<void> => {
@@ -271,6 +275,16 @@ export function AgentWorkbench() {
         </button>
         <button
           type="button"
+          onClick={() => setRsiOpen(true)}
+          title="RSI 判据读数：套件通过率、分母基线与代际曲线"
+          aria-label="RSI 判据读数"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+        >
+          <LineChart size={13} />
+          <span className="hidden sm:inline">RSI 曲线</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setPermOpen(true)}
           title="沙箱权限：放开沙箱外目录与免审批"
           className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
@@ -366,6 +380,7 @@ export function AgentWorkbench() {
 
       <SandboxPermissionModal open={permOpen} onClose={() => setPermOpen(false)} />
       <JudgePanelModal open={judgeOpen} onClose={() => setJudgeOpen(false)} />
+      <RsiDashboardModal open={rsiOpen} onClose={() => setRsiOpen(false)} sessionId={session?.id ?? null} />
     </div>
   );
 }

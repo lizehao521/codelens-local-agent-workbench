@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import express, { type Express, type Request, Response } from 'express';
 import helmet from 'helmet';
@@ -33,13 +34,12 @@ export interface AppOptions {
 
 const CSP_DIRECTIVES: Record<string, string[]> = {
   'default-src': ["'self'"],
-  'script-src': ["'self'"],
-  'style-src': ["'self'", "'unsafe-inline'"],
-  'img-src': ["'self'", 'data:'],
-  'connect-src': ["'self'"],
-  // font-src 需放行 data:：构建期小于内联阈值的 woff2 子集会被 Vite 内联成 data: URL，
-  // 只允许 'self' 时这些字体会被 CSP 拦掉（控制台报 data:font 拒绝，部分字形回退系统字体）。
-  'font-src': ["'self'", 'data:'],
+  // RSI 看板用 CDN ECharts / Tailwind / Lucide —— 开发态看板，放行知名 CDN
+  'script-src': ["'self'", 'cdn.jsdelivr.net', 'cdn.tailwindcss.com', 'unpkg.com'],
+  'style-src': ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],
+  'img-src': ["'self'", 'data:', 'cdn.jsdelivr.net'],
+  'connect-src': ["'self'", 'cdn.jsdelivr.net'],
+  'font-src': ["'self'", 'data:', 'fonts.gstatic.com'],
 };
 
 export function createApp(options: AppOptions = {}): Express {
@@ -96,6 +96,69 @@ export function createApp(options: AppOptions = {}): Express {
     }),
   );
 
+  // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程
+  app.get('/api/rsi/overview', (req, res) => {
+    try {
+      const sessionId = typeof req.query.session === 'string' ? req.query.session : null;
+      if (!sessionId) { res.status(400).json({ error: '?session=xxx required' }); return; }
+      const db = runtime.db;
+
+      const session = db.get(`SELECT id, title, provider, model, created_at FROM sessions WHERE id = ?`, [sessionId]);
+      if (!session) { res.status(404).json({ error: 'session not found' }); return; }
+
+      // 每代 judge_run 汇总 + 其 verdicts
+      const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at
+                                FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);
+      const verdictsByRun = new Map<number, any[]>();
+      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail, data_json
+                                  FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);
+      for (const v of allVerdicts) {
+        // data_json 是 007 迁移新增的列；旧行为 NULL，这里统一解成 data 字段，
+        // 解不出来就当没有（绝不能让一条脏 JSON 把整个看板打成 500）。
+        v.data = parseJsonColumn(v.data_json);
+        delete v.data_json;
+        if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);
+        verdictsByRun.get(v.run_id)!.push(v);
+      }
+
+      // 每代 RSI 对比（prev → next）
+      const rsiRuns = db.all(`SELECT generation, prev_generation, verdict, exit_code,
+                                     reasons_json, prev_readings_json, next_readings_json
+                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);
+
+      // 归因经验（policy_injections）—— 每条 π' 的增量
+      const attributions = db.all(`SELECT id, policy_version, lesson, created_at
+                                   FROM policy_injections WHERE session_id = ?
+                                   ORDER BY id DESC LIMIT 20`, [sessionId]);
+
+      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，
+      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。
+      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);
+
+      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析
+      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。
+      res.json({
+        session,
+        judgeRuns,
+        verdictsByRun: verdictsByRunJson,
+        rsiRuns,
+        attributions,
+        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
+    }
+  });
+
+  // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到
+  app.get('/rsi', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    // cwd 在 dev (tsx) 和 build (node dist/app.js) 都是 server 根目录
+    const htmlPath = path.join(process.cwd(), 'public', 'rsi-dashboard.html');
+    if (existsSync(htmlPath)) { res.sendFile(htmlPath); return; }
+    res.status(404).send('rsi dashboard not found at ' + htmlPath);
+  });
+
   app.use(notFoundHandler);
 
   const clientDir = options.clientDistDir ?? config.clientDistDir;
@@ -135,6 +198,59 @@ export function createApp(options: AppOptions = {}): Express {
   }
 
   return app;
+}
+
+/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */
+function parseJsonColumn(raw: unknown): unknown {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+const EVAL_CRITERION = 'task.test_pass_rate';
+
+/**
+ * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。
+ *
+ * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行
+ * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，
+ * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。
+ */
+function buildEvalSummary(
+  verdicts: any[],
+  judgeRuns: Array<{ id: number; created_at: number }>,
+): Record<string, unknown> | null {
+  let latest: any = null;
+  let latestStructured: any = null;
+  for (const v of verdicts) {
+    if (v.criterion !== EVAL_CRITERION) continue;
+    latest = v;
+    if (v.data) latestStructured = v;
+  }
+  const chosen = latestStructured ?? latest;
+  if (!chosen) return null;
+
+  const data = (chosen.data ?? null) as Record<string, any> | null;
+  const num = (key: string): number | null =>
+    typeof data?.[key] === 'number' ? (data[key] as number) : null;
+  const total = num('total');
+  const run = judgeRuns.find((r) => r.id === chosen.run_id);
+
+  return {
+    runId: chosen.run_id,
+    status: chosen.status,
+    score: chosen.score ?? null,
+    detail: chosen.detail ?? null,
+    measuredAt: run?.created_at ?? null,
+    passed: num('passed'),
+    total,
+    denominator: num('denominator') ?? total,
+    suites: Array.isArray(data?.suites) ? data!.suites : [],
+    source: data ? 'structured' : 'detail_only',
+  };
 }
 
 function cacheImmutableAssets(res: Response, filePath: string): void {

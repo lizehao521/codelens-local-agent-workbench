@@ -11,6 +11,10 @@ import { uuidGenerateTool } from './uuid-generate.tool.js';
 import { jsonFormatTool } from './json-format.tool.js';
 import { textDiffTool } from './text-diff.tool.js';
 import { sysExecTool } from './sys-exec.tool.js';
+import { toolForgeTool } from './tool-forge.tool.js';
+import { webSearchTool } from './web-search.tool.js';
+import { evalRunTool } from './eval-run.tool.js';
+import { evalProposeTool } from './eval-propose.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -23,4 +27,8 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   jsonFormatTool,
   textDiffTool,
   sysExecTool,
+  toolForgeTool,
+  webSearchTool,
+  evalRunTool,
+  evalProposeTool,
 ];

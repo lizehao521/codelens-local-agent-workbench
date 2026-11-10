@@ -14,6 +14,7 @@
  */
 
 import type { CriterionVerdict, JudgeEvidence, JudgeLayer } from './types.js';
+import { scoreRubric } from './probe-rubric.js';
 
 /** L2 判据标识恒定：跨会话聚合依赖它稳定。 */
 export const SEMANTIC_CRITERION = 'semantic.task_completion';
@@ -225,7 +226,12 @@ export const ruleSemanticAssessor: SemanticAssessor = {
   kind: 'rules',
   assess(e: SemanticEvidence): CriterionVerdict {
     const goalTerms = goalTermsOf(e.goal);
-    const coverage = goalTermCoverage(goalTerms, e.finalAnswer);
+    const termCoverage = goalTermCoverage(goalTerms, e.finalAnswer);
+    const rubric = scoreRubric(e.goal, e.finalAnswer);
+    // 目标命中评分表时用「答对几项」作完成度：步长明确（1/N），
+    // 且不奖励篇幅。未命中任何评级表时退回整段词项覆盖率（通用兜底）。
+    const useRubric = rubric.applicable;
+    const coverage = useRubric ? rubric.score : termCoverage;
     // 截断只影响「覆盖度是否可信」，不影响其它信号：
     // S1/S3/S4/S7 依赖的线索都在被保留下来的那一侧（空回答、未来动作承诺、
     // 自述失败、目标里的意图词），因此截断不清空判决，只在 detail 里留痕。
@@ -233,7 +239,9 @@ export const ruleSemanticAssessor: SemanticAssessor = {
       [e.goalTruncated ? `goalTruncated(${e.charCount.goal}字，保留前${MAX_SEMANTIC_CHARS})` : '', e.answerTruncated ? `answerTruncated(${e.charCount.finalAnswer}字，保留后${MAX_SEMANTIC_CHARS})` : '']
         .filter(Boolean)
         .join('、');
-    const coverageNote = `goal_term_coverage=${coverage}（词项 ${goalTerms.length} 个）${truncNote ? `；${truncNote}` : ''}`;
+    const coverageNote = useRubric
+      ? `rubric=${rubric.rubricId} 得分 ${coverage}（${rubric.hits}/${rubric.count} 项${rubric.missing.length > 0 ? `，漏：${rubric.missing.map((m) => `${m.id}(${m.label})`).join('、')}` : ''}）；goal_term_coverage=${termCoverage}（词项 ${goalTerms.length} 个）${truncNote ? `；${truncNote}` : ''}`
+      : `goal_term_coverage=${coverage}（词项 ${goalTerms.length} 个）${truncNote ? `；${truncNote}` : ''}`;
     // 被截断时覆盖度不可信 → 不写 score（写 0 会被下游当"确定没覆盖"）。
     const coverageScore = e.truncated ? undefined : coverage;
 

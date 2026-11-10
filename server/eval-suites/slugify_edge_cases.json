@@ -1,0 +1,59 @@
+{
+  "id": "slugify_edge_cases",
+  "title": "考察 slugify 字符串清洗的边界处理：首尾分隔符裁剪、重音折叠与连续分隔符合并",
+  "implPath": "eval/slugify_edge_cases/impl.cjs",
+  "exportName": "slugify",
+  "publicCases": [
+    {
+      "name": "basic words",
+      "args": [
+        "Hello World"
+      ],
+      "expected": "hello-world"
+    },
+    {
+      "name": "edge punctuation not trimmed",
+      "args": [
+        "!! Hello World !!"
+      ],
+      "expected": "hello-world"
+    },
+    {
+      "name": "collapse multiple separators",
+      "args": [
+        "foo   bar__baz"
+      ],
+      "expected": "foo-bar-baz"
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "accents stripped",
+      "args": [
+        "Café Crème"
+      ],
+      "expected": "cafe-creme"
+    },
+    {
+      "name": "already clean slug",
+      "args": [
+        "hello-world"
+      ],
+      "expected": "hello-world"
+    },
+    {
+      "name": "numbers and trailing punct",
+      "args": [
+        "  Release 2.0!  "
+      ],
+      "expected": "release-2-0"
+    },
+    {
+      "name": "non-string input throws",
+      "args": [
+        42
+      ],
+      "throws": "slugify expects a string"
+    }
+  ]
+}

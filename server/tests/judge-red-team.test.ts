@@ -213,8 +213,8 @@ describe('L3 接入判据塔', () => {
       usage: { promptTokens: 100, completionTokens: 50 },
       circuitOpened: false,
     });
-    // 8 条判据全部计入（L0×5 + L1 + L2 + L3），L3 现在可用。
-    expect(run.total).toBe(8);
+    // 12 条判据全部计入（L0×5 + 工具纪律×4 + L1 + L2 + L3），L3 现在可用。
+    expect(run.total).toBe(12);
     expect(run.layerCoverage.L3).not.toBeNull();
   });
 });
