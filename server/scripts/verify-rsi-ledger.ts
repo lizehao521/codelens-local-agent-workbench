@@ -5,14 +5,21 @@
  * 不启动 server、不调 krsi，直接拿磁盘上的锚链 + 库里的 manifest 原文 + 证据文件，
  * 把 evidence → manifest → anchor → 链 四层全部复算一遍。
  *
- * 退出码：0 = 全链通过；1 = 发现问题（逐条打印 code 与代数）；2 = 参数/文件缺失。
+ * 版本口径：缺 `hash_version` 的历史行按 v1 复算；新行按 v2（canonical JSON + §6 原像）。
+ * 两版本可以混排在同一条链上，逐行报告实际使用的版本。
+ *
+ * 退出码：
+ *   0 = 全链通过；
+ *   1 = 发现篡改/链断/证据不一致（真问题）；
+ *   2 = 参数或账本文件缺失；
+ *   3 = 只有「不认识的 hash_version」——无法判定，不等于篡改。
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
-import { verifyLedger, type AnchorLine } from '../src/services/rsi/ledger-verify.js';
+import { verifyLedger, hashVersionOf, type AnchorLine, type VerifyProblem } from '../src/services/rsi/ledger-verify.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -31,6 +38,19 @@ if (!sessionId || sessionId.startsWith('--')) {
 
 function safe(s: string): string {
   return s.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64) || 'default';
+}
+
+function group(problems: VerifyProblem[], kinds: VerifyProblem['kind'][]): VerifyProblem[] {
+  return problems.filter((p) => kinds.includes(p.kind));
+}
+
+function printGroup(title: string, problems: VerifyProblem[]): void {
+  if (problems.length === 0) return;
+  console.log(`\n${title}`);
+  for (const p of problems) {
+    const at = p.generation === null ? '' : `g${p.generation} `;
+    console.log(`  ${at}${p.code}: ${p.detail}`);
+  }
 }
 
 function main(session: string): void {
@@ -90,23 +110,44 @@ function main(session: string): void {
 
   console.log(`账本：${ledgerPath}`);
   console.log(`锚点：${report.anchorCount} 行，代数 [${report.generations.join(', ')}]`);
-  const bad = new Map<number | null, string[]>();
-  for (const p of report.problems) {
-    const key = p.generation;
-    if (!bad.has(key)) bad.set(key, []);
-    bad.get(key)!.push(`${p.code}: ${p.detail}`);
-  }
+  const counts = Object.entries(report.versionCounts)
+    .map(([v, n]) => `v${v} ${n} 行`)
+    .join('，');
+  console.log(`版本分布：${counts}`);
+  console.log(
+    `复算用的哈希口径：${report.versions
+      .map((v) => (v === 1 ? 'v1(legacy)' : v === 2 ? 'v2(canonical)' : `v${v}(unknown)`))
+      .join(' → ')}`,
+  );
+
   for (const a of anchors) {
-    const issues = bad.get(a.generation);
-    const mark = issues ? '✗' : '✓';
+    const version = hashVersionOf(a);
+    const lineProblems = report.problems.filter((p) => p.generation === a.generation);
+    const mark = lineProblems.length === 0 ? '✓' : lineProblems.every((p) => p.kind === 'version') ? '?' : '✗';
     console.log(
-      `${mark} g${a.generation}  verdict=${a.verdict}  exit=${a.exit_code ?? 'null'}  ` +
+      `${mark} g${a.generation}  hv=${version}  verdict=${a.verdict}  exit=${a.exit_code ?? 'null'}  ` +
         `anchor=${String(a.anchor_hash).slice(0, 12)}…  manifest=${String(a.manifest_hash).slice(0, 12)}…`,
     );
-    for (const issue of issues ?? []) console.log(`    ${issue}`);
+    for (const p of lineProblems) console.log(`    [${p.kind}] ${p.code}: ${p.detail}`);
   }
-  for (const issue of bad.get(null) ?? []) console.log(`  ${issue}`);
 
-  console.log(report.ok ? '\n结论：全链通过（evidence → manifest → anchor → 链 均一致）' : '\n结论：发现不一致，见上');
-  process.exitCode = report.ok ? 0 : 1;
+  printGroup('── 篡改 / 链不一致（tamper / chain）──', group(report.problems, ['tamper', 'chain']));
+  printGroup('── 版本无法识别（version，无法判定，不等于篡改）──', group(report.problems, ['version']));
+  printGroup('── 环境 / 数据缺失（environment）──', group(report.problems, ['environment']));
+  for (const issue of report.problems) {
+    if (issue.generation !== null) continue;
+    if (issue.kind === 'tamper' || issue.kind === 'chain' || issue.kind === 'version') continue;
+    console.log(`  ${issue.code}: ${issue.detail}`);
+  }
+
+  if (report.ok) {
+    console.log('\n结论：全链通过（evidence → manifest → anchor → 链 均一致）');
+    process.exitCode = 0;
+  } else if (report.undecidableByVersion) {
+    console.log('\n结论：无法判定 —— 账本含不认识的 hash_version；未发现篡改证据，但也不能确认一致性');
+    process.exitCode = 3;
+  } else {
+    console.log('\n结论：发现篡改或不一致，见上面的分组');
+    process.exitCode = 1;
+  }
 }

@@ -136,7 +136,8 @@ anchor_hash   = sha256(JSON.stringify({
 - 链式性质：改动任意一代的 manifest，`manifest_hash` 变化 → `anchor_hash` 及其后续 `prev_anchor_hash` 全部对不上，篡改可检测。
 - `seed-agent-loop.ts` 每轮结束打印 `chain=✓/✗`，校验相邻 `prev_anchor_hash` 是否衔接。
 
-已知限制：哈希输入是 `JSON.stringify(manifest)`（依赖键序），尚未做 canonical JSON 规范化。
+已知限制（仅 v1 历史行）：哈希输入是 `JSON.stringify(manifest)`（依赖键序）。v2 起改用
+canonical JSON 并补全 §6 证据原像；两版本可以混排在同一条链上，见 §6.2。
 离线校验已经补上，见 §6.1。
 
 ---
@@ -163,7 +164,7 @@ evidence_preimage_n = canonical_json({
 
 1. 对象键按字典序升序排列；
 2. 无多余空白（compact），UTF-8 编码；
-3. 数字用最短往返表示，禁止 `-0`、禁止科学计数法抖动；
+3. 数字用 JS 的最短往返表示（`JSON.stringify`），`-0` 归一为 `0`，非有限数直接拒绝；
 4. 数组保持语义顺序（`metrics` 按 metric 名字典序，`reasons` 按产生顺序）；
 5. 不含时间戳、不含随机数、不含绝对路径 —— 否则原像不可复算。
 
@@ -176,24 +177,61 @@ evidence_preimage_n = canonical_json({
 npm run rsi:verify -- <sessionId> [--dir data/rsi] [--db data/codelens.db]
 ```
 
-不启 server、不调 krsi，直接按磁盘账本复算四层，任一层对不上就打印 `code` 与代数并以 1 退出：
+不启 server、不调 krsi，直接按磁盘账本复算四层，任一层对不上就打印 `code` 与代数：
 
 | 层 | 复算 | 失败 code |
 |---|---|---|
 | 证据文件 | 文件字节 sha256 / 字节数 vs `manifest.artifacts[]` | `evidence_missing` / `evidence_hash_mismatch` / `evidence_bytes_mismatch` |
+| 证据原像（v2） | `sha256(canonical_json(evidence))` vs `anchor.evidence_hash`；原像内 `gen/verdict/exit_code/prev_manifest/next_manifest` 必须与外层一致 | `evidence_preimage_mismatch` / `evidence_preimage_missing` |
 | manifest | `sha256(落库的 next_manifest_json)` vs `anchor.manifest_hash` | `manifest_hash_mismatch` |
-| anchor 行 | 用行内字段重算 `anchor_hash` | `anchor_hash_mismatch` |
+| anchor 行 | 按 `hash_version` 分支重算 `anchor_hash` | `anchor_hash_mismatch` |
 | 链 | `prev_anchor_hash` 必须等于上一行 `anchor_hash`，代数严格递增 | `chain_break` / `generation_not_increasing` |
 
-另外两种「不是篡改、但也不能假装通过」的情况：账本为空 → `ledger_empty`；
-库里没有该代 `next_manifest_json`（历史遗留代）→ `manifest_unavailable`。
+问题按 `kind` 分三组打印，不混在一起：
+
+- `tamper` / `chain`：真篡改或真断链，退出码 1；
+- `version`：不认识的 `hash_version` → `unknown_hash_version`，**无法判定**，退出码 3；
+- `environment`：账本为空、该代 manifest 未落库、证据文件读不到等「不是篡改但也不能假装通过」，退出码 1。
 
 实现：`src/services/rsi/ledger-verify.ts`（纯函数，可单测）、`scripts/verify-rsi-ledger.ts`（CLI）。
 实测：对 `data/rsi/c23c9a03-…-anchors.jsonl` 全链通过；把副本里的 `verdict` 改成 `improved`
-后两行都报 `anchor_hash_mismatch` 并以 1 退出。
+后两行都报 `anchor_hash_mismatch`。
 
-仍未做：canonical JSON 规范化。一旦改哈希口径，历史账本会整条失效，需要给 anchor 行加
-`hash_version` 再按版本分支复算 —— 这属于要单独决策的改动，不在本次范围内。
+### 6.2 哈希版本化（v1 → v2，已落地）
+
+anchor 行新增 `hash_version`；**缺字段一律按 v1 解释**，因此历史账本不需要任何改写即可继续验。
+
+| | v1（历史行） | v2（新行） |
+|---|---|---|
+| 序列化 | `JSON.stringify` 固定键序 | `canonical_json`（键字典序、紧凑） |
+| `anchor_hash` 原像 | `{prev_anchor, manifest_hash, verdict, exit_code, generation, timestamp}` | 上述字段 + `prev_manifest_hash` + `evidence_hash` |
+| 证据原像 | 不入链，只在库/文件侧 | §6 全量原像（`gen`、`producer`、`prev/next_manifest`、`verdict`、`exit_code`、`reasons`、`metrics`、`report_raw`）随行落盘 |
+| 离线可复算范围 | 需要库里的 manifest 原文 | 证据层不依赖库：行内 `evidence` + `evidence_hash` 自洽；manifest/artifacts 仍从库与文件复核 |
+
+v2 行字段：
+
+```
+{
+  type: "anchor",
+  hash_version: 2,
+  generation, anchor_hash, prev_anchor_hash,     // 与 v1 同名同义
+  manifest_hash,                                 // sha256(JSON.stringify(next_manifest))，与 manifest 复核共用
+  prev_manifest_hash,                            // sha256(JSON.stringify(prev_manifest))，链头为 null
+  evidence_hash,                                 // sha256(canonical_json(evidence_preimage))
+  verdict, exit_code, timestamp,
+  evidence: { ...§6 证据原像... }
+}
+```
+
+兼容与迁移策略：
+
+- **只追加、不回写**：appendAnchor 只写新行；新会话起写 v2，旧链不重签、不改字节；
+- 混排链由同一个 `rsi:verify` 逐行分支复算，并输出「版本分布」和每行 `hv=`；
+- 历史行缺 `hash_version` 视为 v1（不是错误），也不会被自动补字段；
+- 可选迁移（显式、幂等）：`npm run rsi:migrate-hash -- <sessionId> [--dir data/rsi] [--apply]`
+  只给缺省的历史行补 `hash_version: 1`，默认 dry-run；补标记不改变 `anchor_hash`（v1 原像不含该字段），
+  重复执行 `stamped=0`。v2 行与 krsi 的 metric 行一个字节都不动。
+
 
 ---
 

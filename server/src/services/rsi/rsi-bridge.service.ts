@@ -27,6 +27,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Db } from '../../repositories/db.js';
 import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
+import { canonicalJson } from './ledger-verify.js';
 import type { CriterionVerdict } from '../judge/types.js';
 
 export type RsiVerdictState = 'improved' | 'not_improved' | 'refused' | 'undecidable' | 'skipped' | 'error';
@@ -249,7 +250,7 @@ export class RsiBridgeService {
       // （seq/actor/payload_b64/prev_hash 链），混入外来行后它的 R6 账本校验
       // 无法解析，从下一代起会直接 precheck 拒收（exit 2、连报告都不写）。
       // 实测症状：g1→g2 正常，g3 起全部 refused。
-      await this.appendAnchor(this.anchorPath(sessionId), generation, nextManifest, result);
+      await this.appendAnchor(this.anchorPath(sessionId), generation, nextManifest, prevManifest, result);
 
       // 清理临时 manifest（账本 JSONL 保留）
       await Promise.allSettled([rm(prevPath, { force: true }), rm(nextPath, { force: true })]);
@@ -430,9 +431,12 @@ export class RsiBridgeService {
   /**
    * 给锚链文件追加一条带 manifest sha256 的 Anchor 行，形成哈希链。
    *
-   * 链式结构：
-   *   anchor(generation=g).hash = sha256(prev_anchor_hash || '' + manifest_hash + verdict + generation + ts)
-   *   anchor(generation=g).prev_anchor_hash = anchor(generation=g-1).anchor_hash
+   * 版本口径（见 `rsi-loop.md` §6）：
+   *   · v1 = 历史行：`JSON.stringify` 固定键序，只覆盖 prev/manifest/verdict/exit/gen/ts；
+   *   · v2 = 新行：canonical JSON，并补全 §6 证据原像（prev/next manifest、verdict、
+   *     exit_code、reasons、metrics、report_raw）。原像本体随行落盘，离线即可复算。
+   *
+   * 追加时**只写新行**：旧行缺 `hash_version` 一律按 v1 解释，绝不回写或重签历史。
    *
    * microkernel-rsi 的 R6 判据下次可以直接校验链完整性：任一环的 manifest 被篡改
    * 都会导致 anchor_hash 对不上，整条链变红。
@@ -444,12 +448,16 @@ export class RsiBridgeService {
     ledgerPath: string,
     generation: number,
     manifest: RsiManifest,
+    prevManifest: RsiManifest | null,
     result: RsiBridgeResult,
   ): Promise<void> {
     try {
       const manifestHash = createHash('sha256')
         .update(JSON.stringify(manifest))
         .digest('hex');
+      const prevManifestHash = prevManifest
+        ? createHash('sha256').update(JSON.stringify(prevManifest)).digest('hex')
+        : null;
 
       // 读上一个 anchor_hash（作为 prev_anchor_hash），形成链
       let prevAnchorHash: string | null = null;
@@ -468,9 +476,26 @@ export class RsiBridgeService {
       }
 
       const ts = Date.now();
-      const anchorInput = JSON.stringify({
+      const evidence = {
+        gen: generation,
+        producer: this.producer,
+        prev_manifest: prevManifest,
+        next_manifest: manifest,
+        verdict: result.state,
+        exit_code: result.exitCode,
+        reasons: result.reasons,
+        metrics: result.metrics ?? [],
+        report_raw: result.reportRaw,
+      };
+      const evidenceHash = createHash('sha256')
+        .update(canonicalJson(evidence))
+        .digest('hex');
+
+      const anchorInput = canonicalJson({
         prev_anchor: prevAnchorHash,
         manifest_hash: manifestHash,
+        prev_manifest_hash: prevManifestHash,
+        evidence_hash: evidenceHash,
         verdict: result.state,
         exit_code: result.exitCode,
         generation,
@@ -480,13 +505,17 @@ export class RsiBridgeService {
 
       const anchor = {
         type: 'anchor' as const,
+        hash_version: 2,
         generation,
         anchor_hash: anchorHash,
         prev_anchor_hash: prevAnchorHash,
         manifest_hash: manifestHash,
+        prev_manifest_hash: prevManifestHash,
+        evidence_hash: evidenceHash,
         verdict: result.state,
         exit_code: result.exitCode,
         timestamp: ts,
+        evidence,
       };
       await appendFile(ledgerPath, JSON.stringify(anchor) + '\n');
     } catch {

@@ -18,7 +18,8 @@
     "rsi:propose": "tsx scripts/seed-agent-loop.ts 1 --propose",
     "rsi:code": "tsx scripts/seed-agent-loop.ts 3 --code",
     "rsi:auto": "tsx scripts/seed-agent-loop.ts 2 --auto",
-    "rsi:verify": "tsx scripts/verify-rsi-ledger.ts"
+    "rsi:verify": "tsx scripts/verify-rsi-ledger.ts",
+    "rsi:migrate-hash": "tsx scripts/migrate-rsi-hash-version.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",
