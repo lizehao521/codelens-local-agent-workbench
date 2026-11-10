@@ -110,9 +110,13 @@ export function createApp(options: AppOptions = {}): Express {
       const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at
                                 FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);
       const verdictsByRun = new Map<number, any[]>();
-      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail
+      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail, data_json
                                   FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);
       for (const v of allVerdicts) {
+        // data_json 是 007 迁移新增的列；旧行为 NULL，这里统一解成 data 字段，
+        // 解不出来就当没有（绝不能让一条脏 JSON 把整个看板打成 500）。
+        v.data = parseJsonColumn(v.data_json);
+        delete v.data_json;
         if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);
         verdictsByRun.get(v.run_id)!.push(v);
       }
@@ -131,7 +135,16 @@ export function createApp(options: AppOptions = {}): Express {
       // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。
       const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);
 
-      res.json({ session, judgeRuns, verdictsByRun: verdictsByRunJson, rsiRuns, attributions });
+      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析
+      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。
+      res.json({
+        session,
+        judgeRuns,
+        verdictsByRun: verdictsByRunJson,
+        rsiRuns,
+        attributions,
+        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),
+      });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
     }
@@ -185,6 +198,59 @@ export function createApp(options: AppOptions = {}): Express {
   }
 
   return app;
+}
+
+/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */
+function parseJsonColumn(raw: unknown): unknown {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+const EVAL_CRITERION = 'task.test_pass_rate';
+
+/**
+ * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。
+ *
+ * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行
+ * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，
+ * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。
+ */
+function buildEvalSummary(
+  verdicts: any[],
+  judgeRuns: Array<{ id: number; created_at: number }>,
+): Record<string, unknown> | null {
+  let latest: any = null;
+  let latestStructured: any = null;
+  for (const v of verdicts) {
+    if (v.criterion !== EVAL_CRITERION) continue;
+    latest = v;
+    if (v.data) latestStructured = v;
+  }
+  const chosen = latestStructured ?? latest;
+  if (!chosen) return null;
+
+  const data = (chosen.data ?? null) as Record<string, any> | null;
+  const num = (key: string): number | null =>
+    typeof data?.[key] === 'number' ? (data[key] as number) : null;
+  const total = num('total');
+  const run = judgeRuns.find((r) => r.id === chosen.run_id);
+
+  return {
+    runId: chosen.run_id,
+    status: chosen.status,
+    score: chosen.score ?? null,
+    detail: chosen.detail ?? null,
+    measuredAt: run?.created_at ?? null,
+    passed: num('passed'),
+    total,
+    denominator: num('denominator') ?? total,
+    suites: Array.isArray(data?.suites) ? data!.suites : [],
+    source: data ? 'structured' : 'detail_only',
+  };
 }
 
 function cacheImmutableAssets(res: Response, filePath: string): void {

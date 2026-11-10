@@ -265,15 +265,61 @@ npx vitest run tests/tool-forge.test.ts tests/rsi-manifest-builder.test.ts tests
    异步/事件驱动、真实仓库级多文件重构（需要读写源码树）、以及依赖外部服务的行为。
 
    **扩题后的端到端自洽校验**（新会话起跑，本地 FakeLlm 离线演练，非真实上游）：
-   - 套件发现：一次 `eval.run` 报出 10 个套件（9 内置 + 1 晋升的 `slugify_edge_cases`），合计 94 例
-     （本轮加入 `json_patch` 后为 11 个 / 110 例，发现与计分走同一条链路，未改代码）；
+   - 套件发现：一次 `eval.run` 报出 11 个套件（10 内置 + 1 晋升的 `slugify_edge_cases`），
+     合计 110 例（加入 `json_patch` 前是 10 个 / 94 例，发现与计分走同一条链路，未改代码）；
    - 夹具重建：先删掉 `workspace/eval/{inventory_rollup,job_queue,csv_import}` 再跑，
      `syncEvalFixtures` 逐一恢复（3 / 2 / 1 个文件），多文件套件不再依赖手工准备；
    - 代际锚链：全新 session 从 g1 起算，`g1 skipped → g2 → g3`，`prev_generation` 连续、
      anchor 哈希首尾衔接，等于把「另起一条链」落实成了新会话 g1，而不是接在旧分母的链后；
-   - 面板读数：`policy_rsi_runs` 的 readings 里 `test_pass_rate = 0.351`，与判决明细
-     「33/94 通过」一致，看板 `/api/rsi/overview` 原样返回，未出现分母错位。
+   - 面板读数：`policy_rsi_runs` 的 readings 里 `test_pass_rate` 与新分母一致
+     （94 分母时为 0.351，110 分母时为 0.345），看板 `/api/rsi/overview` 原样返回，未出现分母错位。
    - 已知环境限制（与本轮扩题无关）：krsi 是 Go 二进制（源码 `krsi/main.go`，默认路径 `/tmp/krsi`），
      Windows 侧没有 Go 工具链，四态判决落成 `verdict=error`（`krsi spawn error ENOENT`）。
      扩题前后任何 session 在本机都是同一个 error —— 读数、代际行与锚链照常落盘，只是没有
      improved/not_improved 的终判。要拿到四态结论需在有 Go 的环境（或用 `KRSI_BIN_PATH` 指到已编译二进制）。
+
+## 8. 看板接口契约（`GET /api/rsi/overview?session=<id>`）
+
+看板不解析人类可读文案。`task.test_pass_rate` 的结构化读数落在
+`judge_verdicts.data_json`（007 迁移新增列，旧库由 `applyMigrations` 补列，旧行为 NULL），
+接口把它整理成顶层 `eval` 对象，与既有字段并存：
+
+```jsonc
+{
+  "session": { ... },            // 原样保留
+  "judgeRuns": [ ... ],          // 原样保留
+  "verdictsByRun": { "21": [ { "criterion": "task.test_pass_rate", "data": { ... } } ] },
+  "rsiRuns": [ ... ],            // 原样保留
+  "attributions": [ ... ],       // 原样保留
+  "eval": {
+    "runId": 27,
+    "status": "fail",
+    "score": 0.345,
+    "detail": "固定评测套件 38/110 通过（含隐藏用例）…",
+    "measuredAt": 1794270841437,
+    "passed": 38,
+    "total": 110,
+    "denominator": 110,
+    "suites": [
+      { "id": "json_patch", "title": "…", "ok": false,
+        "passed": 5, "total": 16, "publicPassed": 2, "publicTotal": 2 }
+    ],
+    "source": "structured"       // 或 "detail_only"
+  }
+}
+```
+
+兼容约定：
+- 顶层既有字段一个都没删、没改名，旧的解析路径继续可用；`verdictsByRun` 里每条判决
+  只是**多**了一个 `data` 字段。
+- `source: "detail_only"` 表示该会话还没有结构化读数（007 迁移之前落的旧行）：
+  此时 `passed` / `total` / `denominator` 为 `null`、`suites` 为空数组，前端应退回解析
+  `detail`，不要把 null 当 0 画成「通过率为零」。
+- 同一会话新旧混排时，`eval` 取**最新的结构化行**（`runId` 指明是哪一次判决），
+  不会因为后面又落了一条无结构化的行而把曲线打回 null。
+- `data_json` 解析失败按「无结构化读数」处理，接口不 500。
+
+真实数据：本机 `data/codelens.db` 里已有落盘的 `task.test_pass_rate` 读数
+（旧行 12 条为 detail_only；新跑一次判决后产生 `source=structured`、`38/110`、
+11 个套件清单的行），前端可以直接用来验收曲线，不必依赖夹具。
+

@@ -34,6 +34,7 @@ export function evalPassRateGate(evidence: JudgeEvidence): CriterionVerdict | nu
       criterion: TEST_PASS_RATE_CRITERION,
       status: 'unexec',
       detail: '固定评测套件没有可执行用例，通过率不可测，按 C4 记 unexec',
+      data: { passed: 0, total: 0, denominator: 0, score: 0, suites: [] },
     };
   }
 
@@ -49,5 +50,22 @@ export function evalPassRateGate(evidence: JudgeEvidence): CriterionVerdict | nu
     detail:
       `固定评测套件 ${battery.passed}/${battery.total} 通过（含隐藏用例）` +
       (failing.length ? `；未满分：${failing.join('、')}` : ''),
+    // 结构化读数：分母与套件清单必须能被机器直接消费，不能靠解析上面的文案。
+    data: {
+      passed: battery.passed,
+      total: battery.total,
+      denominator: battery.total,
+      score: battery.score,
+      suites: battery.suites.map((s) => ({
+        id: s.id,
+        title: s.title,
+        ok: s.ok,
+        passed: s.passed,
+        total: s.total,
+        publicPassed: s.publicPassed,
+        publicTotal: s.publicTotal,
+        ...(s.error ? { error: s.error } : {}),
+      })),
+    },
   };
 }

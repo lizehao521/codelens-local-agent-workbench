@@ -36,6 +36,11 @@ export interface CriterionVerdict {
   weightExcluded?: boolean;
   /** 人类可读的判定理由，写清「为什么是这个状态」。 */
   detail?: string;
+  /**
+   * 结构化读数（可选）。给机器看：分母、通过数、套件清单这类东西写在这里，
+   * 不要逼前端去正则解析 detail。旧判据没有该字段，消费方必须容忍缺省。
+   */
+  data?: Record<string, unknown>;
 }
 
 /** 判据读取的证据快照 —— 从 τ（tool_calls / approvals / 运行期元数据）抽取。 */

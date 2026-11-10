@@ -250,6 +250,9 @@ CREATE TABLE IF NOT EXISTS judge_verdicts (
   status     TEXT    NOT NULL CHECK (status IN ('pass', 'fail', 'unexec')),
   score      REAL,
   detail     TEXT,
+  -- 结构化读数（JSON）。detail 是给人看的文本，前端不该靠正则解析它拿分母；
+  -- 新版判据把 { passed, total, denominator, suites[] } 写在这里，旧行为 NULL。
+  data_json  TEXT,
   created_at INTEGER NOT NULL
 );
 
@@ -563,6 +566,23 @@ export function applyMigrations(db: MigrationDb): number[] {
       [Date.now()],
     );
     applied.push(5);
+  }
+
+  // ── 007：judge_verdicts.data_json —— 判据的结构化读数 ────────────────────
+  // 在此之前只有 detail 文本（如「固定评测套件 21/23 通过…」），看板要拿分母
+  // 只能正则解析这句话，文案一改前端就断。结构化的分母/通过数/套件清单改走这一列。
+  // 旧库补列后旧行是 NULL，读侧必须容忍（overview 会退化成 detail_only）。
+  const verdictColumns = db.all<{ name: string }>('PRAGMA table_info(judge_verdicts)');
+  if (verdictColumns.length > 0 && !verdictColumns.some((c) => c.name === 'data_json')) {
+    db.exec('ALTER TABLE judge_verdicts ADD COLUMN data_json TEXT');
+  }
+  const v7 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 7');
+  if ((v7?.n ?? 0) === 0) {
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (7, '007-judge-verdict-data', ?)`,
+      [Date.now()],
+    );
+    applied.push(7);
   }
 
   return applied;
