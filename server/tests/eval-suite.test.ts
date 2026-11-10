@@ -91,6 +91,132 @@ module.exports = { parseQuery };`,
   return out;
 }
 module.exports = { toRoman };`,
+  csv_import: `function parseCsv(input) {
+  const text = String(input)
+    .replace(/^\\uFEFF/, '')
+    .replace(/\\r\\n/g, '\\n')
+    .replace(/\\r/g, '\\n');
+
+  const rows = [];
+  const errors = [];
+  let expected;
+  let line = 1;
+  let i = 0;
+  const n = text.length;
+
+  while (i < n) {
+    const startLine = line;
+    const fields = [];
+    let quoted = false;
+    let cur = '';
+    let quotedField = '';
+    let inQuotes = false;
+    let afterQuote = false;
+    let syntaxError = '';
+    let ended = false;
+
+    while (i < n && !ended) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') {
+            quotedField += '"';
+            i += 2;
+          } else {
+            inQuotes = false;
+            afterQuote = true;
+            i += 1;
+          }
+        } else if (ch === '\\n') {
+          quotedField += '\\n';
+          line += 1;
+          i += 1;
+        } else {
+          quotedField += ch;
+          i += 1;
+        }
+        continue;
+      }
+      if (afterQuote) {
+        if (ch === ',') {
+          fields.push(quotedField);
+          quoted = true;
+          afterQuote = false;
+          i += 1;
+        } else if (ch === '\\n') {
+          fields.push(quotedField);
+          quoted = true;
+          afterQuote = false;
+          i += 1;
+          line += 1;
+          ended = true;
+        } else {
+          syntaxError = '引号闭合后出现多余字符';
+          while (i < n && text[i] !== '\\n') i += 1;
+          if (i < n) {
+            i += 1;
+            line += 1;
+          }
+          ended = true;
+        }
+        continue;
+      }
+      if (ch === '"' && cur === '') {
+        inQuotes = true;
+        quotedField = '';
+        i += 1;
+        continue;
+      }
+      if (ch === ',') {
+        fields.push(cur.trim());
+        cur = '';
+        i += 1;
+        continue;
+      }
+      if (ch === '\\n') {
+        fields.push(cur.trim());
+        cur = '';
+        i += 1;
+        line += 1;
+        ended = true;
+        continue;
+      }
+      cur += ch;
+      i += 1;
+    }
+
+    if (inQuotes) {
+      errors.push({ line: startLine, message: '引号未闭合' });
+      break;
+    }
+    if (syntaxError) {
+      errors.push({ line: startLine, message: syntaxError });
+      continue;
+    }
+    if (!ended) {
+      if (afterQuote) {
+        fields.push(quotedField);
+        quoted = true;
+      } else {
+        fields.push(cur.trim());
+      }
+    }
+    if (fields.length === 1 && !quoted && fields[0] === '') continue;
+    if (expected === undefined) {
+      expected = fields.length;
+    } else if (fields.length !== expected) {
+      errors.push({
+        line: startLine,
+        message: '列数不一致（期望 ' + expected + '，实际 ' + fields.length + '）',
+      });
+      continue;
+    }
+    rows.push(fields);
+  }
+
+  return { rows, errors };
+}
+module.exports = { parseCsv };`,
 };
 
 /** 多文件套件的参考实现：key 是套件目录内的相对路径。 */
@@ -266,8 +392,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('八套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(8);
+  it('九套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(9);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);
@@ -289,7 +415,8 @@ describe('固定评测套件', () => {
   });
 
   it('版本库里的缺陷夹具在隐藏口径下真红（缺陷真红）', () => {
-    for (const id of Object.keys(GOOD_FILES)) {
+    const fixtureBacked = ['csv_import', ...Object.keys(GOOD_FILES)];
+    for (const id of fixtureBacked) {
       const suite = findSuite(id)!;
       const root = tmpRoot();
       copyDir(

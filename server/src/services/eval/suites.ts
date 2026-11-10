@@ -410,6 +410,141 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       },
     ],
   },
+  {
+    /*
+     * 扩题（第二组）：真实导入缺陷 —— CSV 引号 / 转义 / CRLF / 跨行字段。
+     *
+     * 旧题面的输入都是「已经结构化好的数据」（字符串、数组、操作序列），
+     * Agent 只需要改计算逻辑。这一题给的是**原始文本**：缺陷在分词状态机里，
+     * 天真的 split('\n') + split(',') 在公开样例上能过、在真实文件上必错。
+     * 同时用「行号」把跨行字段和记录边界绑在一起 —— 解析逻辑写错，报错行号也会错。
+     */
+    id: 'csv_import',
+    title: 'CSV 导入解析（引号与跨行字段）',
+    implPath: 'eval/csv_import/impl.cjs',
+    exportName: 'parseCsv',
+    publicCases: [
+      {
+        name: '普通两行',
+        args: ['a,b\nc,d'],
+        expected: {
+          rows: [
+            ['a', 'b'],
+            ['c', 'd'],
+          ],
+          errors: [],
+        },
+      },
+      {
+        name: '引号内的逗号',
+        args: ['name,note\n"a,b",ok'],
+        expected: {
+          rows: [
+            ['name', 'note'],
+            ['a,b', 'ok'],
+          ],
+          errors: [],
+        },
+      },
+    ],
+    hiddenCases: [
+      {
+        name: 'CRLF 换行',
+        args: ['a,b\r\nc,d'],
+        expected: {
+          rows: [
+            ['a', 'b'],
+            ['c', 'd'],
+          ],
+          errors: [],
+        },
+      },
+      {
+        name: '双引号转义',
+        args: ['a,"say ""hi"""'],
+        expected: { rows: [['a', 'say "hi"']], errors: [] },
+      },
+      {
+        name: '引号内的换行属于字段',
+        args: ['a,"line1\nline2"\nb,c'],
+        expected: {
+          rows: [
+            ['a', 'line1\nline2'],
+            ['b', 'c'],
+          ],
+          errors: [],
+        },
+      },
+      {
+        name: '剥离开头 BOM（后接引号字段）',
+        args: ['\uFEFF"a",b\nc,d'],
+        expected: {
+          rows: [
+            ['a', 'b'],
+            ['c', 'd'],
+          ],
+          errors: [],
+        },
+      },
+      {
+        name: '只 trim 未引用字段',
+        args: [' a ," b ",c '],
+        expected: { rows: [['a', ' b ', 'c']], errors: [] },
+      },
+      {
+        name: '列数不一致报错并跳过该行',
+        args: ['a,b\nc\nb,d'],
+        expected: {
+          rows: [
+            ['a', 'b'],
+            ['b', 'd'],
+          ],
+          errors: [{ line: 2, message: '列数不一致（期望 2，实际 1）' }],
+        },
+      },
+      {
+        name: '引号未闭合',
+        args: ['a,"b\nc,d'],
+        expected: { rows: [], errors: [{ line: 1, message: '引号未闭合' }] },
+      },
+      {
+        name: '引号闭合后出现多余字符',
+        args: ['a,"b"x\nc,d'],
+        expected: { rows: [['c', 'd']], errors: [{ line: 1, message: '引号闭合后出现多余字符' }] },
+      },
+      {
+        name: '空行与纯空白行跳过',
+        args: ['\n  \na,b\n\nc,d\n'],
+        expected: {
+          rows: [
+            ['a', 'b'],
+            ['c', 'd'],
+          ],
+          errors: [],
+        },
+      },
+      {
+        name: '报错行号要计入跨行字段',
+        args: ['a,"x\ny"\nb\nc,d'],
+        expected: {
+          rows: [
+            ['a', 'x\ny'],
+            ['c', 'd'],
+          ],
+          errors: [{ line: 3, message: '列数不一致（期望 2，实际 1）' }],
+        },
+      },
+      { name: '引号空字段', args: ['a,""'], expected: { rows: [['a', '']], errors: [] } },
+      { name: '行尾多余逗号', args: ['a,b,'], expected: { rows: [['a', 'b', '']], errors: [] } },
+      { name: '空输入', args: [''], expected: { rows: [], errors: [] } },
+      {
+        name: '引号内的 CRLF 归一为 LF',
+        args: ['a,"x\r\ny"'],
+        expected: { rows: [['a', 'x\ny']], errors: [] },
+      },
+      { name: '中间空字段', args: ['a,,c'], expected: { rows: [['a', '', 'c']], errors: [] } },
+    ],
+  },
 ];
 
 /** 按 id 取套件；未知 id 返回 undefined。 */
