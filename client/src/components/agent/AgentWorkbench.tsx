@@ -27,6 +27,17 @@ import { JudgePanelModal } from './JudgePanelModal';
 import { RsiDashboardModal } from './RsiDashboardModal';
 import { cn } from '../../lib/cn';
 
+/**
+ * URL 直达（交接 / 演示用）：?rsi=1&session=<id>
+ * 打开页面即展开 RSI 读数面板，并优先用 URL 指定的会话取数，
+ * 避免先手动选会话、再点按钮才能看到判据读数。
+ */
+function rsiDeepLink(): { open: boolean; sessionId: string | null } {
+  if (typeof window === 'undefined') return { open: false, sessionId: null };
+  const params = new URLSearchParams(window.location.search);
+  return { open: params.get('rsi') === '1', sessionId: params.get('session') };
+}
+
 const SUGGESTIONS = [
   '用计算工具算 (1234.5*87)/13，并说明每一步',
   '读取 data 目录下的文件列表',
@@ -101,7 +112,7 @@ export function AgentWorkbench() {
   const [taskKind, setTaskKind] = useState<Task | null>(null);
   const [permOpen, setPermOpen] = useState(false);
   const [judgeOpen, setJudgeOpen] = useState(false);
-  const [rsiOpen, setRsiOpen] = useState(false);
+  const [rsiOpen, setRsiOpen] = useState(() => rsiDeepLink().open);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const showRecoveryCode = useUiStore((s) => s.showRecoveryCode);
   // F：主视图切换（会话 / 审计台）。审计台按当前 runId 取数，不另存一份运行态。
@@ -380,7 +391,7 @@ export function AgentWorkbench() {
 
       <SandboxPermissionModal open={permOpen} onClose={() => setPermOpen(false)} />
       <JudgePanelModal open={judgeOpen} onClose={() => setJudgeOpen(false)} />
-      <RsiDashboardModal open={rsiOpen} onClose={() => setRsiOpen(false)} sessionId={session?.id ?? null} />
+      <RsiDashboardModal open={rsiOpen} onClose={() => setRsiOpen(false)} sessionId={rsiDeepLink().sessionId ?? session?.id ?? null} />
     </div>
   );
 }

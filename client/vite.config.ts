@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 
 type Next = () => void;
 
-const RELAY_DEFAULT_BASE_URL = 'http://1.92.92.200:8787/v1';
+const RELAY_DEFAULT_BASE_URL = 'http://1.92.150.5:8787/v1';
 const RELAY_DEFAULT_MODEL = '平衡';
 
 /**

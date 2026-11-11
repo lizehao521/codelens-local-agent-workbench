@@ -15,6 +15,8 @@ import { toolForgeTool } from './tool-forge.tool.js';
 import { webSearchTool } from './web-search.tool.js';
 import { evalRunTool } from './eval-run.tool.js';
 import { evalProposeTool } from './eval-propose.tool.js';
+import { codeCheckTool } from './code-check.tool.js';
+import { testRunTool } from './test-run.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -31,4 +33,6 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   webSearchTool,
   evalRunTool,
   evalProposeTool,
+  codeCheckTool,
+  testRunTool,
 ];

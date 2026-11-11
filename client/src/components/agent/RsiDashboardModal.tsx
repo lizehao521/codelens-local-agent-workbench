@@ -2,8 +2,11 @@
 // 关键口径：task.test_pass_rate 的分母是固定评测套件的用例数，分母变化即基线断裂，
 // 因此曲线按分母分段绘制、断点单独标注，不能跨段连线比较。
 
-import { AlertTriangle, CheckCircle2, FlaskConical, Info, RefreshCw, ServerOff } from 'lucide-react';
-import type { RsiEval, RsiOverview } from '../../services/api';
+import {
+  AlertTriangle, CheckCircle2, FlaskConical, GitCompare, Info, ListChecks,
+  RefreshCw, ServerOff, ShieldCheck,
+} from 'lucide-react';
+import type { RsiEval, RsiOverview, RsiRulesContract } from '../../services/api';
 import { getRsiOverview } from '../../services/api';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import {
@@ -13,6 +16,14 @@ import {
   type RsiPassSeries,
   type RsiSuiteResult,
 } from '../../lib/rsi-series';
+import {
+  criterionStatusPresentation,
+  judgeRunPresentation,
+  resolveContract,
+  rsiStateAction,
+  rsiStatePresentation,
+  ruleIdFromReason,
+} from '../../lib/rsi-rules';
 import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
 
@@ -31,6 +42,8 @@ export function RsiDashboardModal({ open, onClose, sessionId }: RsiDashboardModa
   );
 
   const series = data ? buildPassSeries(data.judgeRuns, data.verdictsByRun) : null;
+  // 旧后端不下发 rules 时用逐值相同的兜底契约；整个面板共用同一份契约（AC-08）。
+  const contract = resolveContract(data?.rules);
 
   return (
     <Modal open={open} onClose={onClose} title="RSI 判据读数" maxWidth={880}>
@@ -63,10 +76,16 @@ export function RsiDashboardModal({ open, onClose, sessionId }: RsiDashboardModa
               data={data}
               evalData={data.eval}
               series={series ?? buildPassSeries([], {})}
+              contract={contract}
             />
             <PassRateSection series={series ?? buildPassSeries([], {})} />
-            <SuiteSection evalData={data.eval} series={series ?? buildPassSeries([], {})} />
-            <GenerationSection data={data} />
+            <SuiteSection
+              evalData={data.eval}
+              series={series ?? buildPassSeries([], {})}
+              contract={contract}
+            />
+            <GenerationSection data={data} contract={contract} />
+            <RulesSection contract={contract} />
           </>
         )}
       </div>
@@ -90,18 +109,9 @@ function formatDateTime(timestamp: number): string {
   });
 }
 
-function verdictLabel(verdict: string): string {
-  if (verdict === 'pass') return '通过';
-  if (verdict === 'fail') return '未通过';
-  if (verdict === 'undecided' || verdict === 'unexec') return '不可判';
-  return verdict || '未知';
-}
-
-function verdictTone(verdict: string): string {
-  if (verdict === 'pass') return 'text-success';
-  if (verdict === 'fail') return 'text-danger';
-  return 'text-warning';
-}
+// 三套枚举域（判据塔 run / RSI 代际 / 单条判据 status）不再共用一个映射函数：
+// 旧函数既判断了后端从不产生的幽灵值，又漏掉 inconclusive 与 6 态 RSI 判决。
+// 现在按调用点分别走 lib/rsi-rules.ts 的三套分派，互不串用。
 
 function EmptyBlock({ title, detail }: { title: string; detail: string }) {
   return (
@@ -188,6 +198,15 @@ function DataVersionNotice({ evalData }: { evalData: RsiEval | null }) {
         <span className="text-[11px] text-text-tertiary">
           套件清单与分母直接来自接口字段，不依赖文本解析。
         </span>
+        <span className="text-[11px] text-text-tertiary">
+          评测集指纹 {evalData.evalSetFingerprint ?? '未标注（旧会话）'} · 失败分类{' '}
+          {Object.entries(evalData.failureKinds ?? {})
+            .filter(([kind]) => kind !== 'passed')
+            .map(([kind, count]) => `${kind}:${count}`)
+            .join(' / ') || '无'}{' '}
+          · 采样 {evalData.samples ?? 1} 次，可靠性{' '}
+          {evalData.reliability === 'measured' ? '已测' : '未测（pass^k 不可计算）'}
+        </span>
       </div>
     );
   }
@@ -210,15 +229,19 @@ function SummaryTiles({
   data,
   evalData,
   series,
+  contract,
 }: {
   data: RsiOverview;
   evalData: RsiEval | null;
   series: RsiPassSeries;
+  contract: RsiRulesContract;
 }) {
   const latest = latestPoint(series.points);
   const latestRun = data.judgeRuns[data.judgeRuns.length - 1];
   const latestRsi = data.rsiRuns[data.rsiRuns.length - 1];
   const lastChange = series.changes[series.changes.length - 1];
+  const judgePres = latestRun ? judgeRunPresentation(latestRun.verdict, contract) : null;
+  const rsiPres = latestRsi ? rsiStatePresentation(latestRsi.verdict, contract) : null;
   // 优先用顶层 eval 的数值（同一次判决），没有时退回序列末点。
   const structured = isStructuredEval(evalData);
   const score = evalData?.score ?? latest?.score ?? null;
@@ -244,13 +267,13 @@ function SummaryTiles({
       />
       <Tile
         label="判据塔判决"
-        value={latestRun ? verdictLabel(latestRun.verdict) : '—'}
+        value={judgePres ? judgePres.label : '—'}
         detail={
           latestRun
             ? `得分 ${pct(latestRun.score)} · 覆盖率 ${pct(latestRun.coverage)} · 共 ${data.judgeRuns.length} 次`
             : '还没有判决记录'
         }
-        tone={latestRun ? verdictTone(latestRun.verdict) : undefined}
+        tone={judgePres ? judgePres.toneClass : undefined}
       />
       <Tile
         label="分母基线"
@@ -276,12 +299,12 @@ function SummaryTiles({
         value={`${data.rsiRuns.length} 代`}
         detail={
           latestRsi
-            ? `最新 g${latestRsi.generation} · ${verdictLabel(latestRsi.verdict)}${
+            ? `最新 g${latestRsi.generation} · ${rsiPres?.label ?? latestRsi.verdict}${
                 data.attributions.length > 0 ? ` · ${data.attributions.length} 条归因` : ''
               }`
             : '还没有代际对比记录'
         }
-        tone={latestRsi ? verdictTone(latestRsi.verdict) : undefined}
+        tone={rsiPres ? rsiPres.toneClass : undefined}
       />
     </div>
   );
@@ -555,7 +578,15 @@ function BaselineTable({ changes, points }: { changes: RsiPassSeries['changes'];
   );
 }
 
-function SuiteSection({ evalData, series }: { evalData: RsiEval | null; series: RsiPassSeries }) {
+function SuiteSection({
+  evalData,
+  series,
+  contract,
+}: {
+  evalData: RsiEval | null;
+  series: RsiPassSeries;
+  contract: RsiRulesContract;
+}) {
   const latest = latestPoint(series.points);
   const structured = isStructuredEval(evalData);
   const suites = structured && evalData ? evalData.suites : [];
@@ -574,6 +605,9 @@ function SuiteSection({ evalData, series }: { evalData: RsiEval | null; series: 
     : (latest?.total ?? null);
   const score = structured && evalData ? evalData.score : (latest?.score ?? null);
   const status = structured && evalData ? evalData.status : (latest?.status ?? null);
+  // 单条判据 status 的 3 态域，与判据塔 run 级 / RSI 代际 6 态分开分派。
+  const statusPres = criterionStatusPresentation(status ?? '', contract);
+  const latestStatusPres = criterionStatusPresentation(latest?.status ?? '', contract);
 
   return (
     <section className="rounded-md border border-border bg-bg-primary p-3">
@@ -612,7 +646,7 @@ function SuiteSection({ evalData, series }: { evalData: RsiEval | null; series: 
             <span className="mx-2 text-text-tertiary">·</span>
             得分 <span className="font-medium text-text-primary">{pct(score)}</span>
             <span className="mx-2 text-text-tertiary">·</span>
-            判决 <span className={cn('font-medium', verdictTone(status ?? ''))}>{verdictLabel(status ?? '')}</span>
+            判决 <span className={cn('font-medium', statusPres.toneClass)}>{statusPres.label}</span>
             <span className="mx-2 text-text-tertiary">·</span>
             分母 <span className="font-medium text-text-primary">{evalData.denominator ?? '—'}</span>
           </p>
@@ -671,7 +705,7 @@ function SuiteSection({ evalData, series }: { evalData: RsiEval | null; series: 
             <span className="mx-2 text-text-tertiary">·</span>
             得分 <span className="font-medium text-text-primary">{pct(latest.score)}</span>
             <span className="mx-2 text-text-tertiary">·</span>
-            判决 <span className={cn('font-medium', verdictTone(latest.status))}>{verdictLabel(latest.status)}</span>
+            判决 <span className={cn('font-medium', latestStatusPres.toneClass)}>{latestStatusPres.label}</span>
           </p>
 
           {latest.failing.length > 0 ? (
@@ -735,7 +769,7 @@ function SuiteSection({ evalData, series }: { evalData: RsiEval | null; series: 
   );
 }
 
-function GenerationSection({ data }: { data: RsiOverview }) {
+function GenerationSection({ data, contract }: { data: RsiOverview; contract: RsiRulesContract }) {
   const runs = [...data.rsiRuns].sort((a, b) => a.generation - b.generation);
   return (
     <section className="rounded-md border border-border bg-bg-primary p-3">
@@ -753,29 +787,120 @@ function GenerationSection({ data }: { data: RsiOverview }) {
                 <th className="py-1 font-normal">对比</th>
                 <th className="py-1 font-normal">判决</th>
                 <th className="py-1 font-normal">退出码</th>
-                <th className="py-1 font-normal">原因</th>
+                <th className="py-1 font-normal">原因 · 触发规则 / 处置要求</th>
               </tr>
             </thead>
             <tbody>
-              {runs.map((run) => (
-                <tr key={run.generation} className="border-b border-border/60">
-                  <td className="py-1 text-text-primary">g{run.generation}</td>
-                  <td className="py-1 text-text-secondary">
-                    {run.prevGeneration === null ? '—' : `g${run.prevGeneration} → g${run.generation}`}
-                  </td>
-                  <td className={cn('py-1 font-medium', verdictTone(run.verdict))}>
-                    {verdictLabel(run.verdict)}
-                  </td>
-                  <td className="py-1 text-text-secondary">{run.exitCode ?? '—'}</td>
-                  <td className="max-w-[260px] py-1 break-words text-text-tertiary">
-                    {run.reasons.length > 0 ? run.reasons.join('；') : '—'}
-                  </td>
-                </tr>
-              ))}
+              {runs.map((run) => {
+                const pres = rsiStatePresentation(run.verdict, contract);
+                const action = rsiStateAction(run.verdict, contract);
+                return (
+                  <tr key={run.generation} className="border-b border-border/60">
+                    <td className="py-1 text-text-primary">g{run.generation}</td>
+                    <td className="py-1 text-text-secondary">
+                      {run.prevGeneration === null ? '—' : `g${run.prevGeneration} → g${run.generation}`}
+                    </td>
+                    <td className={cn('py-1 font-medium', pres.toneClass)}>{pres.label}</td>
+                    <td className="py-1 text-text-secondary">{run.exitCode ?? '—'}</td>
+                    <td className="max-w-[300px] py-1 break-words">
+                      {run.reasons.length > 0 ? (
+                        <ul className="flex flex-col gap-1">
+                          {run.reasons.map((reason, index) => {
+                            const ruleId = ruleIdFromReason(reason, contract);
+                            const ruleName = ruleId
+                              ? contract.rules.find((rule) => rule.id === ruleId)?.name
+                              : null;
+                            return (
+                              <li key={`${run.generation}-${index}`} className="text-text-tertiary">
+                                {ruleId && (
+                                  <span
+                                    className="mr-1 inline-block rounded border border-border bg-bg-secondary px-1 py-0.5 text-[10px] font-medium text-text-secondary"
+                                    title={ruleName ?? ruleId}
+                                  >
+                                    {ruleId}
+                                  </span>
+                                )}
+                                <span>{reason}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <span className="text-text-tertiary">—</span>
+                      )}
+                      {action && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-text-tertiary">
+                          处置：{action}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * 规则清单：直接消费契约里的 6 条规则，执行顺序按 rules[].order 派生，
+ * 不再按编号顺序叙述（R6 实际在 R5 之前执行）。旧后端无 rules 时这里
+ * 展示的是逐值相同的兜底契约，不会白屏。
+ */
+function RulesSection({ contract }: { contract: RsiRulesContract }) {
+  const ordered = [...contract.rules].sort((a, b) => a.order - b.order);
+  const orderText = ordered.map((rule) => rule.id).join('→');
+  return (
+    <section className="rounded-md border border-border bg-bg-primary p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <ListChecks size={20} className="shrink-0 text-text-secondary" />
+        <h3 className="text-sm font-semibold text-text-primary">规则契约 · {contract.rules.length} 条判据</h3>
+        <span className="rounded border border-border px-1.5 py-0.5 text-[11px] text-text-tertiary">
+          {contract.version} · {contract.authority}
+        </span>
+      </div>
+      <p className="mt-2 flex flex-wrap items-center gap-1.5 rounded border border-border bg-bg-secondary px-2 py-1.5 text-[11px] leading-relaxed text-text-secondary">
+        <Info size={16} className="shrink-0 text-text-tertiary" />
+        执行顺序 <span className="font-medium text-text-primary">{orderText}</span>，编号顺序不等于执行顺序
+      </p>
+      <div className="mt-2 flex flex-col gap-2">
+        {ordered.map((rule) => (
+          <div key={rule.id} className="rounded border border-border bg-bg-secondary px-2.5 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {rule.kind === 'rejection' ? (
+                <ShieldCheck size={16} className="shrink-0 text-text-secondary" />
+              ) : (
+                <GitCompare size={16} className="shrink-0 text-text-secondary" />
+              )}
+              <span className="text-xs font-semibold text-text-primary">{rule.id}</span>
+              <span className="text-xs text-text-primary">{rule.name}</span>
+              <span className="rounded border border-border px-1 py-0.5 text-[10px] text-text-tertiary">
+                第 {rule.order} 步
+              </span>
+              <span className="rounded border border-border px-1 py-0.5 text-[10px] text-text-tertiary">
+                {rule.kind === 'rejection' ? '前置拒收' : '严格比较'}
+              </span>
+            </div>
+            <dl className="mt-1.5 grid grid-cols-1 gap-x-3 gap-y-0.5 text-[11px] leading-relaxed sm:grid-cols-2">
+              <div className="flex gap-1">
+                <dt className="shrink-0 text-text-tertiary">适用条件</dt>
+                <dd className="text-text-secondary">{rule.appliesWhen}</dd>
+              </div>
+              <div className="flex gap-1">
+                <dt className="shrink-0 text-text-tertiary">判断标准</dt>
+                <dd className="text-text-secondary">{rule.criterion}</dd>
+              </div>
+              <div className="flex gap-1 sm:col-span-2">
+                <dt className="shrink-0 text-text-tertiary">响应要求</dt>
+                <dd className="text-text-secondary">{rule.onHit}</dd>
+              </div>
+            </dl>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

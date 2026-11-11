@@ -268,7 +268,12 @@ export class RunStateService {
     if (state.approvals.length > 0) triggers.push('审批');
     if (state.errors.length > 0) triggers.push('错误/降级');
     if (totalTokens >= this.costTokenThreshold) triggers.push('成本超阈值');
-    if (state.status === 'error' || state.status === 'aborted') triggers.push('异常终止');
+    if (state.status === 'error' || state.status === 'aborted') {
+      // context_full 的 reason 已经写明「上下文已满…安全回退」，再挂通用「异常终止」
+      // 会在同一张卡上出现互相冲突的措辞。换成同义但准确的标签，且保持 triggers
+      // 非空 —— 否则 hasMaterialChange 变 false，汇报卡反而整个不显示。
+      triggers.push(state.finishReason === 'context_full' ? '上下文已满' : '异常终止');
+    }
     if (state.budget) triggers.push('预算耗尽');
     if (state.finishReason === 'converged') triggers.push('收敛判定');
 

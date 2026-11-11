@@ -9,7 +9,7 @@
  *  - direction 必须是 "up" 或 "down"
  *  - basis 只能是 1-5（measured/relayed/estimated/model_says/absent）
  *  - absent 必须带 why_absent
- *  - relayed 必须带 source
+ *  - basis=4 (model_says) 必须带 source；basis=5 (absent) 必须带 why_absent；basis=2 (relayed) 无必带字段（与 server/krsi/main.go:232-237 一致）
  *  - 比率型读数带 denominator（正数）
  *
  * 本模块是纯函数，无副作用，无 DB 依赖 —— 可以单测钉死。
@@ -110,6 +110,21 @@ const METRIC_MAP: Record<
     basis: BASIS.Measured,
     role: 'objective',
   },
+  // 「有没有为了修 A 而打坏 B」：套件级地板。
+  //
+  // 上面那条 test_pass_rate 是**整机聚合率**（Σpassed/Σtotal），13 个套件的涨跌
+  // 会互相抵消，而 R5 只比这一个标量。实测注入：parse_query 2/8 → 8/8（+6）
+  // 同时 csv_import 7/17 → 2/17（-5），整机率 0.691 → 0.699，krsi 判 improved
+  // 并写「全部指标严格变好」—— 一次真实破坏被奖励了（M4 口径窄于风险）。
+  //
+  // 这条护栏**逐个套件**比对上一代：任何套件通过率下降即变差。
+  // 它不要求任何套件变好（那是 objective 的职责），只要求不许倒退。
+  'task.suite_floor': {
+    metric: 'suite_floor_ratio',
+    direction: 'up',
+    basis: BASIS.Measured,
+    role: 'guard',
+  },
   // 语义完成度（问答评分表）**不进 RSI readings**：
   // 已实测饱和（概念题首代 5/5），而且它的单代波动 ±0.05 属于噪声。
   // 把它当护栏，噪声就会把「目标已经到顶」误判成「退步」；
@@ -148,6 +163,7 @@ const SCORABLE_CRITERIA = new Set([
   'tool.discipline.lesson_pairing',
   'tool.capability.reuse',
   'task.test_pass_rate',
+  'task.suite_floor',
   'semantic.task_completion',
   'semantic.completion',
 ]);
