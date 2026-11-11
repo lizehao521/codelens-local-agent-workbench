@@ -913,6 +913,76 @@ export const EVAL_SUITES: readonly EvalSuite[] = [
       },
     ],
   },
+  {
+    /*
+     * 回归题：真实缺陷的复刻（全角冒号）。
+     *
+     * 来源是一次真实的自我修复：rsi-bridge 的 extractMetrics 用半角 `:` 匹配指标行，
+     * 而内核 main.go 打印的是全角「：」(U+FF1A)，于是 metrics_json 恒为 null ——
+     * 判据看着在跑，读数其实全是空的。这类缺陷的坏处是「不报错」：
+     * 报告照常生成，只是每个指标都丢了。
+     *
+     * 放在电池里有两层意思：
+     *  1) 它是「解析层必须两种冒号都认」的规格载体（历史报告两种都出现过）；
+     *  2) 它是回归守卫 —— 谁把正则收窄回单一半角，这一格立刻变红。
+     * 隐藏集专挑「尾巴」「多行混合」「指标名含点下划线」这些只看公开样例想不到的面。
+     */
+    id: 'rsi_report_parse',
+    title: 'RSI 报告指标行解析（全角/半角冒号）',
+    implPath: 'eval/rsi_report_parse/impl.cjs',
+    exportName: 'parseMetricLines',
+    publicCases: [
+      {
+        name: '全角冒号（真实报告格式）',
+        args: ['  · task.test_pass_rate：0.6 → 1（变好=true）'],
+        expected: [{ metric: 'task.test_pass_rate', before: 0.6, after: 1, better: true }],
+      },
+      {
+        name: '半角冒号（历史报告格式）',
+        args: ['  · tool.success_rate: 0.8 → 0.9（变好=true）'],
+        expected: [{ metric: 'tool.success_rate', before: 0.8, after: 0.9, better: true }],
+      },
+      {
+        name: '变好为 false',
+        args: ['  · budget.efficiency：0.9 → 0.7（变好=false）'],
+        expected: [{ metric: 'budget.efficiency', before: 0.9, after: 0.7, better: false }],
+      },
+      {
+        name: '无指标行',
+        args: ['判定：improved\n退出码：0（0=算数 1=不算数 2=拒收 3=核不了）'],
+        expected: [],
+      },
+    ],
+    hiddenCases: [
+      {
+        name: '护栏尾巴必须忽略',
+        args: ['  · p95.latency：120 → 100（变好=true）（护栏：不得变差）'],
+        expected: [{ metric: 'p95.latency', before: 120, after: 100, better: true }],
+      },
+      {
+        name: '多行混合：两种冒号都要抓到',
+        args: [
+          '读数：上一代 3 条；这一代 3 条\n  · a.score：0.5 → 0.9（变好=true）\n  · b.score: 1 → 0.5（变好=false）\n判定：not_improved',
+        ],
+        expected: [
+          { metric: 'a.score', before: 0.5, after: 0.9, better: true },
+          { metric: 'b.score', before: 1, after: 0.5, better: false },
+        ],
+      },
+      { name: '空报告', args: [''], expected: [] },
+      {
+        name: '指标名含点与下划线',
+        args: ['  · l2.goal_term_coverage：0.4 → 0.8（变好=true）'],
+        expected: [{ metric: 'l2.goal_term_coverage', before: 0.4, after: 0.8, better: true }],
+      },
+      { name: '非字符串入参', args: [null], expected: [] },
+      {
+        name: '整数与小数混合',
+        args: ['  · rsi.chain_len：5 → 6（变好=true）'],
+        expected: [{ metric: 'rsi.chain_len', before: 5, after: 6, better: true }],
+      },
+    ],
+  },
 ];
 
 /** 按 id 取套件；未知 id 返回 undefined。 */

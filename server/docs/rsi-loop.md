@@ -18,7 +18,7 @@ Improve(π) = π → Act → τ → Judge → r → Update → π'
 | 执行 | `Act` | Agent 真跑一轮：工具调用、审批、预算消耗 | 运行期 |
 | 轨迹 | `τ` | 本轮产生的轨迹与读数（tool_calls、审批事件、token 消耗、终止/熔断事件） | 运行期落库 |
 | 判决 | `Judge` | 把 τ 压成 `CriterionVerdict[]`（三态 + 可选 score） | `JudgeService` |
-| 回报 | `r` | 跨代对比结果：improved / not_improved / refused / undecidable | `krsi` CLI（`Judge(prev, next)`） |
+| 回报 | `r` | 跨代对比结果：improved / not_improved / refused / undecidable（krsi 四态），另有 bridge 两态 skipped / error（共 6 态，见 §3） | `krsi` CLI（`Judge(prev, next)`） |
 | 更新 | `Update` | 依据 r 决定是否接受 π' | 旁路对账，**不阻断主流程** |
 | 新策略 | `π'` | 下一代策略 | 下一轮 |
 
@@ -66,54 +66,91 @@ CriterionVerdict[](next)┘                                  ├─► krsi Judg
 | basis | 名称 | 含义 |
 |---|---|---|
 | 1 | measured | 实测 |
-| 2 | relayed | 转述（必须带 `source`） |
+| 2 | relayed | 转述（无必带字段） |
 | 3 | estimated | 估算 |
-| 4 | model_says | 模型自述 |
+| 4 | model_says | 模型自述（必须带 `source`） |
 | 5 | absent | 量不到（必须带 `why_absent`） |
+
+必带字段口径以 `server/krsi/main.go:232-237` 为准：**仅 `basis=4 (model_says)` 必带 `source`、
+`basis=5 (absent)` 必带 `why_absent`；`basis=2 (relayed)` 无必带字段**。`basis` 取值域由
+`main.go:226-228` 校验，越界（不在 1–5）即 R1 拒收。旧版把「必须带 `source`」记在 `relayed(2)` 上是错的，
+勘误登记见 `RSI-HANDOVER-2026-11-10-PM.md` §10。
 
 `tool_write_coverage` 特意做成**连续值 0–1** 而非二值 pass/fail：每补一个工具的写闸测试，它就严格上升一格，
 跨代对比才看得出进步；若只有二值，补到 9/10 仍是 fail，RSI 完全失明。
 
 ---
 
-## 3. krsi 四态 exit code
+## 3. krsi 四态 + bridge 两态（exit code / verdict state）
 
-`krsi` 的退出码就是判决本身（语义来自 `krsi main.go`）：
+`krsi` 的退出码就是判决本身（语义来自 `server/krsi/main.go:73-79,507-538`）。
+`RsiVerdictState` 共 6 态（`rsi-bridge.service.ts:33`）：krsi 四态 + bridge 两态。
+中文标签与 tone 与 `server/docs/rsi-rules-contract.md` 逐字一致：
 
-| exit code | state | 含义 | 处置 |
-|---|---|---|---|
-| `0` | `improved` | 算数：读数支持改进 | 接受 π' |
-| `1` | `not_improved` | 读数不支持改进 | 保留 π |
-| `2` | `refused` | 拒收，并**点名**违反哪条 R 判据 | 修 manifest / 修判据，不重试 |
-| `3` | `undecidable` | 量不到（数据不足，无法判定） | 补证据，或降级为 skipped |
+| exit code | state | 中文标签 | tone | 含义 | 处置 |
+|---|---|---|---|---|---|
+| `0` | `improved` | 已改进 | success | 算数：读数支持改进 | 接受 π' |
+| `1` | `not_improved` | 未改进 | warning | 读数不支持改进 | 保留 π；归因器写回 π' 供下一代 |
+| `2` | `refused` | 拒收 | danger | 拒收，并**点名**违反哪条 R 判据 | 修 manifest / 修判据，不重试 |
+| `3` | `undecidable` | 无法判定 | warning | 量不到（数据不足，无法判定） | 补证据，或降级为 skipped |
+| `null` | `skipped` | 跳过 | muted | 首次运行（无 prev Manifest），不 spawn krsi | 直接写 `verdict=skipped`，下一代自然进入对账 |
+| `null` | `error` | 桥接故障 | danger | bridge 自身故障：krsi 找不到 / 构建挂了 / 超时（默认 10s）/ 报告解析失败 | `exitCode` 保留原值供审计，不阻断主流程 |
 
 **任何其他 exit code** → 视为 **bridge 自身故障**（krsi 找不到 / 构建挂了 / 超时），
 映射为 `state='error'`，`exitCode` 保留原值供审计。
 
-bridge 层还有两个**非 krsi** 状态：
+bridge 层两个**非 krsi** 状态的触发条件：
 
-- `skipped`：首次运行（无 prev Manifest），不 spawn krsi，直接写 `verdict=skipped`，`exitCode=null`。
-- `error`：spawn 失败 / 超时（默认 10s）/ 报告解析失败，`exitCode=null` 或原始码。
+- `skipped`（跳过 / muted）：首次运行（无 prev Manifest），不 spawn krsi，直接写 `verdict=skipped`，`exitCode=null`。
+- `error`（桥接故障 / danger）：spawn 失败 / 超时（默认 10s）/ 报告解析失败，`exitCode=null` 或原始码。
 
 失败**不阻断主流程**：所有异常被 catch，只 `console.warn`（与 `JudgeService.judgeDeep` 同口径）。
+「目标饱和」记 `undecidable / exit 3`（`main.go:524-530`），「目标没变好」记
+`not_improved / exit 1`（`main.go:531-537`），是两条不同分支，都正确。
 
 ---
 
-## 4. R1–R6 判据
+## 4. R1–R6 判据（以 `server/krsi/main.go` 为准）
 
-`krsi` 在 `Judge(prev, next)` 里逐条校验。以下 R1、R5 由源码注释直接确认，其余为契约约束的归纳：
+本节按内核实现逐条重写。**真相源是 `server/krsi/main.go`**（本地锚点），不是归纳；
+文档准绳见 `server/docs/rsi-capability-sedimentation.md` §5，人类可读的现行契约见
+`server/docs/rsi-rules-contract.md`。旧版 §4 有两处外置表述（把编号归属指向仓库内并不存在的包、
+并把冲突交由外部实现裁定），本轮一并删除：六条规则的编号、判断标准与执行顺序一律以 `main.go` 为准。
 
-| 判据 | 内容 | 违反后果 |
-|---|---|---|
-| **R1** | Manifest 结构合法性：`direction ∈ {up, down}`、`basis ∈ 1..5`、`absent` 必带 `why_absent`、`relayed` 必带 `source`、比率型读数带正数 `denominator` | `refused`（exit 2） |
-| **R2** | 指标可比较：两代同名 metric 的 `direction` 与 `basis` 必须一致，否则不可比 | `refused` |
-| **R3** | 证据充分性：`basis=5 (absent)` 的指标不参与改进判定；关键指标全 absent → 不可判 | `undecidable`（exit 3） |
-| **R4** | 单调性：至少一个 metric 严格变好，且**没有任何** metric 变坏 | 否则 `not_improved`（exit 1） |
-| **R5** | 同名对比较：只比**同名** metric 对，跨代缺失的 metric 不参与（也不惩罚） | 缺失即跳过 |
-| **R6** | 无回归闸：`direction=down` 的指标（如 `approval_friction`、`budget_efficiency`）不得上升 | `not_improved` 或 `refused` |
+`main.go:78` 声明 `criteriaDeclared = "R1 R2 R3 R4 R5 R6"`（报告按编号打印，`main.go:574`），
+但**编号顺序 ≠ 执行顺序**。实际固定执行顺序（`main.go:463-495`）为：
 
-> 注：R2/R3/R4/R6 的具体编号归属以 `microkernel-rsi` 的 `risk` 包为准；本文按契约语义归纳，
-> 若与上游实现冲突，以上游为准。
+```
+R1 → R2 → R3 → R4 → R6 → R5
+```
+
+`R6.order=5`、`R5.order=6`：R6 是前置拒收，在 R5 严格比较之前执行；`compare` 在
+`main.go:495`，四态 `switch` 在 `main.go:507-538`。任一条拒收命中即整代拒收，不再执行后续拒收规则
+（`if refuse == ""` 短路，`main.go:469-493`），但 `compare` 与账本写入仍会执行以留痕。
+
+| 判据 | 名称 | 类别 | 适用条件 | 判断标准 | 违反后果 | 处置要求 | 结果状态 / 退出码 | 依据行号 |
+|---|---|---|---|---|---|---|---|---|
+| **R1** | schema 合法 | 拒收 | 对 `prev`、`next` 两份 Manifest 各执行一次 | `producer` 非空、`generation >= 0`；每条 reading 的 `metric` 非空、`basis ∈ 1..5`、`direction ∈ {up, down}`、`basis=4 (model_says)` 必带 `source`、`basis=5 (absent)` 必带 `why_absent`、`denominator` 若给出必须为正 | 整代 `refused`（exit 2），理由以 `R1:` 点名 | 修 manifest（补 `source` / `why_absent` / 正 `denominator`）；同一代不重跑，下一代以新 generation 进入；失败不阻断主流程 | `refused` / 2 | `main.go:214-243` |
+| **R2** | 判据集锚定 | 拒收 | 两代 `criteria_sha256` 不一致时触发；一致则直接通过 | 指纹变了必须有非空 `criteria_diff`；每条 diff 的 `id` 非空、`change ∈ {tightened, loosened, added, removed}` | 整代 `refused`（exit 2），「拒绝静默改判据」 | 显式补 `criteria_diff` 声明或恢复判据集；不得静默改判据；同一代不重跑 | `refused` / 2 | `main.go:245-264` |
+| **R3** | 防删指标 | 拒收 | 对比 `prev` / `next` 的 metric 集合 | 上一代出现的每个 metric 本代必须仍在；出现「上一代有、这一代消失的指标」即违反 | 整代 `refused`（exit 2），理由列出被删指标名 | 补回指标；量不到写 `basis=5 (absent)` + `why_absent`，不许整条删除；同一代不重跑 | `refused` / 2 | `main.go:266-283` |
+| **R4** | 产物哈希 | 拒收 | 逐条检查 `next.artifacts`（文件存在则复核内容，不存在只校验格式） | `sha256` 为 64 位十六进制、`bytes >= 0`；文件存在时内容哈希与字节数须与声明一致 | 整代 `refused`（exit 2），理由点名产物 path | 提供真实可复核原像（真 `sha256` + 真字节数），不用占位串；同一代不重跑 | `refused` / 2 | `main.go:285-308` |
+| **R6** | 同代唯一 | 拒收 | 读账本，筛出与 `next` 同 `producer`、同 `generation` 的 `rsi_generation` 行 | 链上已存在一份与 `next` 不同的 manifest（内容哈希比对）即违反 | 整代 `refused`（exit 2），「同代重记被拒」 | 同一代不得造两份不同 manifest；不以重记覆盖历史；同一代不重跑 | `refused` / 2 | `main.go:310-337` |
+| **R5** | 严格比较 | 比较 | R1–R4、R6 均未拒收后，对两代可比指标做 `compare` + `switch` | `objective` 必须严格变好、`guard` 不得变差（持平可以）；两代 `direction` 不一致或两代都 `basis=5` 的指标跳过；`len(metrics)==0` / `objectiveCount==0` / 目标饱和（`atCeiling`）→ `undecidable`；护栏变差或目标没全变好 → `not_improved`；否则 `improved` | 不产生 `refused`；落入 `improved` (0) / `not_improved` (1) / `undecidable` (3) | 理由一律 `R5:` 前缀；`undecidable` 不自动重跑，由下一轮 Act 自然产生证据；饱和应扩任务空间而不是改判据；`not_improved` 由归因器写回 π' | `improved` / `not_improved` / `undecidable`；0 / 1 / 3 | `main.go:344-435`、`main.go:507-538` |
+
+补充口径：
+
+- 上表「依据行号」为**证据范围**（含前导 `// R#:` 注释行，如 R1 的 `214-243`）；
+  字段级源码锚点见 `server/docs/rsi-rules-contract.md` §2.1（自函数定义行起，如 R1 的 `215-243`），
+  两者指向同一段真实代码，不构成不一致。
+- `budget.efficiency` **刻意不进 readings**（§2 已写明），它不是 `direction=down` 的读数，也不参与 R5 比较；
+  把它当目标会让「越学越贵」被判成「越学越差」。内核只消费 `Manifest.readings` 里实际存在的指标
+  （`main.go:63-71`、`main.go:359-408`、`main.go:603-611`）。
+- `criteria_sha256` 由 `manifest-builder` 的 `criteriaFingerprint()` 计算
+  （`server/src/services/rsi/manifest-builder.ts:192-215,366`），R2 只比对两代是否一致，不由文档或内核重算。
+- `basis` 的必带字段以 `main.go:232-237` 为准：仅 `basis=4` 必带 `source`、`basis=5` 必带 `why_absent`；
+  `basis=2 (relayed)` 无必带字段（见 §2 basis 表）。
+- `role` 缺省按 `objective` 解释（`main.go:377-380`）；目标饱和记 `undecidable / exit 3`
+  （`main.go:524-530`），「目标没变好」记 `not_improved / exit 1`（`main.go:531-537`），两者是不同分支，都正确。
 
 ---
 

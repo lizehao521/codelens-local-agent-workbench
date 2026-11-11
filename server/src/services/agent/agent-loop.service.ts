@@ -795,19 +795,47 @@ export class AgentLoopService {
 
         // ── final answer ───────────────────────────────────────────────────────
         if (turn.toolCalls.length === 0) {
+          /**
+           * 空轮：没有正文、没有推理、没有工具调用，且这次上游一个 token 都没产出。
+           *
+           * 之前这里直接写一条空 assistant 消息并 `finish('stop')`，于是接口故障
+           * 会以「模型什么都没做」的形态出现在 run_report 里（toolCallCount=0,
+           * finishReason=stop）——和「模型只说不做」完全无法区分。实测撞到过：
+           * 某网关上的 claude-3-5-sonnet 首字节回来了、流正常结束、0 token。
+           * 现在单独报 UPSTREAM_EMPTY：调用方可以重试或换通道，
+           * 失败归因也不会把它错记成模型的能力缺口。
+           */
+          const producedNothing =
+            turn.text.trim() === '' && turn.reasoning.trim() === '' && (turn.usage.completionTokens ?? 0) === 0;
+          if (producedNothing) {
+            const message = '上游返回空响应（无正文/无推理/无工具调用，0 token）';
+            sse.emitStage('upstream_empty', message);
+            sse.emit('error', { code: 'UPSTREAM_EMPTY', message, retryable: true });
+            this.deps.abortRegistry.markDone(session.id);
+            this.deps.abortRegistry.release(session.id);
+            this.approvalService.abortSession(session.id);
+            return;
+          }
+
+          // 截断必须可见：finish_reason=length 时正文被 max_tokens 砍断，
+          // 之前一律记成 'stop'，于是「写了一半」和「写完收工」看起来一样。
+          const truncated = turn.finishReason === 'length';
+          const detail = truncated
+            ? '输出达到 max_tokens 上限被截断（finish_reason=length），这一轮没有产生工具调用'
+            : undefined;
           const assistant = this.deps.messages.insert({
             sessionId: session.id,
             role: 'assistant',
             content: turn.text,
             reasoningContent: turn.reasoning || null,
             segmentsJson: JSON.stringify([{ type: 'text', text: turn.text }]),
-            finishReason: 'stop',
+            finishReason: truncated ? 'length' : 'stop',
             usageJson: JSON.stringify(turn.usage),
             // 体积口径含推理（此前只算正文，reasoning_content 被整段漏记）
             tokens: estimateAssistantTokens(turn.text, turn.reasoning, null),
           });
           this.deps.sessions.bumpCounters(session.id, 1, assistant.tokens);
-          this.finish(sse, session, 'stop', budget.iteration, usage, undefined, assistant.id, budget.tokenBudget, firstTokenMs());
+          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs());
           return;
         }
 

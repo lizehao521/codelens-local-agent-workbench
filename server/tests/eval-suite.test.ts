@@ -7,12 +7,13 @@
  *  3) 本轮没跑过 eval.run → 不产出判据（不污染无关会话的覆盖率）。
  */
 
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
-import { runEvalBattery, runSuite, deepEqual } from '../src/services/eval/runner.js';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { config } from '../src/config/env.js';
+import { runEvalBattery, runSuite, deepEqual, computeEvalSetFingerprint } from '../src/services/eval/runner.js';
 import { EVAL_SUITES, EVAL_RUN_DISPLAY_NAME, findSuite } from '../src/services/eval/suites.js';
 import { evalPassRateGate } from '../src/services/judge/eval-rate.js';
 import { hasScoredObjective } from '../src/services/rsi/manifest-builder.js';
@@ -294,6 +295,19 @@ function applyPatch(doc, ops) {
   return out;
 }
 module.exports = { applyPatch };`,
+  rsi_report_parse: `function parseMetricLines(report) {
+  const out = [];
+  if (typeof report !== 'string') return out;
+  const metricLine = /^\\s*·\\s*(\\S+?)\\s*[：:]\\s*(-?\\d+(?:\\.\\d+)?)\\s*(?:→|->)\\s*(-?\\d+(?:\\.\\d+)?)\\s*[（(]\\s*变好\\s*=\\s*([^）)]*?)\\s*[）)]/;
+  for (const line of report.split(/\\r?\\n/)) {
+    const m = line.match(metricLine);
+    if (m && m[1] !== undefined) {
+      out.push({ metric: m[1], before: Number(m[2]), after: Number(m[3]), better: m[4] === 'true' });
+    }
+  }
+  return out;
+}
+module.exports = { parseMetricLines };`,
 };
 
 /** 多文件套件的参考实现：key 是套件目录内的相对路径。 */
@@ -644,8 +658,8 @@ function evidence(toolNames: string[]): JudgeEvidence {
 }
 
 describe('固定评测套件', () => {
-  it('十一套件都有公开用例与隐藏用例', () => {
-    expect(EVAL_SUITES).toHaveLength(11);
+  it('十二套件都有公开用例与隐藏用例', () => {
+    expect(EVAL_SUITES).toHaveLength(12);
     for (const suite of EVAL_SUITES) {
       expect(suite.publicCases.length).toBeGreaterThan(0);
       expect(suite.hiddenCases.length).toBeGreaterThan(0);
@@ -667,7 +681,7 @@ describe('固定评测套件', () => {
   });
 
   it('版本库里的缺陷夹具在隐藏口径下真红（缺陷真红）', () => {
-    const fixtureBacked = ['csv_import', 'json_patch', ...Object.keys(GOOD_FILES)];
+    const fixtureBacked = ['csv_import', 'json_patch', 'rsi_report_parse', ...Object.keys(GOOD_FILES)];
     for (const id of fixtureBacked) {
       const suite = findSuite(id)!;
       const root = tmpRoot();
@@ -736,6 +750,23 @@ describe('固定评测套件', () => {
 });
 
 describe('task.test_pass_rate 判据', () => {
+  /**
+   * 干净检出下 server/workspace/eval/ 是空的，runEvalBattery 得 total=0，
+   * evalPassRateGate 按 C4 诚实记 unexec，下面「产出可计分的判据」就会红。
+   * 与 seed-agent-loop.ts 的 syncEvalFixtures 同口径：开跑前补齐沙箱夹具。
+   * 只补缺失、绝不覆盖已有实现 —— 本轮 Agent 修好的夹具是真实读数来源，
+   * 覆盖会把 53/126 回退成缺陷起跑线，等于篡改测量对象。
+   */
+  beforeAll(() => {
+    const dst = path.join(config.sandboxRoot, 'eval');
+    mkdirSync(dst, { recursive: true });
+    for (const entry of readdirSync(FIXTURES_DIR, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const target = path.join(dst, entry.name);
+      if (!existsSync(target)) copyDir(path.join(FIXTURES_DIR, entry.name), target);
+    }
+  });
+
   it('本轮没调用 eval.run → 不产出判据', () => {
     expect(evalPassRateGate(evidence(['读取文件', '写入文件']))).toBeNull();
   });
@@ -746,6 +777,35 @@ describe('task.test_pass_rate 判据', () => {
     expect(verdict!.criterion).toBe('task.test_pass_rate');
     expect(verdict!.status).not.toBe('unexec');
     expect(typeof verdict!.score).toBe('number');
+  });
+});
+
+describe('评测运行元数据（C3 自证：指纹与失败分类可被打红）', () => {
+  it('同一评测集指纹稳定；测量对象变化必变', () => {
+    const a = computeEvalSetFingerprint(EVAL_SUITES);
+    expect(a).toBe(computeEvalSetFingerprint(EVAL_SUITES));
+    expect(a).toMatch(/^[0-9a-f]{16}$/);
+    const changed = EVAL_SUITES.map((s, i) =>
+      i === 0 ? { ...s, title: `${s.title}-changed` } : s,
+    );
+    // title 不进指纹（不影响测量），用例内容变化才进
+    expect(computeEvalSetFingerprint(changed)).toBe(a);
+    const changedCases = EVAL_SUITES.map((s, i) =>
+      i === 0 ? { ...s, hiddenCases: [...s.hiddenCases, { name: 'extra', args: ['x'], expected: 'x' }] } : s,
+    );
+    expect(computeEvalSetFingerprint(changedCases)).not.toBe(a);
+  });
+
+  it('failureKinds 能区分「公开也挂」与「仅隐藏挂（过拟合）」', () => {
+    const root = tmpRoot();
+    writeImpl(root, 'slugify', OVERFIT.slugify!);
+    const battery = runEvalBattery(root, { includeHidden: true });
+    const slug = battery.suites.find((s) => s.id === 'slugify')!;
+    expect(slug.ok).toBe(false);
+    expect(slug.publicPassed).toBe(slug.publicTotal);
+    expect(battery.failureKinds.hidden_only).toBe(1);
+    expect(battery.failureKinds.suite_error).toBeGreaterThan(0);
+    expect(battery.evalSetFingerprint).toMatch(/^[0-9a-f]{16}$/);
   });
 });
 

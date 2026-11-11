@@ -31,6 +31,10 @@ server/workspace/
 *.db-wal
 *.db-journal
 
+# krsi 编译产物（Go 源码在 server/krsi/，构建：go build -C krsi -o krsi.exe .）
+server/krsi/krsi.exe
+server/krsi/krsi
+
 # 构建产物与中间件（保留 desktop/build 的打包资源：icon.ico/png、installer.nsh）
 build/
 out/

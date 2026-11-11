@@ -1,0 +1,90 @@
+{
+  "_comment": [
+    "自我升级的题目规格表 —— 唯一真源。派单脚本与围栏都从这里读，避免「允许清单」和「判据」各写一份后漂移。",
+    "改这张表 = 换题。改完必须重打基线（loop 会自动做），否则基线指纹仍指向上一道题。",
+    "status 只用于人工标注语义，真正的完成状态记在 .self-upgrade/ledger.jsonl —— 那是外部账本，Agent 改不到。"
+  ],
+  "version": 1,
+  "tasks": [
+    {
+      "id": "ip-form",
+      "title": "SSRF 守卫按书写形态判 IPv6，十六进制映射可穿透",
+      "allowed": [
+        "src/utils/ssrf-guard.ts"
+      ],
+      "judge": "tests/self-upgrade/ip-form.test.ts",
+      "status": "done",
+      "releasedIn": "2.1.0"
+    },
+    {
+      "id": "obs-render",
+      "title": "工具结果回灌被字符截断，模型拿到半截 JSON 且无法续读",
+      "allowed": [
+        "src/services/tools/observation-render.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-observation.test.ts",
+      "status": "done",
+      "releasedIn": "2.2.0"
+    },
+    {
+      "id": "code-check",
+      "title": "没有自检手段：改完不能编译、不能试跑",
+      "allowed": [
+        "src/tools/builtin/code-check.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/code-check.test.ts",
+      "status": "done",
+      "releasedIn": "2.3.0"
+    },
+    {
+      "id": "fs-replace",
+      "title": "改动粒度太粗：改一行要重抄整份文件，长文件必然带字面量噪声",
+      "allowed": [
+        "src/tools/builtin/fs-write.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-write-replace.test.ts",
+      "status": "done",
+      "releasedIn": "2.3.0"
+    },
+    {
+      "id": "code-check-column",
+      "title": "语法错误只报行不报列，模型还得自己在该行里找",
+      "allowed": [
+        "src/tools/builtin/code-check.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/code-check-column.test.ts",
+      "maxAttempts": 3,
+      "status": "done",
+      "releasedIn": "2.4.0"
+    },
+    {
+      "id": "test-run-scaffold",
+      "title": "第一步：test.run 的骨架、三个校验、注册（约 50 行，不写执行逻辑）",
+      "allowed": [
+        "src/tools/builtin/test-run.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/test-run-scaffold.test.ts",
+      "excludeJudges": [
+        "tests/self-upgrade/test-run.test.ts"
+      ],
+      "maxAttempts": 3,
+      "status": "done",
+      "releasedIn": "2.5.0"
+    },
+    {
+      "id": "test-run",
+      "title": "第二步：给骨架补上执行逻辑（跑 vitest、读回断言差异、超时熔断、环境白名单）",
+      "allowed": [
+        "src/tools/builtin/test-run.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/test-run.test.ts",
+      "maxAttempts": 3,
+      "acceptCurrent": "实现已由 Agent 写完并在新判据下 11/11 通过；仅判据被出题人修正（骨架阶段 A6 改为双向断言、跳过判定改为运行时探测），故靶子相对新基线无变化。",
+      "status": "done",
+      "releasedIn": "2.5.0"
+    }
+  ]
+}

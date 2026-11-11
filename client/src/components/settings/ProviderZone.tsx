@@ -266,7 +266,7 @@ export function ProviderZone() {
           <input
             value={settings.customBaseUrl ?? ''}
             onChange={(e) => update({ customBaseUrl: e.target.value })}
-            placeholder="http://1.92.92.200:8787/v1"
+            placeholder="http://1.92.150.5:8787/v1"
             className="w-full rounded-md border border-border bg-bg-primary px-2.5 py-1.5 text-base text-text-primary focus:border-accent"
           />
         </Field>

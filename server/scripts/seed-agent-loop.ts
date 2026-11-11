@@ -16,8 +16,12 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
+import { runEvalBattery } from '../src/services/eval/runner.js';
+import { pickTaskByScore } from '../src/services/eval/task-picker.js';
+import { restoreEvalState, snapshotEvalState } from './lib/eval-state.js';
 
-const BASE = 'http://127.0.0.1:8080';
+/** 目标 server；做隔离对照实验时用 RSI_SERVER_URL 指向独立实例。 */
+const BASE = process.env.RSI_SERVER_URL ?? 'http://127.0.0.1:8080';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // 凭证已从源码移到环境变量；tsx 不会自动读 .env，脚本自己加载一次。
 const ENV_PATH = path.join(ROOT, '.env');
@@ -236,11 +240,15 @@ const CODE_PROBE = `本轮只做测量，不要修改任何文件。严格按顺
  *   · 打分用 public + hidden 全量用例，只针对公开样例打补丁拿不到满分；
  *   · 产物是**代码本身**，会跨代保留 —— 这就是代码域的能力沉淀。
  *
- * 每代只点名一个套件。最前面五个是扩题新增的套件：整数分台账、多文件联动、队列状态机、
- * CSV 原始文本解析、RFC 6901/6902 的 JSON Patch。分母已从「六个纯函数」换成
- * 「十一题、含跨文件/有状态/状态机解析/指针转义/整数分记账」，因此必须从全新会话起跑，
- * 不能接在旧链后面比。中间三个是上一轮扩题新增的难度套件，
- * 后三个是第一批已修好的套件；旧套件保留在轮转里，用来验证修好的东西不会回退。
+ * 每代只点名一个套件，且**由当前分数决定点哪个**（见 task-picker.ts），不再按数组顺序轮转：
+ *   · 轮转会撞上已满分的套件（inventory_rollup 13/13），那一代白跑；
+ *   · 也会漏掉没写任务文本的套件（slugify_edge_cases 4/7 长期无人处理，现已补上任务）。
+ * 选区顺序：未满分 → 本次运行未试过 → 通过率低 → 题数多。选哪道题是脚本的确定性决策，
+ * 怎么修仍由 Agent 决定。
+ *
+ * 套件覆盖：整数分台账、多文件联动、队列状态机、CSV 原始文本解析、RFC 6901/6902 JSON Patch、
+ * 以及一批纯函数题。已修好的套件留在池子里 —— 它们满分后不会再被选中，
+ * 但一旦被改坏就会立刻排到队首（这是「回归守卫」的自然形式）。
  */
 const CODE_TASKS = [
   `修复 eval/bank_ledger/ 下的缺陷，让实现满足入口 impl.cjs 头部注释里的全部规范。
@@ -324,6 +332,14 @@ test 深比较、未知 op 报错、空指针替换整篇文档。
 → 调用 eval.run（suite="slugify"）确认全部通过。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 如果 eval.run 仍有失败，按失败详情继续改，直到 score=1。`,
+  // 这个套件在 eval-suites/*.json（热加载），过去一直没有对应任务文本 ——
+  // 固定轮转永远轮不到它，于是它 4/7 挂在电池里无人处理。
+  `修复 eval/slugify_edge_cases/impl.cjs 的缺陷，让它满足 slugify 的通用语义。
+已知失败方向（先用 eval.run 确认再动手）：首尾分隔符没有被裁掉、重音字母没有被折叠。
+步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
+→ 调用 eval.run（suite="slugify_edge_cases"）确认全部通过。
+只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
+注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
   `修复 eval/chunk/impl.cjs 的缺陷，让它满足文件头部注释里的全部规范。
 步骤：fs.read 读该文件 → 用 fs.write、operation=overwrite 写回修好的实现（必须保持 CommonJS 的 module.exports 导出）
 → 调用 eval.run（suite="chunk"）确认全部通过。
@@ -335,6 +351,7 @@ test 深比较、未知 op 报错、空指针替换整篇文档。
 只允许改这一个文件；不要新建其它文件、不要改 src/、不要用 sys.exec。
 注意隐藏用例会检验通用性：不要只针对报错信息里出现的输入打补丁。`,
 ];
+
 
 /** 扩题模式：Agent 自己联网检索、自己提案，服务端做变异验证后决定是否晋升。 */
 const PROPOSE_TASK = `本轮只做一件事：提交 1 个评测套件提案，不要做别的。严格按顺序执行，每步只调用一个工具：
@@ -398,8 +415,10 @@ const baseArgs = {
   // 且**最终回答不会空**。实测「旗舰」在同一探针上只回 "\n\n"（completion 58 tokens），
   // 空回答会让 L2 语义覆盖率量不到，整代直接作废 —— 测量面必须选稳定的档位。
   model: process.env.RSI_MODEL ?? '平衡',
-  // 默认指向试用 relay；需要离线演练时用 RSI_BASE_URL 指到本地 fake 上游（见 tests/fixtures/fake-llm.ts）。
-  customBaseUrl: process.env.RSI_BASE_URL ?? 'http://1.92.92.200:8787/v1',
+  // 上游地址一律来自环境变量（.env 由本脚本 loadEnvFile 注入）。
+  // 源码不得硬编码试用网关地址：与 env.ts「源码不硬编码任何试用地址」同一口径。
+  // 离线演练用 RSI_BASE_URL 指到本地 fake 上游（见 tests/fixtures/fake-llm.ts）。
+  customBaseUrl: process.env.RSI_BASE_URL ?? process.env.TRIAL_BASE_URL ?? '',
   // 凭证只从环境变量读（.env / 进程环境），绝不写进源码 —— 源码会进 git。
   apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
   channelMode: 'native',
@@ -451,10 +470,41 @@ function syncEvalFixtures(): void {
   }
 }
 
+/**
+ * 沙箱重置后的能力续接：`workspace/` 是 gitignore 的运行时目录，里面修好的实现在
+ * 回收后会一起消失；`eval-state/` 存最近一代的 `workspace/eval` 快照。
+ *
+ * 顺序必须是「先 restore、后 syncEvalFixtures」：
+ *   - restore 覆盖写，把上一代修好的实现放回沙箱；
+ *   - fixtures 只补缺失，把快照里没有的新套件补成缺陷版本。
+ * 反过来会让缺陷版本盖掉已修好的文件，读数一夜回到起点。
+ *
+ * 实现移到了 scripts/lib/eval-state.ts：单发代际探针（scratch/_drive-one.mjs）
+ * 也要落快照，两侧各写一份就会漂成不同口径。那里还带树哈希一致性校验。
+ */
+
 // ── HTTP 工具 ──────────────────────────────────────────────────────────────
+
+/**
+ * 基础设施噪声台账：把「模型/策略没产出」与「请求超时、上游排队」分开记录。
+ * 依据 Anthropic《Quantifying infrastructure noise in agentic coding evals》(2026-02-05)
+ * 与 Terminal-Bench 4.0 的资源校准实践；本项目 §9.10 曾把 600s 超时故障误判成策略问题。
+ */
+const streamNoise = { requests: 0, timeouts: 0, totalMs: 0, maxMs: 0 };
 
 async function postStream(body: Record<string, unknown>): Promise<string> {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    streamNoise.requests += 1;
+    let recorded = false;
+    const record = (timedOut: boolean): void => {
+      if (recorded) return;
+      recorded = true;
+      const ms = Date.now() - startedAt;
+      streamNoise.totalMs += ms;
+      streamNoise.maxMs = Math.max(streamNoise.maxMs, ms);
+      if (timedOut) streamNoise.timeouts += 1;
+    };
     const url = new URL('/api/v1/agent/stream', BASE);
     const data = JSON.stringify(body);
     const req = http.request(
@@ -463,10 +513,10 @@ async function postStream(body: Record<string, unknown>): Promise<string> {
       (res) => {
         let buf = '';
         res.on('data', (d) => (buf += d.toString()));
-        res.on('end', () => resolve(buf));
+        res.on('end', () => { record(false); resolve(buf); });
       },
     );
-    req.on('error', reject);
+    req.on('error', (err) => { record(err.message === 'timeout'); reject(err); });
     // 网关排队时单次 4-5 轮工具调用可以轻松超过 180s。
     // 之前设 180s 会**静默超时后重试**：第 1 次跑了一半被掐断，第 2 次从头再来，
     // 于是「干活轮」看起来成功、其实一个工具都没造出来（事件为空）。
@@ -620,7 +670,18 @@ async function main() {
   const proposeMode = process.argv.includes('--propose');
   const autoMode = process.argv.includes('--auto');
   const selfMode = process.argv.includes('--self') || depthMode;
-  // 沙箱可能被回收重来：开跑前先把版本库里的 fixture 补回缺失项。
+  // 沙箱可能被回收重来：先把快照接回来，再补齐缺失的夹具。
+  if (codeMode || autoMode) {
+    const r = restoreEvalState(ROOT);
+    if (r.restored) {
+      console.log(`  ↩ 续接上一代实现：eval-state/（${r.copied} 个文件，${r.status}）`);
+    } else if (r.status === 'corrupt') {
+      // 拒绝覆盖：来历不明的树盖上去会静默毁掉本代已修好的实现。
+      console.error(`  ❌ 快照不一致，已拒绝 restore：${r.detail}`);
+    } else {
+      console.log(`  · 无快照可续接（${r.status}）：${r.detail}`);
+    }
+  }
   if (codeMode || proposeMode || autoMode) syncEvalFixtures();
   // --only=N 只跑 BEHAVIOR_TASKS[N]，用于补跑某一组深度自证
   const onlyArg = process.argv.find((a) => /^--only=\d+$/.test(a));
@@ -650,6 +711,23 @@ async function main() {
             ? '自改进：补测试'
             : '演示任务';
   console.log(`\n═══ RSI 自迭代闭环：目标 ${target} 轮（${modeLabel}）═══\n`);
+
+  /**
+   * 代码修复族每代的真实读数 —— harness 直接在进程内复算，不经过 Judge、不依赖 krsi。
+   *
+   * 为什么不让 Agent 自述：探针轮让它跑一次 eval.run，那是它的报告；这里的数字是
+   * 判据对「此刻的文件内容」重跑 public + hidden 全量用例得到的通过率。两者分开，
+   * 直接暴露「报告说修好了、实际没修好」。同时它也让汇总不再只有
+   * inconclusive 的占位 score —— 即使 krsi 没装，代际是否真的进步依然可读。
+   */
+  const evalHistory: Array<{ round: number; passed: number; total: number; score: number }> = [];
+  const evalBaseline =
+    codeMode || autoMode
+      ? runEvalBattery(path.join(ROOT, 'workspace'), { includeHidden: true })
+      : null;
+  if (evalBaseline) {
+    console.log(`  📊 g0 基线：${evalBaseline.passed}/${evalBaseline.total} = ${evalBaseline.score.toFixed(3)}\n`);
+  }
 
   // --session=<id>：接着已有会话继续推代（不传则新建会话，代际从 g1 起）
   const sessionArg = process.argv.find((a) => a.startsWith('--session='));
@@ -761,8 +839,24 @@ async function main() {
     }
   }
 
+  // 本次运行内已点过名的套件：选题时降权，避免在一个修不动的题上连着空转。
+  const attempted = new Set<string>();
+
   for (let i = 0; i < target; i++) {
-    const baseTask = tasks[i % tasks.length];
+    let baseTask = tasks[i % tasks.length]!;
+    // 代码修复族按当前分数选题：固定轮转会撞满分套件、也会漏掉没写任务文本的套件。
+    // 只在没有待修红灯时启用 —— 有红灯时本轮唯一任务是修红灯（见下方 feedback 分支）。
+    if (codeMode && !feedback) {
+      const battery = runEvalBattery(path.join(ROOT, 'workspace'), { includeHidden: true });
+      const picked = pickTaskByScore(CODE_TASKS, battery.suites, attempted);
+      if (picked) {
+        baseTask = picked.task;
+        attempted.add(picked.id);
+        console.log(`🎯 选题：${picked.why}｜电池 ${battery.passed}/${battery.total}`);
+      } else {
+        console.log('⚠ 无法按分数选题（评分表为空或任务文本与套件对不上），退回固定轮转');
+      }
+    }
     // 有红灯时，本轮**唯一**任务就是修测试 —— 不再叠加原任务。
     // 之前把「先修好」和「再做下一件事」拼在一起，模型会按自己点名的
     // 目标文件规则只写新文件，永远不去改红灯（实测 5 轮全红）。
@@ -810,7 +904,12 @@ ${feedback}`
       continue;
     }
     if (!sessionId) sessionId = getSessionId(sse);
-    console.log(`  ✅ 干活轮 ${((Date.now() - start) / 1000).toFixed(1)}s  session=${sessionId}`);
+    if (!sessionId) {
+      // 服务端没配 LLM_SERVER_API_KEY（BYOK 模式）或上游直接报错时，SSE 里没有 run:start，
+      // 请求会「成功返回」但一个工具都没跑。不打这个警告的话，日志看起来像这一轮干成了。
+      console.error(`  ❌ 干活轮没有返回 sessionId：本轮没有产生任何 Agent 工作。响应片段：${sse.replace(/\s+/g, ' ').slice(0, 200)}`);
+    }
+    console.log(`  ${sessionId ? '✅' : '⚠️'} 干活轮 ${((Date.now() - start) / 1000).toFixed(1)}s  session=${sessionId}`);
 
     // ── ② 测量轮：固定探针 × N，只有最后一次进 RSI，读数取 N 次均值 ─────────
     // 固定任务 → 代际读数可比；干活轮不进对账 → 开发噪声不会污染结论。
@@ -820,9 +919,16 @@ ${feedback}`
     // 直接拿两次单样本相减 = 拿掷骰子的结果判"进步"。N 次取均值把噪声压到 1/√N，
     // 才让 krsi 的"严格变好"对应真实差异。
     const probeStart = Date.now();
-    // 代码修复族是确定性的：测量轮只跑 eval.run（CODE_PROBE 不改文件），
-    // 通过率由「此刻的文件内容」唯一决定，没有随机波动，一次采样就够。
-    const probeSamples = codeMode || autoMode ? 1 : PROBE_SAMPLES;
+    // 代码修复族曾硬编码为 1 次采样，理由是「CODE_PROBE 不改文件，通过率由文件内容唯一决定」。
+    // 这个理由只对**一个**指标成立。同一代里 budget_efficiency / tool_success_rate /
+    // goal_term_coverage 仍由那次 LLM 调用决定 —— token 数、工具序列、措辞每次都不一样；
+    // 而 krsi 是把全部指标一起判的（任一护栏变差即 not_improved）。
+    // 于是单样本条件下，一次测量的副产物抖动就足以把「真改进」判成原地踏步，
+    // 或者反过来。代码族并不比语义族更"确定"，它只是**目标指标**确定。
+    //
+    // 代价必须说清：改采样次数 = 改测量协议 = 换尺子。均值读数与单样本协议的旧链
+    // 不可直接相减，接手旧链会得到虚假的 improved。所以协议一旦改动就要另起新链。
+    const probeSamples = PROBE_SAMPLES;
     let okSamples = 0;
     for (let s = 1; s <= probeSamples; s++) {
       // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
@@ -857,6 +963,30 @@ ${feedback}`
     // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），
     // 同时给上游留出限流窗口：连续 12 轮密集请求很容易触发网关熔断。
     await new Promise((r) => setTimeout(r, 6000));
+
+    // ── 本代真实读数：判据重跑，不信 Agent 的报告 ────────────────────────────
+    if (codeMode || autoMode) {
+      const measured = runEvalBattery(path.join(ROOT, 'workspace'), { includeHidden: true });
+      evalHistory.push({ round: i + 1, ...measured });
+      const prevScore = evalHistory.length > 1
+        ? evalHistory[evalHistory.length - 2]!.score
+        : (evalBaseline?.score ?? 0);
+      const delta = measured.score - prevScore;
+      console.log(
+        `  📊 g${i + 1} 真实通过率：${measured.passed}/${measured.total} = ${measured.score.toFixed(3)}` +
+          `（${delta >= 0 ? '+' : ''}${delta.toFixed(3)}）`,
+      );
+      // 落盘快照：沙箱被回收后，下一代从这一代修好的实现继续，而不是回到缺陷版本。
+      const saved = snapshotEvalState(i + 1, measured, ROOT);
+      if (saved) {
+        console.log(
+          `  💾 快照已保存：eval-state/（g${saved.generation}，${saved.fileCount} 个文件，` +
+            `treeHash=${saved.treeHash.slice(0, 12)}，savedAt=${saved.savedAt}）`,
+        );
+      } else {
+        console.warn('  ⚠ 未落快照：workspace/eval 不存在');
+      }
+    }
 
     // ── 自动验收：Agent 写完，由 harness 真跑一遍测试并把失败回灌下一轮 ──────
     if (selfMode) {
@@ -924,6 +1054,22 @@ ${feedback}`
 
   const ov = await getJSON(`/api/rsi/overview?session=${sessionId}`);
 
+  // 真实通过率（harness 复算）—— 这是唯一不依赖 Judge/krsi 的读数
+  if (evalBaseline) {
+    console.log(`【真实通过率】判据重跑 public + hidden（不经 Judge/krsi）：`);
+    console.log(`  g0   ${String(evalBaseline.passed).padStart(3)}/${evalBaseline.total}   ${evalBaseline.score.toFixed(3)}`);
+    let prev = evalBaseline.score;
+    for (const h of evalHistory) {
+      const d = h.score - prev;
+      console.log(
+        `  g${h.round}   ${String(h.passed).padStart(3)}/${h.total}   ${h.score.toFixed(3)}   ` +
+          `${d >= 0 ? '+' : ''}${d.toFixed(3)}`,
+      );
+      prev = h.score;
+    }
+    console.log('');
+  }
+
   // judge_runs
   const judgeRuns = ov.judgeRuns ?? [];
   console.log(`【判决塔】${judgeRuns.length} 次 Judge 判决：`);
@@ -955,6 +1101,11 @@ ${feedback}`
     for (const l of byPolicy[v]) console.log(`    · ${l}`);
   }
 
+  console.log(
+    `\n【基础设施噪声】请求 ${streamNoise.requests} 次 · 超时 ${streamNoise.timeouts} 次 · ` +
+      `平均 ${streamNoise.requests ? Math.round(streamNoise.totalMs / streamNoise.requests) : 0}ms · ` +
+      `最长 ${streamNoise.maxMs}ms（超时属环境问题，不得记作能力读数）`,
+  );
   // Anchor 链
   console.log(`\n【Anchor 哈希链】`);
   // 锚链在独立文件里（krsi 的 .jsonl 是它自己的私有账本，不能混写）
