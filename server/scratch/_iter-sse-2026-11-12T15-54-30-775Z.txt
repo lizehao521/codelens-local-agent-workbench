@@ -1,0 +1,785 @@
+event: stage
+data: {"runId":"5f11a2db-67d3-4ceb-ba51-ffaafb57a65a","stage":"connecting","at":1794498809887,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"ca2bb8ec-01d1-4530-b0eb-e1174f65c8a9","messageId":"0cc3cef1-e740-4dd1-bd19-d31acaa85a0b","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":20,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":8,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"5f11a2db-67d3-4ceb-ba51-ffaafb57a65a","stage":"upstream_first_byte","at":1794498810871,"elapsedMs":984,"detail":null}
+
+event: stage
+data: {"runId":"5f11a2db-67d3-4ceb-ba51-ffaafb57a65a","stage":"reasoning","at":1794498810871,"elapsedMs":984,"detail":null}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me start by reading"}
+
+event: reasoning
+data: {"text":" the three files mentioned in the"}
+
+event: reasoning
+data: {"text":" task to understand the current structure"}
+
+event: reasoning
+data: {"text":" and implementation"}
+
+event: reasoning
+data: {"text":"."}
+
+event: tool_call
+data: {"callId":"call-1ef05edb-fcdd-45c8-8bce-1bd9e7a4e250","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/app.ts"},"risk":"low","approvalMode":"none","source":"builtin","iteration":1,"status":"pending"}
+
+event: tool_call
+data: {"callId":"call-9926cdc3-c8a5-4222-b0f8-4acace9c4f22","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/controllers/rsi.controller.ts"},"risk":"low","approvalMode":"none","source":"builtin","iteration":1,"status":"pending"}
+
+event: tool_call
+data: {"callId":"call-05f6bbbe-2702-4874-9dfc-dc0bd747fddd","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/routes/rsi.routes.ts"},"risk":"low","approvalMode":"none","source":"builtin","iteration":1,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-9926cdc3-c8a5-4222-b0f8-4acace9c4f22","stage":"reading","message":"读取 controllers\\rsi.controller.ts","at":1794498812374}
+
+event: tool_progress
+data: {"callId":"call-1ef05edb-fcdd-45c8-8bce-1bd9e7a4e250","stage":"reading","message":"读取 app.ts","at":1794498812374}
+
+event: tool_progress
+data: {"callId":"call-05f6bbbe-2702-4874-9dfc-dc0bd747fddd","stage":"reading","message":"读取 routes\\rsi.routes.ts","at":1794498812374}
+
+event: tool_result
+data: {"callId":"call-05f6bbbe-2702-4874-9dfc-dc0bd747fddd","name":"fs.read","status":"success","summary":"已读取 routes\\rsi.routes.ts（1059 字节，22 行）","data":{"kind":"file","path":"routes\\rsi.routes.ts","encoding":"utf8","sizeBytes":1059,"truncated":false,"lines":{"returned":22,"total":22},"content":"/**\r\n * RSI 自我迭代路由。\r\n *\r\n * 读端点三个（契约 / 迭代列表 / 单条），动作端点两个（域申请 / 记录决定）。\r\n * 动作端点都不改代码——判定与执行分离，见 RsiController 文件头。\r\n */\r\n\r\nimport { Router } from 'express';\r\nimport type { RsiController } from '../controllers/rsi.controller.js';\r\n\r\nexport function createRsiRoutes(controller: RsiController): Router {\r\n  const router = Router();\r\n  router.get('/rsi/contract', (req, res) => controller.contract(req, res));\r\n  router.get('/rsi/iterations', (req, res) => controller.iterations(req, res));\r\n  // plan 必须排在 /rsi/iterations/:id 之前：否则 \"plan\" 会被当成一个 id。\r\n  router.post('/rsi/iterations/plan', (req, res) => controller.plan(req, res));\r\n  router.get('/rsi/decisions', (req, res) => controller.decisions(req, res));\r\n  router.get('/rsi/iterations/:id', (req, res) => controller.iteration(req, res));\r\n  router.post('/rsi/iterations/:id/decide', (req, res) => controller.decide(req, res));\r\n  return router;\r\n}\r\n"},"truncated":false,"durationMs":5,"resultId":"9dd45c3d-97ff-4583-ad95-0e19fa7ad009"}
+
+event: tool_result
+data: {"callId":"call-1ef05edb-fcdd-45c8-8bce-1bd9e7a4e250","name":"fs.read","status":"success","summary":"已读取 app.ts（14942 字节，316 行）","data":{"kind":"file","path":"app.ts","encoding":"utf8","sizeBytes":14942,"truncated":false,"lines":{"returned":316,"total":316},"content":"/**\r\n * Application entry: middleware assembly, routes, static hosting, error handling,\r\n * listen. Assembly only — all wiring lives in runtime.ts.\r\n */\r\n\r\nimport { existsSync } from 'node:fs';\r\nimport path from 'node:path';\r\nimport { pathToFileURL } from 'node:url';\r\nimport express, { type Express, type Request, Response } from 'express';\r\nimport helmet from 'helmet';\r\nimport cors from 'cors';\r\nimport compression from 'compression';\r\nimport { config } from './config/env.js';\r\nimport { createApiRouter } from './routes/index.js';\r\nimport { requestLogger } from './middlewares/request-log.js';\r\nimport { errorHandler, payloadTooLargeHandler, JSON_BODY_LIMIT } from './middlewares/error-handler.js';\r\nimport { notFoundHandler } from './middlewares/not-found.js';\r\nimport { agentConcurrency } from './middlewares/agent-concurrency.js';\r\nimport { rateLimit } from './middlewares/rate-limit.js';\r\nimport { createRuntime, type Runtime } from './runtime.js';\r\nimport { buildRsiRulesContract } from './services/rsi/rules-contract.js';\r\nimport { AppError, ErrorCode } from './utils/errors.js';\r\n\r\nexport interface AppOptions {\r\n  runtime?: Runtime;\r\n  /** Static client build directory override (tests inject a temp dir). */\r\n  clientDistDir?: string;\r\n  /**\r\n   * 是否在 createApp 装配完成后自动启动上游模型同步（先 fetchOnce 一次，再 start 周期调度）。\r\n   * 默认取 config.nodeEnv !== 'test'：桌面嵌入态/生产自动启动，测试态不自动拉取。\r\n   * 桌面嵌入态（desktop/main.cjs 仅调用 createApp）依赖该默认值，否则 MODEL_SOURCE_* 不生效。\r\n   */\r\n  autoStartModelSync?: boolean;\r\n}\r\n\r\nconst CSP_DIRECTIVES: Record<string, string[]> = {\r\n  'default-src': [\"'self'\"],\r\n  // RSI 看板用 CDN ECharts / Tailwind / Lucide —— 开发态看板，放行知名 CDN\r\n  'script-src': [\"'self'\", 'cdn.jsdelivr.net', 'cdn.tailwindcss.com', 'unpkg.com'],\r\n  'style-src': [\"'self'\", \"'unsafe-inline'\", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],\r\n  'img-src': [\"'self'\", 'data:', 'cdn.jsdelivr.net'],\r\n  'connect-src': [\"'self'\", 'cdn.jsdelivr.net'],\r\n  'font-src': [\"'self'\", 'data:', 'fonts.gstatic.com'],\r\n};\r\n\r\nexport function createApp(options: AppOptions = {}): Express {\r\n  const app = express();\r\n  const runtime = options.runtime ?? createRuntime();\r\n\r\n  app.disable('x-powered-by');\r\n  app.set('trust proxy', config.trustProxy);\r\n  app.use(helmet({ contentSecurityPolicy: { directives: CSP_DIRECTIVES } }));\r\n\r\n  if (config.allowedOrigins.length > 0) {\r\n    app.use(cors({ origin: config.allowedOrigins, credentials: false }));\r\n  }\r\n\r\n  app.use(compression());\r\n  // P2-11: 256kb (was 64kb) so the spec-legal 32000-char message survives\r\n  // body parsing and reaches zod — a 21k-CJK-char message encodes past 64kb.\r\n  app.use(express.json({ limit: JSON_BODY_LIMIT }));\r\n  app.use(payloadTooLargeHandler);\r\n  app.use(requestLogger);\r\n\r\n  // Concurrency guard applies to the SSE stream only (per-IP, default 3).\r\n  app.use('/api/v1/agent/stream', agentConcurrency);\r\n\r\n  // Rate limiting (P1-5): the limiter shipped fully implemented but was never\r\n  // mounted, leaving every route except the SSE concurrency guard unlimited.\r\n  // Per-IP budgets, configurable; 0 disables a limiter. The recovery endpoint\r\n  // gets its own tighter budget against recovery-code brute force.\r\n  if (config.apiRateLimitPerMin > 0) {\r\n    app.use('/api', rateLimit(config.apiRateLimitPerMin, 'api'));\r\n  }\r\n  if (config.recoveryRateLimitPerMin > 0) {\r\n    app.use('/api/v1/sessions/recover', rateLimit(config.recoveryRateLimitPerMin, 'recovery'));\r\n  }\r\n\r\n  app.use(\r\n    '/api',\r\n    createApiRouter({\r\n      agent: runtime.agentController,\r\n      approvals: runtime.approvalController,\r\n      sessions: runtime.sessionsController,\r\n      tools: runtime.toolsController,\r\n      mcp: runtime.mcpController,\r\n      providers: runtime.providersController,\r\n      health: runtime.healthController,\r\n      sandboxPermissions: runtime.sandboxPermissionsController,\r\n      judge: runtime.judgeController,\r\n      rsi: runtime.rsiController,\r\n      capabilities: runtime.capabilitiesController,\r\n      traces: runtime.tracesController,\r\n      skills: runtime.skillsController,\r\n      checkpoints: runtime.checkpointsController,\r\n      sandboxGrants: runtime.sandboxGrantsController,\r\n      runs: runtime.runsController,\r\n    }),\r\n  );\r\n\r\n  // ── RSI 规则契约 ── 只读、无需 session，供独立看板与一致性校验脚本消费。\r\n  // 与 overview 共用同一个 buildRsiRulesContract()，保证两处同源、JSON 深度相等。\r\n  app.get('/api/rsi/rules', (_req, res) => {\r\n    res.setHeader('Cache-Control', 'no-store');\r\n    res.json(buildRsiRulesContract());\r\n  });\r\n\r\n  // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程\r\n  app.get('/api/rsi/overview', (req, res) => {\r\n    try {\r\n      const sessionId = typeof req.query.session === 'string' ? req.query.session : null;\r\n      if (!sessionId) { res.status(400).json({ error: '?session=xxx required' }); return; }\r\n      const db = runtime.db;\r\n\r\n      const session = db.get(`SELECT id, title, provider, model, created_at FROM sessions WHERE id = ?`, [sessionId]);\r\n      if (!session) { res.status(404).json({ error: 'session not found' }); return; }\r\n\r\n      // 每代 judge_run 汇总 + 其 verdicts\r\n      const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at\r\n                                FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);\r\n      const verdictsByRun = new Map<number, any[]>();\r\n      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail, data_json\r\n                                  FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);\r\n      for (const v of allVerdicts) {\r\n        // data_json 是 007 迁移新增的列；旧行为 NULL，这里统一解成 data 字段，\r\n        // 解不出来就当没有（绝不能让一条脏 JSON 把整个看板打成 500）。\r\n        v.data = parseJsonColumn(v.data_json);\r\n        delete v.data_json;\r\n        if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);\r\n        verdictsByRun.get(v.run_id)!.push(v);\r\n      }\r\n\r\n      // 每代 RSI 对比（prev → next）\r\n      const rsiRuns = db.all(`SELECT generation, prev_generation, verdict, exit_code,\r\n                                     reasons_json, prev_readings_json, next_readings_json\r\n                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);\r\n\r\n      // 归因经验（policy_injections）—— 每条 π' 的增量\r\n      const attributions = db.all(`SELECT id, policy_version, lesson, created_at\r\n                                   FROM policy_injections WHERE session_id = ?\r\n                                   ORDER BY id DESC LIMIT 20`, [sessionId]);\r\n\r\n      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，\r\n      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。\r\n      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);\r\n\r\n      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析\r\n      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。\r\n      // 与 /api/rsi/rules 一致禁用缓存：契约虽静态，但嵌在动态响应里，\r\n      // 浏览器缓存旧 overview 会让两个出口在 HTTP 层分叉（普通 curl 断言抓不到）。\r\n      res.setHeader('Cache-Control', 'no-store');\r\n      res.json({\r\n        session,\r\n        judgeRuns,\r\n        verdictsByRun: verdictsByRunJson,\r\n        rsiRuns,\r\n        attributions,\r\n        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),\r\n        rules: buildRsiRulesContract(),\r\n      });\r\n    } catch (e: any) {\r\n      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });\r\n    }\r\n  });\r\n\r\n  // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到\r\n  app.get('/rsi', (req, res) => {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n    // cwd 在 dev (tsx) 和 build (node dist/app.js) 都是 server 根目录\r\n    const htmlPath = path.join(process.cwd(), 'public', 'rsi-dashboard.html');\r\n    if (existsSync(htmlPath)) { res.sendFile(htmlPath); return; }\r\n    res.status(404).send('rsi dashboard not found at ' + htmlPath);\r\n  });\r\n\r\n  app.use(notFoundHandler);\r\n\r\n  const clientDir = options.clientDistDir ?? config.clientDistDir;\r\n  if (existsSync(clientDir)) {\r\n    // P2-12: maxAge 0 by default — the setHeaders callback is now the single\r\n    // cache-policy point (immutable for hashed assets, no-cache otherwise).\r\n    // The old maxAge '1y' froze every non-hashed root file for a year, so a\r\n    // deploy could leave browsers on a stale shell.\r\n    app.use(express.static(clientDir, { index: false, maxAge: 0, setHeaders: cacheImmutableAssets }));\r\n    // SPA history fallback (Express 5: middleware form, not app.get('*')).\r\n    // Serves the app shell for any non-API GET/HEAD so external probes and\r\n    // deep links work regardless of the Accept header.\r\n    app.use((req: Request, res: Response, next) => {\r\n      if (req.method !== 'GET' && req.method !== 'HEAD') return next();\r\n      if (req.path.startsWith('/api/')) return next();\r\n      // P2-12: the shell must revalidate on every load — otherwise a cached\r\n      // index.html keeps pointing at deleted asset hashes (white screen).\r\n      res.setHeader('Cache-Control', 'no-cache');\r\n      res.sendFile('index.html', { root: clientDir }, (err) => {\r\n        next(err ?? new AppError(ErrorCode.NOT_FOUND, '页面不存在'));\r\n      });\r\n    });\r\n  }\r\n\r\n  app.use(errorHandler);\r\n\r\n  // 启动上游模型同步（自动获取模型）。\r\n  // 关键背景：桌面嵌入态（desktop/main.cjs）只调用 createApp()，不会进入本文件底部\r\n  // isMainModule() 的独立服务分支；且服务端被打成 CJS 单文件后 import.meta.url 为空、\r\n  // isMainModule() 恒为 false，导致原先只在 isMainModule() 里的 fetchOnce()/start()\r\n  // 在桌面态从不执行——配置了 MODEL_SOURCE_* 也不会自动拉取模型。\r\n  // 故将启动逻辑上移到 createApp，对所有入口（桌面嵌入态 / 独立服务）生效；\r\n  // 测试态默认不自动拉取，避免用例产生意外网络请求（可用 autoStartModelSync 显式覆盖）。\r\n  const autoStartModelSync = options.autoStartModelSync ?? config.nodeEnv !== 'test';\r\n  if (autoStartModelSync) {\r\n    void runtime.modelSync.fetchOnce().then(() => runtime.modelSync.start());\r\n  }\r\n\r\n  return app;\r\n}\r\n\r\n/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */\r\nfunction parseJsonColumn(raw: unknown): unknown {\r\n  if (typeof raw !== 'string' || raw.length === 0) return null;\r\n  try {\r\n    return JSON.parse(raw);\r\n  } catch {\r\n    return null;\r\n  }\r\n}\r\n\r\nconst EVAL_CRITERION = 'task.test_pass_rate';\r\n\r\n/**\r\n * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。\r\n *\r\n * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行\r\n * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，\r\n * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。\r\n */\r\nfunction buildEvalSummary(\r\n  verdicts: any[],\r\n  judgeRuns: Array<{ id: number; created_at: number }>,\r\n): Record<string, unknown> | null {\r\n  let latest: any = null;\r\n  let latestStructured: any = null;\r\n  for (const v of verdicts) {\r\n    if (v.criterion !== EVAL_CRITERION) continue;\r\n    latest = v;\r\n    if (v.data) latestStructured = v;\r\n  }\r\n  const chosen = latestStructured ?? latest;\r\n  if (!chosen) return null;\r\n\r\n  const data = (chosen.data ?? null) as Record<string, any> | null;\r\n  const num = (key: string): number | null =>\r\n    typeof data?.[key] === 'number' ? (data[key] as number) : null;\r\n  const total = num('total');\r\n  const run = judgeRuns.find((r) => r.id === chosen.run_id);\r\n\r\n  return {\r\n    runId: chosen.run_id,\r\n    status: chosen.status,\r\n    score: chosen.score ?? null,\r\n    detail: chosen.detail ?? null,\r\n    measuredAt: run?.created_at ?? null,\r\n    passed: num('passed'),\r\n    total,\r\n    denominator: num('denominator') ?? total,\r\n    suites: Array.isArray(data?.suites) ? data!.suites : [],\r\n    source: data ? 'structured' : 'detail_only',\r\n    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，\r\n    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。\r\n    evalSetFingerprint:\r\n      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,\r\n    failureKinds:\r\n      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)\r\n        ? (data.failureKinds as Record<string, number>)\r\n        : {},\r\n    samples: num('samples') ?? 1,\r\n    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',\r\n  };\r\n}\r\n\r\nfunction cacheImmutableAssets(res: Response, filePath: string): void {\r\n  // Vite emits content-hashed filenames under /assets/ — those are safe to\r\n  // freeze. Everything else at the client root (index.html is served by the\r\n  // SPA fallback below, but favicon/manifest/etc. land here) must revalidate,\r\n  // otherwise a stale shell survives a deploy (P2-12).\r\n  if (/[/\\\\]assets[/\\\\]/.test(filePath)) {\r\n    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');\r\n  } else {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n  }\r\n}\r\n\r\nfunction isMainModule(): boolean {\r\n  const entry = process.argv[1];\r\n  if (!entry) return false;\r\n  return import.meta.url === pathToFileURL(entry).href;\r\n}\r\n\r\nif (isMainModule()) {\r\n  const runtime = createRuntime();\r\n  const app = createApp({ runtime });\r\n  const server = app.listen(config.port, config.host, () => {\r\n    // eslint-disable-next-line no-console\r\n    console.log(`codelens-server listening on ${config.host}:${config.port} (${config.nodeEnv})`);\r\n  });\r\n  // 上游模型同步已在 createApp() 内按 nodeEnv 自动启动（fetchOnce + 周期调度）；此处只做退出清理。\r\n  // close() 会先 abort 服务关闭信号：在途 run（含能力探测/上游流）随进程退出一起取消，\r\n  // 不等上游超时。close() 幂等，双信号重复触发安全。\r\n  for (const signal of ['SIGINT', 'SIGTERM'] as const) {\r\n    process.on(signal, () => {\r\n      void runtime.close().finally(() => {\r\n        server.close(() => process.exit(0));\r\n        setTimeout(() => process.exit(0), 3000).unref();\r\n      });\r\n    });\r\n  }\r\n}\r\n"},"truncated":true,"durationMs":6,"resultId":"c153ff6b-6910-4289-af29-d17210e211cd"}
+
+event: tool_result
+data: {"callId":"call-9926cdc3-c8a5-4222-b0f8-4acace9c4f22","name":"fs.read","status":"success","summary":"已读取 controllers\\rsi.controller.ts（7008 字节，169 行）","data":{"kind":"file","path":"controllers\\rsi.controller.ts","encoding":"utf8","sizeBytes":7008,"truncated":false,"lines":{"returned":169,"total":169},"content":"/**\r\n * RsiController — 自我迭代的只读视图 + 两个动作端点。\r\n *\r\n * ── 为什么\"动作端点\"只记录、不动文件 ──────────────────────\r\n * 回滚是破坏性操作。让一个 HTTP 请求直接去 `git checkout` 或删除文件，\r\n * 意味着任何拿到本地端口的进程都能把仓库还原到任意代——这不是能力，是事故面。\r\n * 所以本控制器只做两件事：\r\n *   · `plan`：**判定**这次改动属于哪个域、要不要人批（纯计算，无副作用）；\r\n *   · `decide`：**记录**人的决定（追加一行决策日志，绝不改代码）。\r\n * 真正的回滚由脚本执行（`change-domain.rollbackTo`），带快照、带审计、可复核。\r\n *\r\n * 这条边界与「判据外置」是同一个道理：**判定与执行分离，谁都不能一条命令改天换地。**\r\n */\r\n\r\nimport { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';\r\nimport path from 'node:path';\r\nimport { fileURLToPath } from 'node:url';\r\nimport type { Request, Response } from 'express';\r\nimport { buildRsiRulesContract } from '../services/rsi/rules-contract.js';\r\nimport { CHANGE_DOMAINS, checkDomain, type IterationTrigger } from '../services/rsi/change-domain.js';\r\nimport { getIteration, listIterations, summarize } from '../services/rsi/iteration-store.js';\r\n\r\n// 本文件在 src/controllers/ 下：'../..' 才是 server/（少一级会指向 src/）。\r\nconst SERVER = fileURLToPath(new URL('../..', import.meta.url));\r\nconst WORK = path.resolve(SERVER, '..', '.self-upgrade');\r\nconst DECISIONS = path.join(WORK, 'decisions.jsonl');\r\n\r\nconst TRIGGERS: readonly IterationTrigger[] = [\r\n  'manual',\r\n  'schedule',\r\n  'failure-accumulation',\r\n  'threshold-breach',\r\n  'charter-drift',\r\n];\r\n\r\n/** 当前模型：进程环境优先，读不到再回落到 server/.env（循环按归因会轮换它）。 */\r\nfunction currentModel(): string {\r\n  if (process.env.RSI_MODEL) return process.env.RSI_MODEL;\r\n  try {\r\n    const m = /^RSI_MODEL=(.*)$/m.exec(readFileSync(path.join(SERVER, '.env'), 'utf8'));\r\n    if (m?.[1]) return m[1].trim();\r\n  } catch {\r\n    /* 没有 .env 就如实说不知道 */\r\n  }\r\n  return 'unknown';\r\n}\r\n\r\nexport class RsiController {\r\n  /** 契约：前后端共用的单一事实源（含 domains / decisions / iterationCriteria）。 */\r\n  contract(_req: Request, res: Response): void {\r\n    res.json(buildRsiRulesContract());\r\n  }\r\n\r\n  /** 迭代列表 + 汇总。 */\r\n  iterations(req: Request, res: Response): void {\r\n    const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));\r\n    const items = listIterations(limit);\r\n    // 顺带下发域表与当前模型：前端不必自己抄一份「哪些域要人批」，抄了就会漂；\r\n    // 模型由循环按归因轮换，轮询时面板要能显示「此刻跑的是哪一个」。\r\n    res.json({\r\n      items,\r\n      summary: summarize(items),\r\n      domains: CHANGE_DOMAINS.map((d) => ({ id: d.id, label: d.label, requiresHumanApproval: d.requiresHumanApproval })),\r\n      model: currentModel(),\r\n      serverTime: new Date().toISOString(),\r\n    });\r\n  }\r\n\r\n  /** 单条迭代。 */\r\n  iteration(req: Request, res: Response): void {\r\n    const id = String(req.params.id ?? '');\r\n    const found = getIteration(id);\r\n    if (!found) {\r\n      res.status(404).json({ error: { code: 'NOT_FOUND', message: `没有这条迭代：${id}` } });\r\n      return;\r\n    }\r\n    res.json(found);\r\n  }\r\n\r\n  /**\r\n   * 域申请：给定拟改文件 + 触发方式 + 是否已批，回答「能不能改、要谁批、上限多少」。\r\n   * 纯计算，不落盘——前端可以随便试，不会产生副作用。\r\n   */\r\n  plan(req: Request, res: Response): void {\r\n    const body = (req.body ?? {}) as { files?: unknown; trigger?: unknown; humanApproved?: unknown };\r\n    const files = Array.isArray(body.files) ? body.files.map((f) => String(f)) : [];\r\n    const trigger = TRIGGERS.includes(body.trigger as IterationTrigger)\r\n      ? (body.trigger as IterationTrigger)\r\n      : 'manual';\r\n    if (files.length === 0) {\r\n      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'files 不能为空' } });\r\n      return;\r\n    }\r\n    res.json(checkDomain({ files, trigger, humanApproved: body.humanApproved === true }));\r\n  }\r\n\r\n  /**\r\n   * 记录人的决定（approve / rollback / halt）。\r\n   * **只写决策日志，不动任何代码**——回滚由脚本按快照执行，见文件头说明。\r\n   */\r\n  decide(req: Request, res: Response): void {\r\n    const id = String(req.params.id ?? '');\r\n    const body = (req.body ?? {}) as { action?: unknown; confirm?: unknown; note?: unknown };\r\n    const action = String(body.action ?? '');\r\n    if (!['approve', 'rollback', 'halt'].includes(action)) {\r\n      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'action 只能是 approve / rollback / halt' } });\r\n      return;\r\n    }\r\n    // 破坏性动作必须显式确认：漏一个 confirm 就把代码还原了，是最难查的那类事故。\r\n    if (action !== 'approve' && body.confirm !== true) {\r\n      res.status(400).json({\r\n        error: { code: 'CONFIRM_REQUIRED', message: `${action} 是破坏性动作，必须带 confirm: true` },\r\n      });\r\n      return;\r\n    }\r\n    const record = getIteration(id);\r\n    if (!record) {\r\n      res.status(404).json({ error: { code: 'NOT_FOUND', message: `没有这条迭代：${id}` } });\r\n      return;\r\n    }\r\n\r\n    const entry = {\r\n      at: new Date().toISOString(),\r\n      iterationId: id,\r\n      task: record.task,\r\n      action,\r\n      note: typeof body.note === 'string' ? body.note.slice(0, 500) : '',\r\n      // 记录当时的判定，便于事后核对「人是按什么信息拍的板」\r\n      decision: record.result.decision,\r\n      domain: record.domain,\r\n      verdict: record.verdict,\r\n    };\r\n    mkdirSync(WORK, { recursive: true });\r\n    appendFileSync(DECISIONS, `${JSON.stringify(entry)}\\n`, 'utf8');\r\n\r\n    res.json({\r\n      ok: true,\r\n      entry,\r\n      // 明确告诉调用方：这只是记录，不是执行\r\n      note:\r\n        action === 'rollback'\r\n          ? '已记录回滚决定。实际还原由脚本按快照执行（change-domain.rollbackTo），本接口不改动任何代码。'\r\n          : '已记录决定。',\r\n    });\r\n  }\r\n\r\n  /** 决策历史（供前端展示\"谁在什么时候拍了什么板\"）。 */\r\n  decisions(_req: Request, res: Response): void {\r\n    if (!existsSync(DECISIONS)) {\r\n      res.json({ items: [] });\r\n      return;\r\n    }\r\n    const items = readFileSync(DECISIONS, 'utf8')\r\n      .split('\\n')\r\n      .filter(Boolean)\r\n      .map((l) => {\r\n        try {\r\n          return JSON.parse(l) as Record<string, unknown>;\r\n        } catch {\r\n          return null;\r\n        }\r\n      })\r\n      .filter((x): x is Record<string, unknown> => x !== null)\r\n      .reverse()\r\n      .slice(0, 100);\r\n    res.json({ items });\r\n  }\r\n}\r\n"},"truncated":true,"durationMs":7,"resultId":"9d2dbad9-eca1-478f-8f40-e45efcdd7689"}
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I need to read the rest"}
+
+event: reasoning
+data: {"text":" of the"}
+
+event: reasoning
+data: {"text":" files"}
+
+event: reasoning
+data: {"text":" to understand the full context"}
+
+event: reasoning
+data: {"text":". Let me read the remaining"}
+
+event: reasoning
+data: {"text":" parts of app.ts and r"}
+
+event: reasoning
+data: {"text":"si.controller.ts."}
+
+event: tool_call
+data: {"callId":"call-e2723596-fc67-410b-966d-282bf6973ce8","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/app.ts","lineStart":71},"risk":"low","approvalMode":"none","source":"builtin","iteration":2,"status":"pending"}
+
+event: tool_call
+data: {"callId":"call-1982b21d-c3ae-4f7e-9d4b-f83a17e2bc9c","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/controllers/rsi.controller.ts","lineStart":63},"risk":"low","approvalMode":"none","source":"builtin","iteration":2,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-1982b21d-c3ae-4f7e-9d4b-f83a17e2bc9c","stage":"reading","message":"读取 controllers\\rsi.controller.ts","at":1794498815109}
+
+event: tool_progress
+data: {"callId":"call-e2723596-fc67-410b-966d-282bf6973ce8","stage":"reading","message":"读取 app.ts","at":1794498815109}
+
+event: tool_result
+data: {"callId":"call-1982b21d-c3ae-4f7e-9d4b-f83a17e2bc9c","name":"fs.read","status":"success","summary":"已读取 controllers\\rsi.controller.ts（7008 字节，169 行）","data":{"kind":"file","path":"controllers\\rsi.controller.ts","encoding":"utf8","sizeBytes":7008,"truncated":false,"lines":{"returned":107,"total":169},"content":"      domains: CHANGE_DOMAINS.map((d) => ({ id: d.id, label: d.label, requiresHumanApproval: d.requiresHumanApproval })),\r\n      model: currentModel(),\r\n      serverTime: new Date().toISOString(),\r\n    });\r\n  }\r\n\r\n  /** 单条迭代。 */\r\n  iteration(req: Request, res: Response): void {\r\n    const id = String(req.params.id ?? '');\r\n    const found = getIteration(id);\r\n    if (!found) {\r\n      res.status(404).json({ error: { code: 'NOT_FOUND', message: `没有这条迭代：${id}` } });\r\n      return;\r\n    }\r\n    res.json(found);\r\n  }\r\n\r\n  /**\r\n   * 域申请：给定拟改文件 + 触发方式 + 是否已批，回答「能不能改、要谁批、上限多少」。\r\n   * 纯计算，不落盘——前端可以随便试，不会产生副作用。\r\n   */\r\n  plan(req: Request, res: Response): void {\r\n    const body = (req.body ?? {}) as { files?: unknown; trigger?: unknown; humanApproved?: unknown };\r\n    const files = Array.isArray(body.files) ? body.files.map((f) => String(f)) : [];\r\n    const trigger = TRIGGERS.includes(body.trigger as IterationTrigger)\r\n      ? (body.trigger as IterationTrigger)\r\n      : 'manual';\r\n    if (files.length === 0) {\r\n      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'files 不能为空' } });\r\n      return;\r\n    }\r\n    res.json(checkDomain({ files, trigger, humanApproved: body.humanApproved === true }));\r\n  }\r\n\r\n  /**\r\n   * 记录人的决定（approve / rollback / halt）。\r\n   * **只写决策日志，不动任何代码**——回滚由脚本按快照执行，见文件头说明。\r\n   */\r\n  decide(req: Request, res: Response): void {\r\n    const id = String(req.params.id ?? '');\r\n    const body = (req.body ?? {}) as { action?: unknown; confirm?: unknown; note?: unknown };\r\n    const action = String(body.action ?? '');\r\n    if (!['approve', 'rollback', 'halt'].includes(action)) {\r\n      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'action 只能是 approve / rollback / halt' } });\r\n      return;\r\n    }\r\n    // 破坏性动作必须显式确认：漏一个 confirm 就把代码还原了，是最难查的那类事故。\r\n    if (action !== 'approve' && body.confirm !== true) {\r\n      res.status(400).json({\r\n        error: { code: 'CONFIRM_REQUIRED', message: `${action} 是破坏性动作，必须带 confirm: true` },\r\n      });\r\n      return;\r\n    }\r\n    const record = getIteration(id);\r\n    if (!record) {\r\n      res.status(404).json({ error: { code: 'NOT_FOUND', message: `没有这条迭代：${id}` } });\r\n      return;\r\n    }\r\n\r\n    const entry = {\r\n      at: new Date().toISOString(),\r\n      iterationId: id,\r\n      task: record.task,\r\n      action,\r\n      note: typeof body.note === 'string' ? body.note.slice(0, 500) : '',\r\n      // 记录当时的判定，便于事后核对「人是按什么信息拍的板」\r\n      decision: record.result.decision,\r\n      domain: record.domain,\r\n      verdict: record.verdict,\r\n    };\r\n    mkdirSync(WORK, { recursive: true });\r\n    appendFileSync(DECISIONS, `${JSON.stringify(entry)}\\n`, 'utf8');\r\n\r\n    res.json({\r\n      ok: true,\r\n      entry,\r\n      // 明确告诉调用方：这只是记录，不是执行\r\n      note:\r\n        action === 'rollback'\r\n          ? '已记录回滚决定。实际还原由脚本按快照执行（change-domain.rollbackTo），本接口不改动任何代码。'\r\n          : '已记录决定。',\r\n    });\r\n  }\r\n\r\n  /** 决策历史（供前端展示\"谁在什么时候拍了什么板\"）。 */\r\n  decisions(_req: Request, res: Response): void {\r\n    if (!existsSync(DECISIONS)) {\r\n      res.json({ items: [] });\r\n      return;\r\n    }\r\n    const items = readFileSync(DECISIONS, 'utf8')\r\n      .split('\\n')\r\n      .filter(Boolean)\r\n      .map((l) => {\r\n        try {\r\n          return JSON.parse(l) as Record<string, unknown>;\r\n        } catch {\r\n          return null;\r\n        }\r\n      })\r\n      .filter((x): x is Record<string, unknown> => x !== null)\r\n      .reverse()\r\n      .slice(0, 100);\r\n    res.json({ items });\r\n  }\r\n}\r\n"},"truncated":false,"durationMs":5,"resultId":"44dccd53-5e54-433b-bf45-0534c08a08ac"}
+
+event: tool_result
+data: {"callId":"call-e2723596-fc67-410b-966d-282bf6973ce8","name":"fs.read","status":"success","summary":"已读取 app.ts（14942 字节，316 行）","data":{"kind":"file","path":"app.ts","encoding":"utf8","sizeBytes":14942,"truncated":false,"lines":{"returned":246,"total":316},"content":"  // gets its own tighter budget against recovery-code brute force.\r\n  if (config.apiRateLimitPerMin > 0) {\r\n    app.use('/api', rateLimit(config.apiRateLimitPerMin, 'api'));\r\n  }\r\n  if (config.recoveryRateLimitPerMin > 0) {\r\n    app.use('/api/v1/sessions/recover', rateLimit(config.recoveryRateLimitPerMin, 'recovery'));\r\n  }\r\n\r\n  app.use(\r\n    '/api',\r\n    createApiRouter({\r\n      agent: runtime.agentController,\r\n      approvals: runtime.approvalController,\r\n      sessions: runtime.sessionsController,\r\n      tools: runtime.toolsController,\r\n      mcp: runtime.mcpController,\r\n      providers: runtime.providersController,\r\n      health: runtime.healthController,\r\n      sandboxPermissions: runtime.sandboxPermissionsController,\r\n      judge: runtime.judgeController,\r\n      rsi: runtime.rsiController,\r\n      capabilities: runtime.capabilitiesController,\r\n      traces: runtime.tracesController,\r\n      skills: runtime.skillsController,\r\n      checkpoints: runtime.checkpointsController,\r\n      sandboxGrants: runtime.sandboxGrantsController,\r\n      runs: runtime.runsController,\r\n    }),\r\n  );\r\n\r\n  // ── RSI 规则契约 ── 只读、无需 session，供独立看板与一致性校验脚本消费。\r\n  // 与 overview 共用同一个 buildRsiRulesContract()，保证两处同源、JSON 深度相等。\r\n  app.get('/api/rsi/rules', (_req, res) => {\r\n    res.setHeader('Cache-Control', 'no-store');\r\n    res.json(buildRsiRulesContract());\r\n  });\r\n\r\n  // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程\r\n  app.get('/api/rsi/overview', (req, res) => {\r\n    try {\r\n      const sessionId = typeof req.query.session === 'string' ? req.query.session : null;\r\n      if (!sessionId) { res.status(400).json({ error: '?session=xxx required' }); return; }\r\n      const db = runtime.db;\r\n\r\n      const session = db.get(`SELECT id, title, provider, model, created_at FROM sessions WHERE id = ?`, [sessionId]);\r\n      if (!session) { res.status(404).json({ error: 'session not found' }); return; }\r\n\r\n      // 每代 judge_run 汇总 + 其 verdicts\r\n      const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at\r\n                                FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);\r\n      const verdictsByRun = new Map<number, any[]>();\r\n      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail, data_json\r\n                                  FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);\r\n      for (const v of allVerdicts) {\r\n        // data_json 是 007 迁移新增的列；旧行为 NULL，这里统一解成 data 字段，\r\n        // 解不出来就当没有（绝不能让一条脏 JSON 把整个看板打成 500）。\r\n        v.data = parseJsonColumn(v.data_json);\r\n        delete v.data_json;\r\n        if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);\r\n        verdictsByRun.get(v.run_id)!.push(v);\r\n      }\r\n\r\n      // 每代 RSI 对比（prev → next）\r\n      const rsiRuns = db.all(`SELECT generation, prev_generation, verdict, exit_code,\r\n                                     reasons_json, prev_readings_json, next_readings_json\r\n                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);\r\n\r\n      // 归因经验（policy_injections）—— 每条 π' 的增量\r\n      const attributions = db.all(`SELECT id, policy_version, lesson, created_at\r\n                                   FROM policy_injections WHERE session_id = ?\r\n                                   ORDER BY id DESC LIMIT 20`, [sessionId]);\r\n\r\n      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，\r\n      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。\r\n      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);\r\n\r\n      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析\r\n      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。\r\n      // 与 /api/rsi/rules 一致禁用缓存：契约虽静态，但嵌在动态响应里，\r\n      // 浏览器缓存旧 overview 会让两个出口在 HTTP 层分叉（普通 curl 断言抓不到）。\r\n      res.setHeader('Cache-Control', 'no-store');\r\n      res.json({\r\n        session,\r\n        judgeRuns,\r\n        verdictsByRun: verdictsByRunJson,\r\n        rsiRuns,\r\n        attributions,\r\n        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),\r\n        rules: buildRsiRulesContract(),\r\n      });\r\n    } catch (e: any) {\r\n      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });\r\n    }\r\n  });\r\n\r\n  // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到\r\n  app.get('/rsi', (req, res) => {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n    // cwd 在 dev (tsx) 和 build (node dist/app.js) 都是 server 根目录\r\n    const htmlPath = path.join(process.cwd(), 'public', 'rsi-dashboard.html');\r\n    if (existsSync(htmlPath)) { res.sendFile(htmlPath); return; }\r\n    res.status(404).send('rsi dashboard not found at ' + htmlPath);\r\n  });\r\n\r\n  app.use(notFoundHandler);\r\n\r\n  const clientDir = options.clientDistDir ?? config.clientDistDir;\r\n  if (existsSync(clientDir)) {\r\n    // P2-12: maxAge 0 by default — the setHeaders callback is now the single\r\n    // cache-policy point (immutable for hashed assets, no-cache otherwise).\r\n    // The old maxAge '1y' froze every non-hashed root file for a year, so a\r\n    // deploy could leave browsers on a stale shell.\r\n    app.use(express.static(clientDir, { index: false, maxAge: 0, setHeaders: cacheImmutableAssets }));\r\n    // SPA history fallback (Express 5: middleware form, not app.get('*')).\r\n    // Serves the app shell for any non-API GET/HEAD so external probes and\r\n    // deep links work regardless of the Accept header.\r\n    app.use((req: Request, res: Response, next) => {\r\n      if (req.method !== 'GET' && req.method !== 'HEAD') return next();\r\n      if (req.path.startsWith('/api/')) return next();\r\n      // P2-12: the shell must revalidate on every load — otherwise a cached\r\n      // index.html keeps pointing at deleted asset hashes (white screen).\r\n      res.setHeader('Cache-Control', 'no-cache');\r\n      res.sendFile('index.html', { root: clientDir }, (err) => {\r\n        next(err ?? new AppError(ErrorCode.NOT_FOUND, '页面不存在'));\r\n      });\r\n    });\r\n  }\r\n\r\n  app.use(errorHandler);\r\n\r\n  // 启动上游模型同步（自动获取模型）。\r\n  // 关键背景：桌面嵌入态（desktop/main.cjs）只调用 createApp()，不会进入本文件底部\r\n  // isMainModule() 的独立服务分支；且服务端被打成 CJS 单文件后 import.meta.url 为空、\r\n  // isMainModule() 恒为 false，导致原先只在 isMainModule() 里的 fetchOnce()/start()\r\n  // 在桌面态从不执行——配置了 MODEL_SOURCE_* 也不会自动拉取模型。\r\n  // 故将启动逻辑上移到 createApp，对所有入口（桌面嵌入态 / 独立服务）生效；\r\n  // 测试态默认不自动拉取，避免用例产生意外网络请求（可用 autoStartModelSync 显式覆盖）。\r\n  const autoStartModelSync = options.autoStartModelSync ?? config.nodeEnv !== 'test';\r\n  if (autoStartModelSync) {\r\n    void runtime.modelSync.fetchOnce().then(() => runtime.modelSync.start());\r\n  }\r\n\r\n  return app;\r\n}\r\n\r\n/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */\r\nfunction parseJsonColumn(raw: unknown): unknown {\r\n  if (typeof raw !== 'string' || raw.length === 0) return null;\r\n  try {\r\n    return JSON.parse(raw);\r\n  } catch {\r\n    return null;\r\n  }\r\n}\r\n\r\nconst EVAL_CRITERION = 'task.test_pass_rate';\r\n\r\n/**\r\n * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。\r\n *\r\n * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行\r\n * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，\r\n * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。\r\n */\r\nfunction buildEvalSummary(\r\n  verdicts: any[],\r\n  judgeRuns: Array<{ id: number; created_at: number }>,\r\n): Record<string, unknown> | null {\r\n  let latest: any = null;\r\n  let latestStructured: any = null;\r\n  for (const v of verdicts) {\r\n    if (v.criterion !== EVAL_CRITERION) continue;\r\n    latest = v;\r\n    if (v.data) latestStructured = v;\r\n  }\r\n  const chosen = latestStructured ?? latest;\r\n  if (!chosen) return null;\r\n\r\n  const data = (chosen.data ?? null) as Record<string, any> | null;\r\n  const num = (key: string): number | null =>\r\n    typeof data?.[key] === 'number' ? (data[key] as number) : null;\r\n  const total = num('total');\r\n  const run = judgeRuns.find((r) => r.id === chosen.run_id);\r\n\r\n  return {\r\n    runId: chosen.run_id,\r\n    status: chosen.status,\r\n    score: chosen.score ?? null,\r\n    detail: chosen.detail ?? null,\r\n    measuredAt: run?.created_at ?? null,\r\n    passed: num('passed'),\r\n    total,\r\n    denominator: num('denominator') ?? total,\r\n    suites: Array.isArray(data?.suites) ? data!.suites : [],\r\n    source: data ? 'structured' : 'detail_only',\r\n    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，\r\n    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。\r\n    evalSetFingerprint:\r\n      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,\r\n    failureKinds:\r\n      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)\r\n        ? (data.failureKinds as Record<string, number>)\r\n        : {},\r\n    samples: num('samples') ?? 1,\r\n    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',\r\n  };\r\n}\r\n\r\nfunction cacheImmutableAssets(res: Response, filePath: string): void {\r\n  // Vite emits content-hashed filenames under /assets/ — those are safe to\r\n  // freeze. Everything else at the client root (index.html is served by the\r\n  // SPA fallback below, but favicon/manifest/etc. land here) must revalidate,\r\n  // otherwise a stale shell survives a deploy (P2-12).\r\n  if (/[/\\\\]assets[/\\\\]/.test(filePath)) {\r\n    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');\r\n  } else {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n  }\r\n}\r\n\r\nfunction isMainModule(): boolean {\r\n  const entry = process.argv[1];\r\n  if (!entry) return false;\r\n  return import.meta.url === pathToFileURL(entry).href;\r\n}\r\n\r\nif (isMainModule()) {\r\n  const runtime = createRuntime();\r\n  const app = createApp({ runtime });\r\n  const server = app.listen(config.port, config.host, () => {\r\n    // eslint-disable-next-line no-console\r\n    console.log(`codelens-server listening on ${config.host}:${config.port} (${config.nodeEnv})`);\r\n  });\r\n  // 上游模型同步已在 createApp() 内按 nodeEnv 自动启动（fetchOnce + 周期调度）；此处只做退出清理。\r\n  // close() 会先 abort 服务关闭信号：在途 run（含能力探测/上游流）随进程退出一起取消，\r\n  // 不等上游超时。close() 幂等，双信号重复触发安全。\r\n  for (const signal of ['SIGINT', 'SIGTERM'] as const) {\r\n    process.on(signal, () => {\r\n      void runtime.close().finally(() => {\r\n        server.close(() => process.exit(0));\r\n        setTimeout(() => process.exit(0), 3000).unref();\r\n      });\r\n    });\r\n  }\r\n}\r\n"},"truncated":true,"durationMs":9,"resultId":"d05bd405-c8bc-4aed-bebc-70200a1d5ff8"}
+
+: ping
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me read"}
+
+event: reasoning
+data: {"text":" the rest of the"}
+
+event: reasoning
+data: {"text":" files"}
+
+event: reasoning
+data: {"text":" to understand"}
+
+event: reasoning
+data: {"text":" the full picture."}
+
+event: tool_call
+data: {"callId":"call-17976954-2e18-4764-b21a-18b6d0cb511f","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/app.ts","lineStart":136},"risk":"low","approvalMode":"none","source":"builtin","iteration":3,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-17976954-2e18-4764-b21a-18b6d0cb511f","stage":"reading","message":"读取 app.ts","at":1794498827917}
+
+event: tool_result
+data: {"callId":"call-17976954-2e18-4764-b21a-18b6d0cb511f","name":"fs.read","status":"success","summary":"已读取 app.ts（14942 字节，316 行）","data":{"kind":"file","path":"app.ts","encoding":"utf8","sizeBytes":14942,"truncated":false,"lines":{"returned":181,"total":316},"content":"                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);\r\n\r\n      // 归因经验（policy_injections）—— 每条 π' 的增量\r\n      const attributions = db.all(`SELECT id, policy_version, lesson, created_at\r\n                                   FROM policy_injections WHERE session_id = ?\r\n                                   ORDER BY id DESC LIMIT 20`, [sessionId]);\r\n\r\n      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，\r\n      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。\r\n      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);\r\n\r\n      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析\r\n      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。\r\n      // 与 /api/rsi/rules 一致禁用缓存：契约虽静态，但嵌在动态响应里，\r\n      // 浏览器缓存旧 overview 会让两个出口在 HTTP 层分叉（普通 curl 断言抓不到）。\r\n      res.setHeader('Cache-Control', 'no-store');\r\n      res.json({\r\n        session,\r\n        judgeRuns,\r\n        verdictsByRun: verdictsByRunJson,\r\n        rsiRuns,\r\n        attributions,\r\n        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),\r\n        rules: buildRsiRulesContract(),\r\n      });\r\n    } catch (e: any) {\r\n      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });\r\n    }\r\n  });\r\n\r\n  // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到\r\n  app.get('/rsi', (req, res) => {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n    // cwd 在 dev (tsx) 和 build (node dist/app.js) 都是 server 根目录\r\n    const htmlPath = path.join(process.cwd(), 'public', 'rsi-dashboard.html');\r\n    if (existsSync(htmlPath)) { res.sendFile(htmlPath); return; }\r\n    res.status(404).send('rsi dashboard not found at ' + htmlPath);\r\n  });\r\n\r\n  app.use(notFoundHandler);\r\n\r\n  const clientDir = options.clientDistDir ?? config.clientDistDir;\r\n  if (existsSync(clientDir)) {\r\n    // P2-12: maxAge 0 by default — the setHeaders callback is now the single\r\n    // cache-policy point (immutable for hashed assets, no-cache otherwise).\r\n    // The old maxAge '1y' froze every non-hashed root file for a year, so a\r\n    // deploy could leave browsers on a stale shell.\r\n    app.use(express.static(clientDir, { index: false, maxAge: 0, setHeaders: cacheImmutableAssets }));\r\n    // SPA history fallback (Express 5: middleware form, not app.get('*')).\r\n    // Serves the app shell for any non-API GET/HEAD so external probes and\r\n    // deep links work regardless of the Accept header.\r\n    app.use((req: Request, res: Response, next) => {\r\n      if (req.method !== 'GET' && req.method !== 'HEAD') return next();\r\n      if (req.path.startsWith('/api/')) return next();\r\n      // P2-12: the shell must revalidate on every load — otherwise a cached\r\n      // index.html keeps pointing at deleted asset hashes (white screen).\r\n      res.setHeader('Cache-Control', 'no-cache');\r\n      res.sendFile('index.html', { root: clientDir }, (err) => {\r\n        next(err ?? new AppError(ErrorCode.NOT_FOUND, '页面不存在'));\r\n      });\r\n    });\r\n  }\r\n\r\n  app.use(errorHandler);\r\n\r\n  // 启动上游模型同步（自动获取模型）。\r\n  // 关键背景：桌面嵌入态（desktop/main.cjs）只调用 createApp()，不会进入本文件底部\r\n  // isMainModule() 的独立服务分支；且服务端被打成 CJS 单文件后 import.meta.url 为空、\r\n  // isMainModule() 恒为 false，导致原先只在 isMainModule() 里的 fetchOnce()/start()\r\n  // 在桌面态从不执行——配置了 MODEL_SOURCE_* 也不会自动拉取模型。\r\n  // 故将启动逻辑上移到 createApp，对所有入口（桌面嵌入态 / 独立服务）生效；\r\n  // 测试态默认不自动拉取，避免用例产生意外网络请求（可用 autoStartModelSync 显式覆盖）。\r\n  const autoStartModelSync = options.autoStartModelSync ?? config.nodeEnv !== 'test';\r\n  if (autoStartModelSync) {\r\n    void runtime.modelSync.fetchOnce().then(() => runtime.modelSync.start());\r\n  }\r\n\r\n  return app;\r\n}\r\n\r\n/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */\r\nfunction parseJsonColumn(raw: unknown): unknown {\r\n  if (typeof raw !== 'string' || raw.length === 0) return null;\r\n  try {\r\n    return JSON.parse(raw);\r\n  } catch {\r\n    return null;\r\n  }\r\n}\r\n\r\nconst EVAL_CRITERION = 'task.test_pass_rate';\r\n\r\n/**\r\n * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。\r\n *\r\n * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行\r\n * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，\r\n * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。\r\n */\r\nfunction buildEvalSummary(\r\n  verdicts: any[],\r\n  judgeRuns: Array<{ id: number; created_at: number }>,\r\n): Record<string, unknown> | null {\r\n  let latest: any = null;\r\n  let latestStructured: any = null;\r\n  for (const v of verdicts) {\r\n    if (v.criterion !== EVAL_CRITERION) continue;\r\n    latest = v;\r\n    if (v.data) latestStructured = v;\r\n  }\r\n  const chosen = latestStructured ?? latest;\r\n  if (!chosen) return null;\r\n\r\n  const data = (chosen.data ?? null) as Record<string, any> | null;\r\n  const num = (key: string): number | null =>\r\n    typeof data?.[key] === 'number' ? (data[key] as number) : null;\r\n  const total = num('total');\r\n  const run = judgeRuns.find((r) => r.id === chosen.run_id);\r\n\r\n  return {\r\n    runId: chosen.run_id,\r\n    status: chosen.status,\r\n    score: chosen.score ?? null,\r\n    detail: chosen.detail ?? null,\r\n    measuredAt: run?.created_at ?? null,\r\n    passed: num('passed'),\r\n    total,\r\n    denominator: num('denominator') ?? total,\r\n    suites: Array.isArray(data?.suites) ? data!.suites : [],\r\n    source: data ? 'structured' : 'detail_only',\r\n    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，\r\n    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。\r\n    evalSetFingerprint:\r\n      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,\r\n    failureKinds:\r\n      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)\r\n        ? (data.failureKinds as Record<string, number>)\r\n        : {},\r\n    samples: num('samples') ?? 1,\r\n    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',\r\n  };\r\n}\r\n\r\nfunction cacheImmutableAssets(res: Response, filePath: string): void {\r\n  // Vite emits content-hashed filenames under /assets/ — those are safe to\r\n  // freeze. Everything else at the client root (index.html is served by the\r\n  // SPA fallback below, but favicon/manifest/etc. land here) must revalidate,\r\n  // otherwise a stale shell survives a deploy (P2-12).\r\n  if (/[/\\\\]assets[/\\\\]/.test(filePath)) {\r\n    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');\r\n  } else {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n  }\r\n}\r\n\r\nfunction isMainModule(): boolean {\r\n  const entry = process.argv[1];\r\n  if (!entry) return false;\r\n  return import.meta.url === pathToFileURL(entry).href;\r\n}\r\n\r\nif (isMainModule()) {\r\n  const runtime = createRuntime();\r\n  const app = createApp({ runtime });\r\n  const server = app.listen(config.port, config.host, () => {\r\n    // eslint-disable-next-line no-console\r\n    console.log(`codelens-server listening on ${config.host}:${config.port} (${config.nodeEnv})`);\r\n  });\r\n  // 上游模型同步已在 createApp() 内按 nodeEnv 自动启动（fetchOnce + 周期调度）；此处只做退出清理。\r\n  // close() 会先 abort 服务关闭信号：在途 run（含能力探测/上游流）随进程退出一起取消，\r\n  // 不等上游超时。close() 幂等，双信号重复触发安全。\r\n  for (const signal of ['SIGINT', 'SIGTERM'] as const) {\r\n    process.on(signal, () => {\r\n      void runtime.close().finally(() => {\r\n        server.close(() => process.exit(0));\r\n        setTimeout(() => process.exit(0), 3000).unref();\r\n      });\r\n    });\r\n  }\r\n}\r\n"},"truncated":true,"durationMs":4,"resultId":"24d9e7aa-a843-4d74-a3e6-d4454f71b525"}
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I need"}
+
+event: reasoning
+data: {"text":" to read"}
+
+event: reasoning
+data: {"text":" the rest of the"}
+
+event: reasoning
+data: {"text":" app.ts file and"}
+
+event: reasoning
+data: {"text":" also check the existing test file"}
+
+event: reasoning
+data: {"text":" to understand the testing"}
+
+event: reasoning
+data: {"text":" pattern."}
+
+event: tool_call
+data: {"callId":"call-080020a1-a5c9-4a0b-854e-b17fed7ae22c","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/app.ts","lineStart":193},"risk":"low","approvalMode":"none","source":"builtin","iteration":4,"status":"pending"}
+
+event: tool_call
+data: {"callId":"call-056e577e-7178-4abc-8e2d-4139062edc5c","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/tests/rsi-rules-contract.test.ts"},"risk":"low","approvalMode":"none","source":"builtin","iteration":4,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-080020a1-a5c9-4a0b-854e-b17fed7ae22c","stage":"reading","message":"读取 app.ts","at":1794498829958}
+
+event: tool_progress
+data: {"callId":"call-056e577e-7178-4abc-8e2d-4139062edc5c","stage":"reading","message":"读取 rsi-rules-contract.test.ts","at":1794498829959}
+
+event: tool_result
+data: {"callId":"call-080020a1-a5c9-4a0b-854e-b17fed7ae22c","name":"fs.read","status":"success","summary":"已读取 app.ts（14942 字节，316 行）","data":{"kind":"file","path":"app.ts","encoding":"utf8","sizeBytes":14942,"truncated":false,"lines":{"returned":124,"total":316},"content":"      res.sendFile('index.html', { root: clientDir }, (err) => {\r\n        next(err ?? new AppError(ErrorCode.NOT_FOUND, '页面不存在'));\r\n      });\r\n    });\r\n  }\r\n\r\n  app.use(errorHandler);\r\n\r\n  // 启动上游模型同步（自动获取模型）。\r\n  // 关键背景：桌面嵌入态（desktop/main.cjs）只调用 createApp()，不会进入本文件底部\r\n  // isMainModule() 的独立服务分支；且服务端被打成 CJS 单文件后 import.meta.url 为空、\r\n  // isMainModule() 恒为 false，导致原先只在 isMainModule() 里的 fetchOnce()/start()\r\n  // 在桌面态从不执行——配置了 MODEL_SOURCE_* 也不会自动拉取模型。\r\n  // 故将启动逻辑上移到 createApp，对所有入口（桌面嵌入态 / 独立服务）生效；\r\n  // 测试态默认不自动拉取，避免用例产生意外网络请求（可用 autoStartModelSync 显式覆盖）。\r\n  const autoStartModelSync = options.autoStartModelSync ?? config.nodeEnv !== 'test';\r\n  if (autoStartModelSync) {\r\n    void runtime.modelSync.fetchOnce().then(() => runtime.modelSync.start());\r\n  }\r\n\r\n  return app;\r\n}\r\n\r\n/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */\r\nfunction parseJsonColumn(raw: unknown): unknown {\r\n  if (typeof raw !== 'string' || raw.length === 0) return null;\r\n  try {\r\n    return JSON.parse(raw);\r\n  } catch {\r\n    return null;\r\n  }\r\n}\r\n\r\nconst EVAL_CRITERION = 'task.test_pass_rate';\r\n\r\n/**\r\n * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。\r\n *\r\n * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行\r\n * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，\r\n * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。\r\n */\r\nfunction buildEvalSummary(\r\n  verdicts: any[],\r\n  judgeRuns: Array<{ id: number; created_at: number }>,\r\n): Record<string, unknown> | null {\r\n  let latest: any = null;\r\n  let latestStructured: any = null;\r\n  for (const v of verdicts) {\r\n    if (v.criterion !== EVAL_CRITERION) continue;\r\n    latest = v;\r\n    if (v.data) latestStructured = v;\r\n  }\r\n  const chosen = latestStructured ?? latest;\r\n  if (!chosen) return null;\r\n\r\n  const data = (chosen.data ?? null) as Record<string, any> | null;\r\n  const num = (key: string): number | null =>\r\n    typeof data?.[key] === 'number' ? (data[key] as number) : null;\r\n  const total = num('total');\r\n  const run = judgeRuns.find((r) => r.id === chosen.run_id);\r\n\r\n  return {\r\n    runId: chosen.run_id,\r\n    status: chosen.status,\r\n    score: chosen.score ?? null,\r\n    detail: chosen.detail ?? null,\r\n    measuredAt: run?.created_at ?? null,\r\n    passed: num('passed'),\r\n    total,\r\n    denominator: num('denominator') ?? total,\r\n    suites: Array.isArray(data?.suites) ? data!.suites : [],\r\n    source: data ? 'structured' : 'detail_only',\r\n    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，\r\n    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。\r\n    evalSetFingerprint:\r\n      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,\r\n    failureKinds:\r\n      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)\r\n        ? (data.failureKinds as Record<string, number>)\r\n        : {},\r\n    samples: num('samples') ?? 1,\r\n    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',\r\n  };\r\n}\r\n\r\nfunction cacheImmutableAssets(res: Response, filePath: string): void {\r\n  // Vite emits content-hashed filenames under /assets/ — those are safe to\r\n  // freeze. Everything else at the client root (index.html is served by the\r\n  // SPA fallback below, but favicon/manifest/etc. land here) must revalidate,\r\n  // otherwise a stale shell survives a deploy (P2-12).\r\n  if (/[/\\\\]assets[/\\\\]/.test(filePath)) {\r\n    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');\r\n  } else {\r\n    res.setHeader('Cache-Control', 'no-cache');\r\n  }\r\n}\r\n\r\nfunction isMainModule(): boolean {\r\n  const entry = process.argv[1];\r\n  if (!entry) return false;\r\n  return import.meta.url === pathToFileURL(entry).href;\r\n}\r\n\r\nif (isMainModule()) {\r\n  const runtime = createRuntime();\r\n  const app = createApp({ runtime });\r\n  const server = app.listen(config.port, config.host, () => {\r\n    // eslint-disable-next-line no-console\r\n    console.log(`codelens-server listening on ${config.host}:${config.port} (${config.nodeEnv})`);\r\n  });\r\n  // 上游模型同步已在 createApp() 内按 nodeEnv 自动启动（fetchOnce + 周期调度）；此处只做退出清理。\r\n  // close() 会先 abort 服务关闭信号：在途 run（含能力探测/上游流）随进程退出一起取消，\r\n  // 不等上游超时。close() 幂等，双信号重复触发安全。\r\n  for (const signal of ['SIGINT', 'SIGTERM'] as const) {\r\n    process.on(signal, () => {\r\n      void runtime.close().finally(() => {\r\n        server.close(() => process.exit(0));\r\n        setTimeout(() => process.exit(0), 3000).unref();\r\n      });\r\n    });\r\n  }\r\n}\r\n"},"truncated":true,"durationMs":4,"resultId":"dfaafd5a-2fca-498b-bc82-8cf870480101"}
+
+event: tool_result
+data: {"callId":"call-056e577e-7178-4abc-8e2d-4139062edc5c","name":"fs.read","status":"success","summary":"已读取 rsi-rules-contract.test.ts（11554 字节，267 行）","data":{"kind":"file","path":"rsi-rules-contract.test.ts","encoding":"utf8","sizeBytes":11554,"truncated":false,"lines":{"returned":267,"total":267},"content":"/**\n * RSI 规则契约验收：AC-01 / AC-02。\n *\n * 测试纪律：断言从 Spec §2 锁定表和 main.go 常量**独立反推**，不复述实现内部；\n * 契约取值既能被纯函数单测钉死，也能从两个端点黑盒取回并逐项比对。\n *\n * 覆盖：\n *  1. 契约 version / 6 条 rules / 6 态 states / basis / thresholds（运行时 import 对照）；\n *  2. `GET /api/rsi/rules` 免 session、no-store、与纯函数同源；\n *  3. `GET /api/rsi/overview` 只新增顶层 `rules`，既有 6 字段值原样保留；\n *  4. 两个端点下发的 rules JSON 深度相等。\n */\n\nimport { mkdtempSync, rmSync } from 'node:fs';\nimport { tmpdir } from 'node:os';\nimport path from 'node:path';\nimport http from 'node:http';\nimport type { AddressInfo } from 'node:net';\nimport { afterEach, beforeEach, describe, expect, it } from 'vitest';\nimport request from 'supertest';\nimport { createApp } from '../src/app.js';\nimport { createRuntime, type Runtime } from '../src/runtime.js';\nimport {\n  buildRsiRulesContract,\n  type RsiRuleDefinition,\n  type RsiStateDefinition,\n} from '../src/services/rsi/rules-contract.js';\nimport { DEFAULT_L0_THRESHOLDS } from '../src/services/judge/criteria.js';\nimport { COVERAGE_THRESHOLD } from '../src/services/judge/types.js';\nimport { resetRateLimits } from '../src/middlewares/rate-limit.js';\n\nconst SESSION_ID = 'sess-rules-contract-001';\n\n/** 独立 oracle：main.go:74-77 退出码常量 + rsi-bridge.service.ts:33 六态。 */\nconst EXPECTED_STATES: Array<{\n  state: string;\n  exitCode: number | null;\n  label: string;\n  tone: string;\n}> = [\n  { state: 'improved', exitCode: 0, label: '已改进', tone: 'success' },\n  { state: 'not_improved', exitCode: 1, label: '未改进', tone: 'warning' },\n  { state: 'refused', exitCode: 2, label: '拒收', tone: 'danger' },\n  { state: 'undecidable', exitCode: 3, label: '无法判定', tone: 'warning' },\n  { state: 'skipped', exitCode: null, label: '跳过', tone: 'muted' },\n  { state: 'error', exitCode: null, label: '桥接故障', tone: 'danger' },\n];\n\n/** C2 裁定：main.go:232-237 只对 basis=4/5 设必带字段。 */\nconst EXPECTED_BASIS_REQUIRED_FIELD: Record<number, string | null> = {\n  1: null,\n  2: null,\n  3: null,\n  4: 'source',\n  5: 'why_absent',\n};\n\n/**\n * basis 中文标签锁定（Spec §2 锁定表 / §6 第 11 项）。\n * 第 5 项是「量不到」而非「缺失」：why_absent 语义是这一代量不到读数，\n * 写成「缺失」会与 data_json 字段缺失混淆（rsi-loop.md §2 basis 表口径）。\n */\nconst EXPECTED_BASIS_LABELS = ['实测', '转述', '估算', '模型自述', '量不到'];\n\n/** rules[].name 六条长名（Spec §2 锁定表 / §6-11，以后端契约为唯一权威）。 */\nconst EXPECTED_RULE_NAMES = [\n  '结构与 schema 合法',\n  '判据集显式锚定',\n  '防删指标（防放水）',\n  '产物内容哈希可复核',\n  '同一代账本唯一',\n  '两代读数严格比较',\n];\n\nlet runtime: Runtime;\nlet server: http.Server;\nlet base: string;\nlet tmpRoot: string;\n\nbeforeEach(async () => {\n  // 限流计数器是模块级单例，避免同 worker 内跨用例累积导致 429 误判。\n  resetRateLimits();\n  tmpRoot = mkdtempSync(path.join(tmpdir(), 'codelens-rules-contract-'));\n  runtime = createRuntime({ dbPath: path.join(tmpRoot, 'rules-contract.db') });\n  const app = createApp({ runtime, autoStartModelSync: false });\n  server = app.listen(0, '127.0.0.1');\n  await new Promise<void>((resolve) => server.once('listening', resolve));\n  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;\n\n  const now = Date.now();\n  runtime.db.run(\n    `INSERT INTO sessions (id, title, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,\n    [SESSION_ID, 'rules-contract', 'custom', 'm', now, now],\n  );\n});\n\nafterEach(async () => {\n  await new Promise<void>((resolve) => {\n    server.close(() => resolve());\n    server.closeAllConnections();\n  });\n  await runtime.close();\n  // 宿主 safe-delete shim 并发下可能超时：清理 best-effort，不能把已绿用例判红。\n  try {\n    rmSync(tmpRoot, { recursive: true, force: true });\n  } catch (err) {\n    console.warn('[test-cleanup] 临时目录清理失败（不影响测试结论）:', err instanceof Error ? err.message : err);\n  }\n});\n\ndescribe('buildRsiRulesContract() 纯函数（AC-01 契约取值）', () => {\n  it('version 锁定为 rsi-rules-contract-v1，authority 指向内核', () => {\n    const c = buildRsiRulesContract();\n    expect(c.version).toBe('rsi-rules-contract-v1');\n    expect(c.authority).toBe('server/krsi/main.go');\n    expect(c.reasonRuleIdPattern).toBe('^(R[1-6]):');\n  });\n\n  it('rules 恰 6 条、id 集合 = {R1..R6}、按 order 升序且执行序为 R1..R4,R6,R5', () => {\n    const { rules } = buildRsiRulesContract();\n    expect(rules).toHaveLength(6);\n    expect(new Set(rules.map((r) => r.id))).toEqual(\n      new Set(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']),\n    );\n    expect(rules.map((r) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n    // C5：编号顺序 ≠ 执行顺序，R6 在 R5 之前。\n    expect(rules.map((r) => r.id)).toEqual(['R1', 'R2', 'R3', 'R4', 'R6', 'R5']);\n    // Spec §6-11：六条长名逐字锁定，防止文档/兜底另用简称造成三处漂移。\n    expect(rules.map((r) => r.name)).toEqual(EXPECTED_RULE_NAMES);\n    const byId = Object.fromEntries(rules.map((r) => [r.id, r])) as Record<string, RsiRuleDefinition>;\n    expect(byId['R6']!.order).toBe(5);\n    expect(byId['R5']!.order).toBe(6);\n  });\n\n  it('R1–R4/R6 为拒收类（refused / exit 2），R5 为比较类（0/1/3）', () => {\n    const { rules } = buildRsiRulesContract();\n    const byId = Object.fromEntries(rules.map((r) => [r.id, r])) as Record<string, RsiRuleDefinition>;\n    for (const id of ['R1', 'R2', 'R3', 'R4', 'R6']) {\n      expect(byId[id]!.kind).toBe('rejection');\n      expect(byId[id]!.resultsIn).toEqual(['refused']);\n      expect(byId[id]!.exitCodes).toEqual([2]);\n      expect(byId[id]!.anchor).toContain('server/krsi/main.go:');\n    }\n    expect(byId['R5']!.kind).toBe('comparison');\n    expect(byId['R5']!.resultsIn).toEqual(['improved', 'not_improved', 'undecidable']);\n    expect(byId['R5']!.exitCodes).toEqual([0, 1, 3]);\n  });\n\n  it('每条 rule 的 anchor 落在 main.go 的真实行号区间', () => {\n    const expected: Record<string, string> = {\n      R1: 'server/krsi/main.go:215-243',\n      R2: 'server/krsi/main.go:246-264',\n      R3: 'server/krsi/main.go:267-283',\n      R4: 'server/krsi/main.go:286-308',\n      R6: 'server/krsi/main.go:311-337',\n      R5: 'server/krsi/main.go:344-435,507-538',\n    };\n    for (const r of buildRsiRulesContract().rules) {\n      expect(r.anchor).toBe(expected[r.id]);\n      expect(r.appliesWhen.length).toBeGreaterThan(0);\n      expect(r.criterion.length).toBeGreaterThan(0);\n      expect(r.onHit.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('states 恰 6 态，state/exitCode/label/tone 与 main.go 常量及锁定表一致', () => {\n    const { states } = buildRsiRulesContract();\n    expect(states).toHaveLength(6);\n    expect(\n      states.map(({ state, exitCode, label, tone }) => ({ state, exitCode, label, tone })),\n    ).toEqual(EXPECTED_STATES);\n    for (const s of states as RsiStateDefinition[]) {\n      expect(['krsi', 'bridge']).toContain(s.origin);\n      expect(s.meaning.length).toBeGreaterThan(0);\n      expect(s.action.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('basis 5 条：4→source、5→why_absent，其余必带字段为 null（C2 裁定）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis).toHaveLength(5);\n    expect(basis.map((b) => b.value)).toEqual([1, 2, 3, 4, 5]);\n    expect(basis.map((b) => b.name)).toEqual([\n      'measured', 'relayed', 'estimated', 'model_says', 'absent',\n    ]);\n    for (const b of basis) {\n      expect(b.requiredField).toBe(EXPECTED_BASIS_REQUIRED_FIELD[b.value]);\n    }\n  });\n\n  it('basis 中文标签逐值锁定为 实测/转述/估算/模型自述/量不到（Spec §2 / §6-11）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis.map((b) => b.label)).toEqual(EXPECTED_BASIS_LABELS);\n    // 第 5 项单独钉死：防止「量不到」被误写回「缺失」造成文档/机器契约漂移。\n    expect(basis.find((b) => b.value === 5)!.label).toBe('量不到');\n  });\n\n  it('thresholds 等于运行时 import 值，不复制数字字面量', () => {\n    const { thresholds } = buildRsiRulesContract();\n    expect(thresholds).toEqual({\n      minToolSuccessRate: DEFAULT_L0_THRESHOLDS.minToolSuccessRate,\n      maxApprovalRejectionRate: DEFAULT_L0_THRESHOLDS.maxApprovalRejectionRate,\n      maxBudgetUsageRate: DEFAULT_L0_THRESHOLDS.maxBudgetUsageRate,\n      coverageThreshold: COVERAGE_THRESHOLD,\n    });\n  });\n\n  it('judgeRunStates / criterionStatuses / roles / outOfScope 齐全', () => {\n    const c = buildRsiRulesContract();\n    expect(c.judgeRunStates.map((s) => s.state)).toEqual(['pass', 'fail', 'inconclusive']);\n    expect(c.criterionStatuses.map((s) => s.state)).toEqual(['pass', 'fail', 'unexec']);\n    expect(c.roles.map((r) => r.role)).toEqual(['objective', 'guard']);\n    expect(c.outOfScope.length).toBeGreaterThanOrEqual(3);\n  });\n\n  it('每次调用返回全新对象，改动不会污染后续调用（纯函数无共享态）', () => {\n    const first = buildRsiRulesContract();\n    first.rules[0]!.name = 'MUTATED';\n    first.states[0]!.label = 'MUTATED';\n    const second = buildRsiRulesContract();\n    expect(second.rules[0]!.name).not.toBe('MUTATED');\n    expect(second.states[0]!.label).not.toBe('MUTATED');\n    expect(second).toEqual(buildRsiRulesContract());\n  });\n});\n\ndescribe('GET /api/rsi/rules（AC-01）', () => {\n  it('免 session、200、Cache-Control: no-store，返回体与纯函数同源', async () => {\n    const res = await request(base).get('/api/rsi/rules');\n    expect(res.status).toBe(200);\n    expect(res.headers['cache-control']).toContain('no-store');\n    expect(res.body).toEqual(buildRsiRulesContract());\n    expect(res.body.version).toBe('rsi-rules-contract-v1');\n    expect(res.body.rules).toHaveLength(6);\n    expect(res.body.states).toHaveLength(6);\n    expect(res.body.rules.map((r: RsiRuleDefinition) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n  });\n});\n\ndescribe('GET /api/rsi/overview（AC-02）', () => {\n  it('既有 6 个顶层字段值原样保留，仅新增顶层 rules', async () => {\n    const res = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(res.status).toBe(200);\n    const body = res.body;\n\n    // 顶层键集合 = 6 个既有字段 + 新增 rules，多一个少一个都判不合格。\n    expect(Object.keys(body).sort()).toEqual(\n      ['attributions', 'eval', 'judgeRuns', 'rsiRuns', 'rules', 'session', 'verdictsByRun'].sort(),\n    );\n    expect(body.session).toMatchObject({ id: SESSION_ID, title: 'rules-contract' });\n    expect(body.judgeRuns).toEqual([]);\n    expect(body.verdictsByRun).toEqual({});\n    expect(body.rsiRuns).toEqual([]);\n    expect(body.attributions).toEqual([]);\n    expect(body.eval).toBeNull();\n    expect(body.rules).toEqual(buildRsiRulesContract());\n  });\n\n  it('两个端点下发的 rules JSON 深度相等', async () => {\n    const rulesRes = await request(base).get('/api/rsi/rules');\n    const overviewRes = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(rulesRes.status).toBe(200);\n    expect(overviewRes.status).toBe(200);\n    expect(overviewRes.body.rules).toEqual(rulesRes.body);\n  });\n});\n"},"truncated":true,"durationMs":5,"resultId":"ce00ba3a-817a-4fae-8b4f-b80f435cabbb"}
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I have a good understanding of"}
+
+event: reasoning
+data: {"text":" the codebase. Let me"}
+
+event: reasoning
+data: {"text":" also read"}
+
+event: reasoning
+data: {"text":" the rest of the test"}
+
+event: reasoning
+data: {"text":" file to understand how they"}
+
+event: reasoning
+data: {"text":" set up the app for"}
+
+event: reasoning
+data: {"text":" testing."}
+
+event: tool_call
+data: {"callId":"call-ee908eca-f7e2-4b5a-9b73-a7e14e29b255","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/tests/rsi-rules-contract.test.ts","lineStart":80},"risk":"low","approvalMode":"none","source":"builtin","iteration":5,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-ee908eca-f7e2-4b5a-9b73-a7e14e29b255","stage":"reading","message":"读取 rsi-rules-contract.test.ts","at":1794498832748}
+
+event: tool_result
+data: {"callId":"call-ee908eca-f7e2-4b5a-9b73-a7e14e29b255","name":"fs.read","status":"success","summary":"已读取 rsi-rules-contract.test.ts（11554 字节，267 行）","data":{"kind":"file","path":"rsi-rules-contract.test.ts","encoding":"utf8","sizeBytes":11554,"truncated":false,"lines":{"returned":188,"total":267},"content":"beforeEach(async () => {\n  // 限流计数器是模块级单例，避免同 worker 内跨用例累积导致 429 误判。\n  resetRateLimits();\n  tmpRoot = mkdtempSync(path.join(tmpdir(), 'codelens-rules-contract-'));\n  runtime = createRuntime({ dbPath: path.join(tmpRoot, 'rules-contract.db') });\n  const app = createApp({ runtime, autoStartModelSync: false });\n  server = app.listen(0, '127.0.0.1');\n  await new Promise<void>((resolve) => server.once('listening', resolve));\n  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;\n\n  const now = Date.now();\n  runtime.db.run(\n    `INSERT INTO sessions (id, title, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,\n    [SESSION_ID, 'rules-contract', 'custom', 'm', now, now],\n  );\n});\n\nafterEach(async () => {\n  await new Promise<void>((resolve) => {\n    server.close(() => resolve());\n    server.closeAllConnections();\n  });\n  await runtime.close();\n  // 宿主 safe-delete shim 并发下可能超时：清理 best-effort，不能把已绿用例判红。\n  try {\n    rmSync(tmpRoot, { recursive: true, force: true });\n  } catch (err) {\n    console.warn('[test-cleanup] 临时目录清理失败（不影响测试结论）:', err instanceof Error ? err.message : err);\n  }\n});\n\ndescribe('buildRsiRulesContract() 纯函数（AC-01 契约取值）', () => {\n  it('version 锁定为 rsi-rules-contract-v1，authority 指向内核', () => {\n    const c = buildRsiRulesContract();\n    expect(c.version).toBe('rsi-rules-contract-v1');\n    expect(c.authority).toBe('server/krsi/main.go');\n    expect(c.reasonRuleIdPattern).toBe('^(R[1-6]):');\n  });\n\n  it('rules 恰 6 条、id 集合 = {R1..R6}、按 order 升序且执行序为 R1..R4,R6,R5', () => {\n    const { rules } = buildRsiRulesContract();\n    expect(rules).toHaveLength(6);\n    expect(new Set(rules.map((r) => r.id))).toEqual(\n      new Set(['R1', 'R2', 'R3', 'R4', 'R5', 'R6']),\n    );\n    expect(rules.map((r) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n    // C5：编号顺序 ≠ 执行顺序，R6 在 R5 之前。\n    expect(rules.map((r) => r.id)).toEqual(['R1', 'R2', 'R3', 'R4', 'R6', 'R5']);\n    // Spec §6-11：六条长名逐字锁定，防止文档/兜底另用简称造成三处漂移。\n    expect(rules.map((r) => r.name)).toEqual(EXPECTED_RULE_NAMES);\n    const byId = Object.fromEntries(rules.map((r) => [r.id, r])) as Record<string, RsiRuleDefinition>;\n    expect(byId['R6']!.order).toBe(5);\n    expect(byId['R5']!.order).toBe(6);\n  });\n\n  it('R1–R4/R6 为拒收类（refused / exit 2），R5 为比较类（0/1/3）', () => {\n    const { rules } = buildRsiRulesContract();\n    const byId = Object.fromEntries(rules.map((r) => [r.id, r])) as Record<string, RsiRuleDefinition>;\n    for (const id of ['R1', 'R2', 'R3', 'R4', 'R6']) {\n      expect(byId[id]!.kind).toBe('rejection');\n      expect(byId[id]!.resultsIn).toEqual(['refused']);\n      expect(byId[id]!.exitCodes).toEqual([2]);\n      expect(byId[id]!.anchor).toContain('server/krsi/main.go:');\n    }\n    expect(byId['R5']!.kind).toBe('comparison');\n    expect(byId['R5']!.resultsIn).toEqual(['improved', 'not_improved', 'undecidable']);\n    expect(byId['R5']!.exitCodes).toEqual([0, 1, 3]);\n  });\n\n  it('每条 rule 的 anchor 落在 main.go 的真实行号区间', () => {\n    const expected: Record<string, string> = {\n      R1: 'server/krsi/main.go:215-243',\n      R2: 'server/krsi/main.go:246-264',\n      R3: 'server/krsi/main.go:267-283',\n      R4: 'server/krsi/main.go:286-308',\n      R6: 'server/krsi/main.go:311-337',\n      R5: 'server/krsi/main.go:344-435,507-538',\n    };\n    for (const r of buildRsiRulesContract().rules) {\n      expect(r.anchor).toBe(expected[r.id]);\n      expect(r.appliesWhen.length).toBeGreaterThan(0);\n      expect(r.criterion.length).toBeGreaterThan(0);\n      expect(r.onHit.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('states 恰 6 态，state/exitCode/label/tone 与 main.go 常量及锁定表一致', () => {\n    const { states } = buildRsiRulesContract();\n    expect(states).toHaveLength(6);\n    expect(\n      states.map(({ state, exitCode, label, tone }) => ({ state, exitCode, label, tone })),\n    ).toEqual(EXPECTED_STATES);\n    for (const s of states as RsiStateDefinition[]) {\n      expect(['krsi', 'bridge']).toContain(s.origin);\n      expect(s.meaning.length).toBeGreaterThan(0);\n      expect(s.action.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('basis 5 条：4→source、5→why_absent，其余必带字段为 null（C2 裁定）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis).toHaveLength(5);\n    expect(basis.map((b) => b.value)).toEqual([1, 2, 3, 4, 5]);\n    expect(basis.map((b) => b.name)).toEqual([\n      'measured', 'relayed', 'estimated', 'model_says', 'absent',\n    ]);\n    for (const b of basis) {\n      expect(b.requiredField).toBe(EXPECTED_BASIS_REQUIRED_FIELD[b.value]);\n    }\n  });\n\n  it('basis 中文标签逐值锁定为 实测/转述/估算/模型自述/量不到（Spec §2 / §6-11）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis.map((b) => b.label)).toEqual(EXPECTED_BASIS_LABELS);\n    // 第 5 项单独钉死：防止「量不到」被误写回「缺失」造成文档/机器契约漂移。\n    expect(basis.find((b) => b.value === 5)!.label).toBe('量不到');\n  });\n\n  it('thresholds 等于运行时 import 值，不复制数字字面量', () => {\n    const { thresholds } = buildRsiRulesContract();\n    expect(thresholds).toEqual({\n      minToolSuccessRate: DEFAULT_L0_THRESHOLDS.minToolSuccessRate,\n      maxApprovalRejectionRate: DEFAULT_L0_THRESHOLDS.maxApprovalRejectionRate,\n      maxBudgetUsageRate: DEFAULT_L0_THRESHOLDS.maxBudgetUsageRate,\n      coverageThreshold: COVERAGE_THRESHOLD,\n    });\n  });\n\n  it('judgeRunStates / criterionStatuses / roles / outOfScope 齐全', () => {\n    const c = buildRsiRulesContract();\n    expect(c.judgeRunStates.map((s) => s.state)).toEqual(['pass', 'fail', 'inconclusive']);\n    expect(c.criterionStatuses.map((s) => s.state)).toEqual(['pass', 'fail', 'unexec']);\n    expect(c.roles.map((r) => r.role)).toEqual(['objective', 'guard']);\n    expect(c.outOfScope.length).toBeGreaterThanOrEqual(3);\n  });\n\n  it('每次调用返回全新对象，改动不会污染后续调用（纯函数无共享态）', () => {\n    const first = buildRsiRulesContract();\n    first.rules[0]!.name = 'MUTATED';\n    first.states[0]!.label = 'MUTATED';\n    const second = buildRsiRulesContract();\n    expect(second.rules[0]!.name).not.toBe('MUTATED');\n    expect(second.states[0]!.label).not.toBe('MUTATED');\n    expect(second).toEqual(buildRsiRulesContract());\n  });\n});\n\ndescribe('GET /api/rsi/rules（AC-01）', () => {\n  it('免 session、200、Cache-Control: no-store，返回体与纯函数同源', async () => {\n    const res = await request(base).get('/api/rsi/rules');\n    expect(res.status).toBe(200);\n    expect(res.headers['cache-control']).toContain('no-store');\n    expect(res.body).toEqual(buildRsiRulesContract());\n    expect(res.body.version).toBe('rsi-rules-contract-v1');\n    expect(res.body.rules).toHaveLength(6);\n    expect(res.body.states).toHaveLength(6);\n    expect(res.body.rules.map((r: RsiRuleDefinition) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n  });\n});\n\ndescribe('GET /api/rsi/overview（AC-02）', () => {\n  it('既有 6 个顶层字段值原样保留，仅新增顶层 rules', async () => {\n    const res = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(res.status).toBe(200);\n    const body = res.body;\n\n    // 顶层键集合 = 6 个既有字段 + 新增 rules，多一个少一个都判不合格。\n    expect(Object.keys(body).sort()).toEqual(\n      ['attributions', 'eval', 'judgeRuns', 'rsiRuns', 'rules', 'session', 'verdictsByRun'].sort(),\n    );\n    expect(body.session).toMatchObject({ id: SESSION_ID, title: 'rules-contract' });\n    expect(body.judgeRuns).toEqual([]);\n    expect(body.verdictsByRun).toEqual({});\n    expect(body.rsiRuns).toEqual([]);\n    expect(body.attributions).toEqual([]);\n    expect(body.eval).toBeNull();\n    expect(body.rules).toEqual(buildRsiRulesContract());\n  });\n\n  it('两个端点下发的 rules JSON 深度相等', async () => {\n    const rulesRes = await request(base).get('/api/rsi/rules');\n    const overviewRes = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(rulesRes.status).toBe(200);\n    expect(overviewRes.status).toBe(200);\n    expect(overviewRes.body.rules).toEqual(rulesRes.body);\n  });\n});\n"},"truncated":true,"durationMs":4,"resultId":"025f41df-ffaf-47d2-8cee-1816e399fec1"}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me continue reading the test file"}
+
+event: reasoning
+data: {"text":" to understand how the tests"}
+
+event: reasoning
+data: {"text":" are structured"}
+
+event: reasoning
+data: {"text":", especially for"}
+
+event: reasoning
+data: {"text":" the `/api/rsi/r"}
+
+event: reasoning
+data: {"text":"ules` and"}
+
+event: reasoning
+data: {"text":" `/api/rsi/overview"}
+
+event: reasoning
+data: {"text":"` endpoints."}
+
+event: tool_call
+data: {"callId":"call-8c73f6b9-3209-403d-9f0b-00dbf80b1b5f","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/tests/rsi-rules-contract.test.ts","lineStart":146},"risk":"low","approvalMode":"none","source":"builtin","iteration":6,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-8c73f6b9-3209-403d-9f0b-00dbf80b1b5f","stage":"reading","message":"读取 rsi-rules-contract.test.ts","at":1794498834661}
+
+event: tool_result
+data: {"callId":"call-8c73f6b9-3209-403d-9f0b-00dbf80b1b5f","name":"fs.read","status":"success","summary":"已读取 rsi-rules-contract.test.ts（11554 字节，267 行）","data":{"kind":"file","path":"rsi-rules-contract.test.ts","encoding":"utf8","sizeBytes":11554,"truncated":false,"lines":{"returned":122,"total":267},"content":"    expect(byId['R5']!.exitCodes).toEqual([0, 1, 3]);\n  });\n\n  it('每条 rule 的 anchor 落在 main.go 的真实行号区间', () => {\n    const expected: Record<string, string> = {\n      R1: 'server/krsi/main.go:215-243',\n      R2: 'server/krsi/main.go:246-264',\n      R3: 'server/krsi/main.go:267-283',\n      R4: 'server/krsi/main.go:286-308',\n      R6: 'server/krsi/main.go:311-337',\n      R5: 'server/krsi/main.go:344-435,507-538',\n    };\n    for (const r of buildRsiRulesContract().rules) {\n      expect(r.anchor).toBe(expected[r.id]);\n      expect(r.appliesWhen.length).toBeGreaterThan(0);\n      expect(r.criterion.length).toBeGreaterThan(0);\n      expect(r.onHit.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('states 恰 6 态，state/exitCode/label/tone 与 main.go 常量及锁定表一致', () => {\n    const { states } = buildRsiRulesContract();\n    expect(states).toHaveLength(6);\n    expect(\n      states.map(({ state, exitCode, label, tone }) => ({ state, exitCode, label, tone })),\n    ).toEqual(EXPECTED_STATES);\n    for (const s of states as RsiStateDefinition[]) {\n      expect(['krsi', 'bridge']).toContain(s.origin);\n      expect(s.meaning.length).toBeGreaterThan(0);\n      expect(s.action.length).toBeGreaterThan(0);\n    }\n  });\n\n  it('basis 5 条：4→source、5→why_absent，其余必带字段为 null（C2 裁定）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis).toHaveLength(5);\n    expect(basis.map((b) => b.value)).toEqual([1, 2, 3, 4, 5]);\n    expect(basis.map((b) => b.name)).toEqual([\n      'measured', 'relayed', 'estimated', 'model_says', 'absent',\n    ]);\n    for (const b of basis) {\n      expect(b.requiredField).toBe(EXPECTED_BASIS_REQUIRED_FIELD[b.value]);\n    }\n  });\n\n  it('basis 中文标签逐值锁定为 实测/转述/估算/模型自述/量不到（Spec §2 / §6-11）', () => {\n    const { basis } = buildRsiRulesContract();\n    expect(basis.map((b) => b.label)).toEqual(EXPECTED_BASIS_LABELS);\n    // 第 5 项单独钉死：防止「量不到」被误写回「缺失」造成文档/机器契约漂移。\n    expect(basis.find((b) => b.value === 5)!.label).toBe('量不到');\n  });\n\n  it('thresholds 等于运行时 import 值，不复制数字字面量', () => {\n    const { thresholds } = buildRsiRulesContract();\n    expect(thresholds).toEqual({\n      minToolSuccessRate: DEFAULT_L0_THRESHOLDS.minToolSuccessRate,\n      maxApprovalRejectionRate: DEFAULT_L0_THRESHOLDS.maxApprovalRejectionRate,\n      maxBudgetUsageRate: DEFAULT_L0_THRESHOLDS.maxBudgetUsageRate,\n      coverageThreshold: COVERAGE_THRESHOLD,\n    });\n  });\n\n  it('judgeRunStates / criterionStatuses / roles / outOfScope 齐全', () => {\n    const c = buildRsiRulesContract();\n    expect(c.judgeRunStates.map((s) => s.state)).toEqual(['pass', 'fail', 'inconclusive']);\n    expect(c.criterionStatuses.map((s) => s.state)).toEqual(['pass', 'fail', 'unexec']);\n    expect(c.roles.map((r) => r.role)).toEqual(['objective', 'guard']);\n    expect(c.outOfScope.length).toBeGreaterThanOrEqual(3);\n  });\n\n  it('每次调用返回全新对象，改动不会污染后续调用（纯函数无共享态）', () => {\n    const first = buildRsiRulesContract();\n    first.rules[0]!.name = 'MUTATED';\n    first.states[0]!.label = 'MUTATED';\n    const second = buildRsiRulesContract();\n    expect(second.rules[0]!.name).not.toBe('MUTATED');\n    expect(second.states[0]!.label).not.toBe('MUTATED');\n    expect(second).toEqual(buildRsiRulesContract());\n  });\n});\n\ndescribe('GET /api/rsi/rules（AC-01）', () => {\n  it('免 session、200、Cache-Control: no-store，返回体与纯函数同源', async () => {\n    const res = await request(base).get('/api/rsi/rules');\n    expect(res.status).toBe(200);\n    expect(res.headers['cache-control']).toContain('no-store');\n    expect(res.body).toEqual(buildRsiRulesContract());\n    expect(res.body.version).toBe('rsi-rules-contract-v1');\n    expect(res.body.rules).toHaveLength(6);\n    expect(res.body.states).toHaveLength(6);\n    expect(res.body.rules.map((r: RsiRuleDefinition) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n  });\n});\n\ndescribe('GET /api/rsi/overview（AC-02）', () => {\n  it('既有 6 个顶层字段值原样保留，仅新增顶层 rules', async () => {\n    const res = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(res.status).toBe(200);\n    const body = res.body;\n\n    // 顶层键集合 = 6 个既有字段 + 新增 rules，多一个少一个都判不合格。\n    expect(Object.keys(body).sort()).toEqual(\n      ['attributions', 'eval', 'judgeRuns', 'rsiRuns', 'rules', 'session', 'verdictsByRun'].sort(),\n    );\n    expect(body.session).toMatchObject({ id: SESSION_ID, title: 'rules-contract' });\n    expect(body.judgeRuns).toEqual([]);\n    expect(body.verdictsByRun).toEqual({});\n    expect(body.rsiRuns).toEqual([]);\n    expect(body.attributions).toEqual([]);\n    expect(body.eval).toBeNull();\n    expect(body.rules).toEqual(buildRsiRulesContract());\n  });\n\n  it('两个端点下发的 rules JSON 深度相等', async () => {\n    const rulesRes = await request(base).get('/api/rsi/rules');\n    const overviewRes = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(rulesRes.status).toBe(200);\n    expect(overviewRes.status).toBe(200);\n    expect(overviewRes.body.rules).toEqual(rulesRes.body);\n  });\n});\n"},"truncated":true,"durationMs":4,"resultId":"2406d6ff-0643-4a56-8110-4106f1e8b6e2"}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me continue reading the test file"}
+
+event: reasoning
+data: {"text":" to see the"}
+
+event: reasoning
+data: {"text":" endpoint"}
+
+event: reasoning
+data: {"text":" tests."}
+
+event: tool_call
+data: {"callId":"call-09d9e011-39ec-44c9-8d92-925b882fbcd4","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/tests/rsi-rules-contract.test.ts","lineStart":217},"risk":"low","approvalMode":"none","source":"builtin","iteration":7,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-09d9e011-39ec-44c9-8d92-925b882fbcd4","stage":"reading","message":"读取 rsi-rules-contract.test.ts","at":1794498836425}
+
+event: tool_result
+data: {"callId":"call-09d9e011-39ec-44c9-8d92-925b882fbcd4","name":"fs.read","status":"success","summary":"已读取 rsi-rules-contract.test.ts（11554 字节，267 行）","data":{"kind":"file","path":"rsi-rules-contract.test.ts","encoding":"utf8","sizeBytes":11554,"truncated":false,"lines":{"returned":51,"total":267},"content":"    const first = buildRsiRulesContract();\n    first.rules[0]!.name = 'MUTATED';\n    first.states[0]!.label = 'MUTATED';\n    const second = buildRsiRulesContract();\n    expect(second.rules[0]!.name).not.toBe('MUTATED');\n    expect(second.states[0]!.label).not.toBe('MUTATED');\n    expect(second).toEqual(buildRsiRulesContract());\n  });\n});\n\ndescribe('GET /api/rsi/rules（AC-01）', () => {\n  it('免 session、200、Cache-Control: no-store，返回体与纯函数同源', async () => {\n    const res = await request(base).get('/api/rsi/rules');\n    expect(res.status).toBe(200);\n    expect(res.headers['cache-control']).toContain('no-store');\n    expect(res.body).toEqual(buildRsiRulesContract());\n    expect(res.body.version).toBe('rsi-rules-contract-v1');\n    expect(res.body.rules).toHaveLength(6);\n    expect(res.body.states).toHaveLength(6);\n    expect(res.body.rules.map((r: RsiRuleDefinition) => r.order)).toEqual([1, 2, 3, 4, 5, 6]);\n  });\n});\n\ndescribe('GET /api/rsi/overview（AC-02）', () => {\n  it('既有 6 个顶层字段值原样保留，仅新增顶层 rules', async () => {\n    const res = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(res.status).toBe(200);\n    const body = res.body;\n\n    // 顶层键集合 = 6 个既有字段 + 新增 rules，多一个少一个都判不合格。\n    expect(Object.keys(body).sort()).toEqual(\n      ['attributions', 'eval', 'judgeRuns', 'rsiRuns', 'rules', 'session', 'verdictsByRun'].sort(),\n    );\n    expect(body.session).toMatchObject({ id: SESSION_ID, title: 'rules-contract' });\n    expect(body.judgeRuns).toEqual([]);\n    expect(body.verdictsByRun).toEqual({});\n    expect(body.rsiRuns).toEqual([]);\n    expect(body.attributions).toEqual([]);\n    expect(body.eval).toBeNull();\n    expect(body.rules).toEqual(buildRsiRulesContract());\n  });\n\n  it('两个端点下发的 rules JSON 深度相等', async () => {\n    const rulesRes = await request(base).get('/api/rsi/rules');\n    const overviewRes = await request(base).get(`/api/rsi/overview?session=${SESSION_ID}`);\n    expect(rulesRes.status).toBe(200);\n    expect(overviewRes.status).toBe(200);\n    expect(overviewRes.body.rules).toEqual(rulesRes.body);\n  });\n});\n"},"truncated":false,"durationMs":5,"resultId":"936dba6f-671c-4ace-a214-5f5b8decfb84"}
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I have a good understanding of"}
+
+event: reasoning
+data: {"text":" the codebase. Let me"}
+
+event: reasoning
+data: {"text":" also check the client/src/services"}
+
+event: reasoning
+data: {"text":"/api.ts to understand"}
+
+event: reasoning
+data: {"text":" what needs"}
+
+event: reasoning
+data: {"text":" to be tested"}
+
+event: reasoning
+data: {"text":" in"}
+
+event: reasoning
+data: {"text":" the new test file."}
+
+event: tool_call
+data: {"callId":"call-a656cbf0-76c1-4443-b018-879c2b1e80a7","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts"},"risk":"low","approvalMode":"none","source":"builtin","iteration":8,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-a656cbf0-76c1-4443-b018-879c2b1e80a7","stage":"reading","message":"读取 services\\api.ts","at":1794498839621}
+
+event: tool_result
+data: {"callId":"call-a656cbf0-76c1-4443-b018-879c2b1e80a7","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":419,"total":419},"content":"// API 封装 —— 所有后端调用集中于此（docs/agent/spec.md §5 端点清单，22 个可调用端点）\r\n\r\nimport type {\r\n  ApprovalSubmitRequest,\r\n  McpServer,\r\n  Provider,\r\n  SessionDetail,\r\n  ResumeResponse,\r\n  RunAuditResponse,\r\n  SessionListResponse,\r\n  ServerSession,\r\n  ToolDefinitionPublic,\r\n} from '../types';\r\n\r\nconst BASE = '/api/v1';\r\n\r\n/**\r\n * 拼查询串：跳过 undefined 与空串，返回带 `?` 的后缀（无参数时原样返回 path）。\r\n *\r\n * 此前每个带参数的端点都手写一遍「建 qs → set → toString → 判断有无 ?」，\r\n * 四份几乎一模一样；而漏掉空值判断就会发出 `?limit=undefined` 这类请求 ——\r\n * 服务端要额外做一次解析容错才能不报错。空串同样跳过：`?q=` 与不带 q 语义不同。\r\n */\r\nfunction withQuery(\r\n  path: string,\r\n  params: Record<string, string | number | undefined>,\r\n): string {\r\n  const qs = new URLSearchParams();\r\n  for (const [key, value] of Object.entries(params)) {\r\n    if (value === undefined) continue;\r\n    const text = String(value);\r\n    if (text.length === 0) continue;\r\n    qs.set(key, text);\r\n  }\r\n  const suffix = qs.toString();\r\n  return suffix ? `${path}?${suffix}` : path;\r\n}\r\n\r\nexport class ApiError extends Error {\r\n  code: string;\r\n  status: number;\r\n  /** 422 时携带被拒目录及原因（沙箱权限），便于前端高亮。 */\r\n  rejected?: Array<{ dir: string; error: string }>;\r\n  constructor(code: string, message: string, status: number, rejected?: Array<{ dir: string; error: string }>) {\r\n    super(message);\r\n    this.name = 'ApiError';\r\n    this.code = code;\r\n    this.status = status;\r\n    this.rejected = rejected;\r\n  }\r\n}\r\n\r\nconst SECRET_KEY_RE = /(api[_-]?key|token|secret|password|authorization)/i;\r\n\r\n/**\r\n * 递归打码疑似密钥字段：字段名匹配 apiKey/token/secret/password/authorization 时值置为脱敏占位。\r\n * 用于任何可能进入日志 / UI 的接口载荷，避免 API Key 经错误响应泄露（F-02）。\r\n */\r\nfunction redactSecrets<T>(value: T): T {\r\n  if (typeof value === 'string') {\r\n    return value.replace(\r\n      /(api[_-]?key|secret|token|password|authorization)\\s*[:=]\\s*\\S+/gi,\r\n      '$1: ***REDACTED***',\r\n    ) as unknown as T;\r\n  }\r\n  if (value && typeof value === 'object') {\r\n    const out: Record<string, unknown> = Array.isArray(value)\r\n      ? ([] as unknown as Record<string, unknown>)\r\n      : {};\r\n    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {\r\n      if (SECRET_KEY_RE.test(k) && typeof v === 'string') out[k] = '***REDACTED***';\r\n      else out[k] = redactSecrets(v);\r\n    }\r\n    return out as T;\r\n  }\r\n  return value;\r\n}\r\n\r\nasync function parseErrorResponse(res: Response): Promise<ApiError> {\r\n  try {\r\n    const raw = (await res.json()) as {\r\n      error?: { code?: string; message?: string } | string;\r\n      message?: string;\r\n      rejected?: Array<{ dir: string; error: string }>;\r\n    };\r\n    // 服务端错误体可能回显含密钥的上下文，先整体脱敏再取值。\r\n    const data = redactSecrets(raw);\r\n    if (data && typeof data.error === 'object' && data.error !== null) {\r\n      const code = data.error.code ?? `HTTP_${res.status}`;\r\n      const message = data.error.message ?? `请求失败（HTTP ${res.status}）`;\r\n      return new ApiError(code, message, res.status, data.rejected);\r\n    }\r\n    const code = typeof data.error === 'string' ? data.error : `HTTP_${res.status}`;\r\n    const message = data.message ?? `请求失败（HTTP ${res.status}）`;\r\n    return new ApiError(code, message, res.status, data.rejected);\r\n  } catch {\r\n    return new ApiError(`HTTP_${res.status}`, `请求失败（HTTP ${res.status}）`, res.status);\r\n  }\r\n}\r\n\r\nasync function get<T>(path: string): Promise<T> {\r\n  const res = await fetch(`${BASE}${path}`);\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as T;\r\n}\r\n\r\nasync function send<T>(path: string, body?: unknown, method = 'POST', deviceToken?: string | null): Promise<T> {\r\n  const headers: Record<string, string> = { 'Content-Type': 'application/json' };\r\n  if (deviceToken) headers['X-Device-Token'] = deviceToken;\r\n  const res = await fetch(`${BASE}${path}`, {\r\n    method,\r\n    headers,\r\n    body: body === undefined ? undefined : JSON.stringify(body),\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as T;\r\n}\r\n\r\n// ── 健康与 Provider ─────────────────────────────────────────\r\n\r\n/** GET /api/health —— StatusBar 连接状态点（含 db/mcp/sandbox） */\r\nexport async function getHealth(): Promise<{\r\n  status: string;\r\n  db: { ok: boolean };\r\n  mcp: { servers: number; healthy: number };\r\n}> {\r\n  const res = await fetch('/api/health');\r\n  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, '健康检查失败', res.status);\r\n  return (await res.json()) as {\r\n    status: string;\r\n    db: { ok: boolean };\r\n    mcp: { servers: number; healthy: number };\r\n  };\r\n}\r\n\r\n/** GET /api/v1/providers —— provider 与模型列表（不含 Key） */\r\nexport async function getProviders(): Promise<Provider[]> {\r\n  const data = await get<{ providers?: Provider[] }>('/providers');\r\n  return data.providers ?? [];\r\n}\r\n\r\n/** GET /api/v1/providers/capabilities —— 能力探测合并视图（AC-01） */\r\nexport async function getProviderCapabilities(): Promise<{\r\n  capabilities: Array<{\r\n    provider: string;\r\n    model: string;\r\n    supportsFunctionCalling: boolean | null;\r\n    probeStatus: string;\r\n    contextWindow: number | null;\r\n    lightweightModel: string | null;\r\n    probedAt: number | null;\r\n    notes: string | null;\r\n  }>;\r\n}> {\r\n  return get('/providers/capabilities');\r\n}\r\n\r\n/** GET /api/v1/providers/sync-status —— 最近一次上游模型同步状态与最近日志 */\r\nexport async function getProviderSyncStatus(): Promise<{\r\n  sync: {\r\n    lastRunAt: number | null;\r\n    lastStatus: string;\r\n    lastError: string | null;\r\n    lastProviderCount: number | null;\r\n    lastModelCount: number | null;\r\n    sourceUrl: string;\r\n  };\r\n  recentLogs: Array<{\r\n    id: number;\r\n    occurred_at: number;\r\n    status: string;\r\n    attempt: number;\r\n    message: string;\r\n    detail: string | null;\r\n    source_url: string;\r\n  }>;\r\n}> {\r\n  return get('/providers/sync-status');\r\n}\r\n\r\n// ── 会话（服务端持久化 + 恢复码） ────────────────────────────\r\n\r\n/** GET /api/v1/sessions —— 列表（带 X-Device-Token 时只返回本设备会话） */\r\nexport async function listSessions(deviceToken?: string | null): Promise<SessionListResponse> {\r\n  const res = await fetch(`${BASE}/sessions?limit=100`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionListResponse;\r\n}\r\n\r\n/** POST /api/v1/sessions —— 创建；recoveryCode 只此一次明文 */\r\nexport async function createSession(input: {\r\n  provider: string;\r\n  model: string;\r\n  title?: string;\r\n}): Promise<{ session: ServerSession; recoveryCode: string; deviceToken: string }> {\r\n  return send('/sessions', input);\r\n}\r\n\r\n/** GET /api/v1/sessions/:id —— 详情（消息 + 工具调用 + 审批） */\r\nexport async function getSessionDetail(\r\n  sessionId: string,\r\n  deviceToken?: string | null,\r\n): Promise<SessionDetail> {\r\n  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionDetail;\r\n}\r\n\r\n/** PATCH /api/v1/sessions/:id —— 重命名 / 改模型 */\r\nexport async function patchSession(\r\n  sessionId: string,\r\n  patch: { title?: string; model?: string; channelMode?: 'auto' | 'native' | 'react' },\r\n  deviceToken?: string | null,\r\n): Promise<{ session: ServerSession }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}`, patch, 'PATCH', deviceToken);\r\n}\r\n\r\n/** DELETE /api/v1/sessions/:id —— 删除（级联） */\r\nexport async function deleteSession(sessionId: string, deviceToken?: string | null): Promise<void> {\r\n  await send(`/sessions/${encodeURIComponent(sessionId)}`, undefined, 'DELETE', deviceToken);\r\n}\r\n\r\n/** POST /api/v1/sessions/:id/recovery-code —— 重生成（旧码立即失效） */\r\nexport async function regenerateRecoveryCode(sessionId: string): Promise<{ recoveryCode: string }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}/recovery-code`, {});\r\n}\r\n\r\n/** POST /api/v1/sessions/recover —— 恢复码换回会话（旧码立即失效） */\r\nexport async function recoverSession(recoveryCode: string, deviceToken: string): Promise<{\r\n  session: ServerSession;\r\n  deviceToken: string;\r\n}> {\r\n  return send('/sessions/recover', { recoveryCode, deviceToken });\r\n}\r\n\r\n// ── 工具注册表 ──────────────────────────────────────────────\r\n\r\n/** GET /api/v1/tools —— 双轨名 + 风险分组 */\r\nexport async function listTools(): Promise<{\r\n  tools: ToolDefinitionPublic[];\r\n  grouped: Record<'low' | 'medium' | 'high', string[]>;\r\n}> {\r\n  return get('/tools');\r\n}\r\n\r\n/** PATCH /api/v1/tools/:name —— 启用 / 禁用 */\r\nexport async function patchTool(name: string, enabled: boolean): Promise<{ name: string; enabled: boolean }> {\r\n  return send(`/tools/${encodeURIComponent(name)}`, { enabled }, 'PATCH');\r\n}\r\n\r\n// ── 审批（独立端点，不走 SSE 同流） ─────────────────────────\r\n\r\n/** POST /api/v1/approvals/:id —— 三值决定（.strict()：body 出现 arguments 一律 400） */\r\nexport async function submitApproval(approvalId: string, body: ApprovalSubmitRequest): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}`, body);\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/revise —— AC-10 改参数重试（唯一可带 arguments 的端点） */\r\nexport async function reviseApproval(\r\n  approvalId: string,\r\n  token: string,\r\n  args: Record<string, unknown>,\r\n): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/revise`, { token, arguments: args });\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/reissue —— AUDIT-009 续期（重新签发未过期令牌，延长 5 分钟） */\r\nexport async function reissueApproval(\r\n  approvalId: string,\r\n  token: string,\r\n): Promise<{ ok: true; approvalId: string; approvalToken: string; expiresAt: number }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/reissue`, { token });\r\n}\r\n\r\n// ── Agent 运行控制 ─────────────────────────────────────────\r\n\r\n/**\r\n * POST /api/v1/agent/abort —— 服务端直停当前会话的运行（P1-6）。\r\n * 本地 abort() 经「断开→res.close」也能停，但该端点不等 TCP 关闭传播到\r\n * AbortRegistry，且跨标签页（本页无活跃 controller）时是唯一入口。\r\n * aborted=false 表示该会话当前没有在跑的任务（幂等无害）。\r\n */\r\nexport async function abortAgentRun(sessionId: string): Promise<{ ok: boolean; aborted: boolean }> {\r\n  return send('/agent/abort', { sessionId });\r\n}\r\n\r\n/** 兜底 Key 试用/预算状态（按请求 IP）。 */\r\nexport interface TrialStatus {\r\n  enabled: boolean;\r\n  trialModeEnabled: boolean;\r\n  serverKeyConfigured: boolean;\r\n  dailyLimit: number | null;\r\n  usedRuns: number;\r\n  remainingRuns: number | null;\r\n  perTaskTokenLimit: number;\r\n  budgetExceeded: boolean;\r\n  budgetReason: 'trial_exhausted' | 'global_budget_exhausted' | 'per_ip_budget_exhausted' | null;\r\n  /** 试用锁定的上游（未启用试用锁定时为 null）。只含地址与模型，不含密钥。 */\r\n  trialUpstream: {\r\n    provider: string;\r\n    model: string;\r\n    baseUrl: string | null;\r\n    /** R4：真实最小生成探测的三态结果（ok / auth_failed / unreachable）。 */\r\n    health: {\r\n      status: 'unknown' | 'ok' | 'auth_failed' | 'unreachable';\r\n      detail: string | null;\r\n      checkedAt: number | null;\r\n      durationMs: number | null;\r\n      tokens: { promptTokens: number; completionTokens: number } | null;\r\n      cached: boolean;\r\n    };\r\n  } | null;\r\n}\r\n\r\n/** GET /api/v1/agent/trial-status —— 前端无 Key 引导条据此展示试用剩余次数。 */\r\nexport async function getTrialStatus(): Promise<TrialStatus> {\r\n  return get('/agent/trial-status');\r\n}\r\n\r\n// ── MCP 连接器（P1） ────────────────────────────────────────\r\n\r\nexport async function listMcpServers(): Promise<{ servers: McpServer[] }> {\r\n  return get('/mcp/servers');\r\n}\r\n\r\nexport async function createMcpServer(input: {\r\n  name: string;\r\n  command: string;\r\n  args?: string[];\r\n  env?: Record<string, string>;\r\n  cwd?: string;\r\n}): Promise<{ server: McpServer }> {\r\n  return send('/mcp/servers', input);\r\n}\r\n\r\nexport async function patchMcpServer(\r\n  id: string,\r\n  patch: { name?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },\r\n): Promise<{ server: McpServer }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}`, patch, 'PATCH');\r\n}\r\n\r\nexport async function deleteMcpServer(id: string): Promise<void> {\r\n  await send(`/mcp/servers/${encodeURIComponent(id)}`, undefined, 'DELETE');\r\n}\r\n\r\nexport async function connectMcpServer(id: string): Promise<{ status: string; tools: number }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/connect`, {});\r\n}\r\n\r\nexport async function disconnectMcpServer(id: string): Promise<{ status: string }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/disconnect`, {});\r\n}\r\n\r\n// ── 沙箱权限（放开沙箱外目录 + 审批豁免；持久化配置） ──\r\n\r\n/** 沙箱权限配置：沙箱外允许目录（白名单）+ 自动放行高危操作开关。 */\r\nexport interface SandboxPermissionConfig {\r\n  allowDirs: string[];\r\n  autoApprove: {\r\n    fsDestructive: boolean;\r\n    purge: boolean;\r\n    httpWrite: boolean;\r\n  };\r\n}\r\n\r\n/** 沙箱权限更新载荷（allowDirs 为完整替换；autoApprove 为部分覆盖）。 */\r\nexport interface SandboxPermissionUpdate {\r\n  allowDirs?: string[];\r\n  autoApprove?: {\r\n    fsDestructive?: boolean;\r\n    purge?: boolean;\r\n    httpWrite?: boolean;\r\n  };\r\n}\r\n\r\n/** 被拒目录（422）。 */\r\nexport interface SandboxPermissionRejected {\r\n  dir: string;\r\n  error: string;\r\n}\r\n\r\n/** GET /api/v1/sandbox-permissions —— 当前沙箱权限配置。 */\r\nexport async function getSandboxPermissions(): Promise<SandboxPermissionConfig> {\r\n  return get('/sandbox-permissions');\r\n}\r\n\r\n/**\r\n * PUT /api/v1/sandbox-permissions —— 更新（服务端硬校验）。\r\n * 任一 allowDir 被拒则整体 422 拒绝（不部分写入），rejected 列出被拒目录与原因。\r\n */\r\nexport async function updateSandboxPermissions(input: SandboxPermissionUpdate): Promise<SandboxPermissionConfig> {\r\n  return send('/sandbox-permissions', input, 'PUT');\r\n}\r\n\r\n// ── 判据塔（Judge）：只读视图 ─────────────────────────────────────────────\r\n// 服务端不接受判决写入：r 只能来自运行期 Judge，不能由 HTTP 请求伪造。\r\n\r\nexport type JudgeVerdictStatus = 'pass' | 'fail' | 'unexec';\r\nexport type JudgeRunVerdict = 'pass' | 'fail' | 'inconclusive';\r\nexport type JudgeLayerId = 'L0' | 'L1' | 'L2' | 'L3';\r\n\r\n/** 一次判决的汇总。coverage < 1 表示有判据未执行（不是失败，但也不等于通过）。 */\r\nexport interface JudgeRunSummary {\r\n  id: number;\r\n  sessionId: string;\r\n  verdict: JudgeRunVerdict;\r\n  score: number;\r\n  /** 主口径覆盖率：分母只含本进程真正有能力判定的层。判决据此定档。 */\r\n  coverage: number;\r\n  executed: number;\r\n  total: number;\r\n  /** 1 = v1 未快照的旧行；2 = v2（有证据/阈值快照，可复算）。 */\r\n  coverageVersion: number;\r\n  /** 全塔口径覆盖率：仅展示，不参与定档。 *\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":true,"durationMs":5,"resultId":"bd5bd3a2-8cca-4efd-b8eb-d229bf87651b"}
+
+: ping
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I have a good understanding of"}
+
+event: reasoning
+data: {"text":" the codebase. Let me"}
+
+event: reasoning
+data: {"text":" also check the client/src/services"}
+
+event: reasoning
+data: {"text":"/api.ts to see if it"}
+
+event: reasoning
+data: {"text":" contains the `/api/rsi"}
+
+event: reasoning
+data: {"text":"/overview` and `/api"}
+
+event: reasoning
+data: {"text":"/rsi/rules` paths"}
+
+event: reasoning
+data: {"text":"."}
+
+event: tool_call
+data: {"callId":"call-dabffbcb-86ba-4f75-b789-c821d02c2b47","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts","keyword":"rsi"},"risk":"low","approvalMode":"none","source":"builtin","iteration":9,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-dabffbcb-86ba-4f75-b789-c821d02c2b47","stage":"reading","message":"读取 services\\api.ts","at":1794498842062}
+
+event: tool_result
+data: {"callId":"call-dabffbcb-86ba-4f75-b789-c821d02c2b47","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":1,"total":419},"content":"  coverageVersion: number;\r\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":false,"durationMs":5,"resultId":"a2ed43db-7e24-482e-b3e4-a97c9b0d094f"}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me search for r"}
+
+event: reasoning
+data: {"text":"si in"}
+
+event: reasoning
+data: {"text":" the api"}
+
+event: reasoning
+data: {"text":".ts file to"}
+
+event: reasoning
+data: {"text":" see"}
+
+event: reasoning
+data: {"text":" if there are any references to"}
+
+event: reasoning
+data: {"text":" the old endpoints."}
+
+event: tool_call
+data: {"callId":"call-e8fe9957-927b-4dd4-bc95-e36e07a97aa5","name":"sys.exec","displayName":"执行命令","category":"compute","arguments":{"command":"grep","args":["-n","rsi","C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts"]},"risk":"high","approvalMode":"hard","source":"builtin","iteration":10,"status":"pending"}
+
+event: tool_result
+data: {"callId":"call-e8fe9957-927b-4dd4-bc95-e36e07a97aa5","name":"sys.exec","status":"failed","summary":"命令 grep 不在白名单内（当前白名单：git,node）","data":null,"truncated":false,"durationMs":0,"resultId":"","error":{"code":"TOOL_SECURITY_DENIED","kind":"security","message":"命令 grep 不在白名单内（当前白名单：git,node）","retryable":false}}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me search for rsi in"}
+
+event: reasoning
+data: {"text":" the client api"}
+
+event: reasoning
+data: {"text":".ts file using a different approach"}
+
+event: reasoning
+data: {"text":"."}
+
+event: tool_call
+data: {"callId":"call-35b5b2be-b73d-4268-90ed-25c2976c6c5a","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts","lineStart":88},"risk":"low","approvalMode":"none","source":"builtin","iteration":11,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-35b5b2be-b73d-4268-90ed-25c2976c6c5a","stage":"reading","message":"读取 services\\api.ts","at":1794498851106}
+
+event: tool_result
+data: {"callId":"call-35b5b2be-b73d-4268-90ed-25c2976c6c5a","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":332,"total":419},"content":"    if (data && typeof data.error === 'object' && data.error !== null) {\r\n      const code = data.error.code ?? `HTTP_${res.status}`;\r\n      const message = data.error.message ?? `请求失败（HTTP ${res.status}）`;\r\n      return new ApiError(code, message, res.status, data.rejected);\r\n    }\r\n    const code = typeof data.error === 'string' ? data.error : `HTTP_${res.status}`;\r\n    const message = data.message ?? `请求失败（HTTP ${res.status}）`;\r\n    return new ApiError(code, message, res.status, data.rejected);\r\n  } catch {\r\n    return new ApiError(`HTTP_${res.status}`, `请求失败（HTTP ${res.status}）`, res.status);\r\n  }\r\n}\r\n\r\nasync function get<T>(path: string): Promise<T> {\r\n  const res = await fetch(`${BASE}${path}`);\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as T;\r\n}\r\n\r\nasync function send<T>(path: string, body?: unknown, method = 'POST', deviceToken?: string | null): Promise<T> {\r\n  const headers: Record<string, string> = { 'Content-Type': 'application/json' };\r\n  if (deviceToken) headers['X-Device-Token'] = deviceToken;\r\n  const res = await fetch(`${BASE}${path}`, {\r\n    method,\r\n    headers,\r\n    body: body === undefined ? undefined : JSON.stringify(body),\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as T;\r\n}\r\n\r\n// ── 健康与 Provider ─────────────────────────────────────────\r\n\r\n/** GET /api/health —— StatusBar 连接状态点（含 db/mcp/sandbox） */\r\nexport async function getHealth(): Promise<{\r\n  status: string;\r\n  db: { ok: boolean };\r\n  mcp: { servers: number; healthy: number };\r\n}> {\r\n  const res = await fetch('/api/health');\r\n  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, '健康检查失败', res.status);\r\n  return (await res.json()) as {\r\n    status: string;\r\n    db: { ok: boolean };\r\n    mcp: { servers: number; healthy: number };\r\n  };\r\n}\r\n\r\n/** GET /api/v1/providers —— provider 与模型列表（不含 Key） */\r\nexport async function getProviders(): Promise<Provider[]> {\r\n  const data = await get<{ providers?: Provider[] }>('/providers');\r\n  return data.providers ?? [];\r\n}\r\n\r\n/** GET /api/v1/providers/capabilities —— 能力探测合并视图（AC-01） */\r\nexport async function getProviderCapabilities(): Promise<{\r\n  capabilities: Array<{\r\n    provider: string;\r\n    model: string;\r\n    supportsFunctionCalling: boolean | null;\r\n    probeStatus: string;\r\n    contextWindow: number | null;\r\n    lightweightModel: string | null;\r\n    probedAt: number | null;\r\n    notes: string | null;\r\n  }>;\r\n}> {\r\n  return get('/providers/capabilities');\r\n}\r\n\r\n/** GET /api/v1/providers/sync-status —— 最近一次上游模型同步状态与最近日志 */\r\nexport async function getProviderSyncStatus(): Promise<{\r\n  sync: {\r\n    lastRunAt: number | null;\r\n    lastStatus: string;\r\n    lastError: string | null;\r\n    lastProviderCount: number | null;\r\n    lastModelCount: number | null;\r\n    sourceUrl: string;\r\n  };\r\n  recentLogs: Array<{\r\n    id: number;\r\n    occurred_at: number;\r\n    status: string;\r\n    attempt: number;\r\n    message: string;\r\n    detail: string | null;\r\n    source_url: string;\r\n  }>;\r\n}> {\r\n  return get('/providers/sync-status');\r\n}\r\n\r\n// ── 会话（服务端持久化 + 恢复码） ────────────────────────────\r\n\r\n/** GET /api/v1/sessions —— 列表（带 X-Device-Token 时只返回本设备会话） */\r\nexport async function listSessions(deviceToken?: string | null): Promise<SessionListResponse> {\r\n  const res = await fetch(`${BASE}/sessions?limit=100`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionListResponse;\r\n}\r\n\r\n/** POST /api/v1/sessions —— 创建；recoveryCode 只此一次明文 */\r\nexport async function createSession(input: {\r\n  provider: string;\r\n  model: string;\r\n  title?: string;\r\n}): Promise<{ session: ServerSession; recoveryCode: string; deviceToken: string }> {\r\n  return send('/sessions', input);\r\n}\r\n\r\n/** GET /api/v1/sessions/:id —— 详情（消息 + 工具调用 + 审批） */\r\nexport async function getSessionDetail(\r\n  sessionId: string,\r\n  deviceToken?: string | null,\r\n): Promise<SessionDetail> {\r\n  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionDetail;\r\n}\r\n\r\n/** PATCH /api/v1/sessions/:id —— 重命名 / 改模型 */\r\nexport async function patchSession(\r\n  sessionId: string,\r\n  patch: { title?: string; model?: string; channelMode?: 'auto' | 'native' | 'react' },\r\n  deviceToken?: string | null,\r\n): Promise<{ session: ServerSession }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}`, patch, 'PATCH', deviceToken);\r\n}\r\n\r\n/** DELETE /api/v1/sessions/:id —— 删除（级联） */\r\nexport async function deleteSession(sessionId: string, deviceToken?: string | null): Promise<void> {\r\n  await send(`/sessions/${encodeURIComponent(sessionId)}`, undefined, 'DELETE', deviceToken);\r\n}\r\n\r\n/** POST /api/v1/sessions/:id/recovery-code —— 重生成（旧码立即失效） */\r\nexport async function regenerateRecoveryCode(sessionId: string): Promise<{ recoveryCode: string }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}/recovery-code`, {});\r\n}\r\n\r\n/** POST /api/v1/sessions/recover —— 恢复码换回会话（旧码立即失效） */\r\nexport async function recoverSession(recoveryCode: string, deviceToken: string): Promise<{\r\n  session: ServerSession;\r\n  deviceToken: string;\r\n}> {\r\n  return send('/sessions/recover', { recoveryCode, deviceToken });\r\n}\r\n\r\n// ── 工具注册表 ──────────────────────────────────────────────\r\n\r\n/** GET /api/v1/tools —— 双轨名 + 风险分组 */\r\nexport async function listTools(): Promise<{\r\n  tools: ToolDefinitionPublic[];\r\n  grouped: Record<'low' | 'medium' | 'high', string[]>;\r\n}> {\r\n  return get('/tools');\r\n}\r\n\r\n/** PATCH /api/v1/tools/:name —— 启用 / 禁用 */\r\nexport async function patchTool(name: string, enabled: boolean): Promise<{ name: string; enabled: boolean }> {\r\n  return send(`/tools/${encodeURIComponent(name)}`, { enabled }, 'PATCH');\r\n}\r\n\r\n// ── 审批（独立端点，不走 SSE 同流） ─────────────────────────\r\n\r\n/** POST /api/v1/approvals/:id —— 三值决定（.strict()：body 出现 arguments 一律 400） */\r\nexport async function submitApproval(approvalId: string, body: ApprovalSubmitRequest): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}`, body);\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/revise —— AC-10 改参数重试（唯一可带 arguments 的端点） */\r\nexport async function reviseApproval(\r\n  approvalId: string,\r\n  token: string,\r\n  args: Record<string, unknown>,\r\n): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/revise`, { token, arguments: args });\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/reissue —— AUDIT-009 续期（重新签发未过期令牌，延长 5 分钟） */\r\nexport async function reissueApproval(\r\n  approvalId: string,\r\n  token: string,\r\n): Promise<{ ok: true; approvalId: string; approvalToken: string; expiresAt: number }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/reissue`, { token });\r\n}\r\n\r\n// ── Agent 运行控制 ─────────────────────────────────────────\r\n\r\n/**\r\n * POST /api/v1/agent/abort —— 服务端直停当前会话的运行（P1-6）。\r\n * 本地 abort() 经「断开→res.close」也能停，但该端点不等 TCP 关闭传播到\r\n * AbortRegistry，且跨标签页（本页无活跃 controller）时是唯一入口。\r\n * aborted=false 表示该会话当前没有在跑的任务（幂等无害）。\r\n */\r\nexport async function abortAgentRun(sessionId: string): Promise<{ ok: boolean; aborted: boolean }> {\r\n  return send('/agent/abort', { sessionId });\r\n}\r\n\r\n/** 兜底 Key 试用/预算状态（按请求 IP）。 */\r\nexport interface TrialStatus {\r\n  enabled: boolean;\r\n  trialModeEnabled: boolean;\r\n  serverKeyConfigured: boolean;\r\n  dailyLimit: number | null;\r\n  usedRuns: number;\r\n  remainingRuns: number | null;\r\n  perTaskTokenLimit: number;\r\n  budgetExceeded: boolean;\r\n  budgetReason: 'trial_exhausted' | 'global_budget_exhausted' | 'per_ip_budget_exhausted' | null;\r\n  /** 试用锁定的上游（未启用试用锁定时为 null）。只含地址与模型，不含密钥。 */\r\n  trialUpstream: {\r\n    provider: string;\r\n    model: string;\r\n    baseUrl: string | null;\r\n    /** R4：真实最小生成探测的三态结果（ok / auth_failed / unreachable）。 */\r\n    health: {\r\n      status: 'unknown' | 'ok' | 'auth_failed' | 'unreachable';\r\n      detail: string | null;\r\n      checkedAt: number | null;\r\n      durationMs: number | null;\r\n      tokens: { promptTokens: number; completionTokens: number } | null;\r\n      cached: boolean;\r\n    };\r\n  } | null;\r\n}\r\n\r\n/** GET /api/v1/agent/trial-status —— 前端无 Key 引导条据此展示试用剩余次数。 */\r\nexport async function getTrialStatus(): Promise<TrialStatus> {\r\n  return get('/agent/trial-status');\r\n}\r\n\r\n// ── MCP 连接器（P1） ────────────────────────────────────────\r\n\r\nexport async function listMcpServers(): Promise<{ servers: McpServer[] }> {\r\n  return get('/mcp/servers');\r\n}\r\n\r\nexport async function createMcpServer(input: {\r\n  name: string;\r\n  command: string;\r\n  args?: string[];\r\n  env?: Record<string, string>;\r\n  cwd?: string;\r\n}): Promise<{ server: McpServer }> {\r\n  return send('/mcp/servers', input);\r\n}\r\n\r\nexport async function patchMcpServer(\r\n  id: string,\r\n  patch: { name?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },\r\n): Promise<{ server: McpServer }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}`, patch, 'PATCH');\r\n}\r\n\r\nexport async function deleteMcpServer(id: string): Promise<void> {\r\n  await send(`/mcp/servers/${encodeURIComponent(id)}`, undefined, 'DELETE');\r\n}\r\n\r\nexport async function connectMcpServer(id: string): Promise<{ status: string; tools: number }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/connect`, {});\r\n}\r\n\r\nexport async function disconnectMcpServer(id: string): Promise<{ status: string }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/disconnect`, {});\r\n}\r\n\r\n// ── 沙箱权限（放开沙箱外目录 + 审批豁免；持久化配置） ──\r\n\r\n/** 沙箱权限配置：沙箱外允许目录（白名单）+ 自动放行高危操作开关。 */\r\nexport interface SandboxPermissionConfig {\r\n  allowDirs: string[];\r\n  autoApprove: {\r\n    fsDestructive: boolean;\r\n    purge: boolean;\r\n    httpWrite: boolean;\r\n  };\r\n}\r\n\r\n/** 沙箱权限更新载荷（allowDirs 为完整替换；autoApprove 为部分覆盖）。 */\r\nexport interface SandboxPermissionUpdate {\r\n  allowDirs?: string[];\r\n  autoApprove?: {\r\n    fsDestructive?: boolean;\r\n    purge?: boolean;\r\n    httpWrite?: boolean;\r\n  };\r\n}\r\n\r\n/** 被拒目录（422）。 */\r\nexport interface SandboxPermissionRejected {\r\n  dir: string;\r\n  error: string;\r\n}\r\n\r\n/** GET /api/v1/sandbox-permissions —— 当前沙箱权限配置。 */\r\nexport async function getSandboxPermissions(): Promise<SandboxPermissionConfig> {\r\n  return get('/sandbox-permissions');\r\n}\r\n\r\n/**\r\n * PUT /api/v1/sandbox-permissions —— 更新（服务端硬校验）。\r\n * 任一 allowDir 被拒则整体 422 拒绝（不部分写入），rejected 列出被拒目录与原因。\r\n */\r\nexport async function updateSandboxPermissions(input: SandboxPermissionUpdate): Promise<SandboxPermissionConfig> {\r\n  return send('/sandbox-permissions', input, 'PUT');\r\n}\r\n\r\n// ── 判据塔（Judge）：只读视图 ─────────────────────────────────────────────\r\n// 服务端不接受判决写入：r 只能来自运行期 Judge，不能由 HTTP 请求伪造。\r\n\r\nexport type JudgeVerdictStatus = 'pass' | 'fail' | 'unexec';\r\nexport type JudgeRunVerdict = 'pass' | 'fail' | 'inconclusive';\r\nexport type JudgeLayerId = 'L0' | 'L1' | 'L2' | 'L3';\r\n\r\n/** 一次判决的汇总。coverage < 1 表示有判据未执行（不是失败，但也不等于通过）。 */\r\nexport interface JudgeRunSummary {\r\n  id: number;\r\n  sessionId: string;\r\n  verdict: JudgeRunVerdict;\r\n  score: number;\r\n  /** 主口径覆盖率：分母只含本进程真正有能力判定的层。判决据此定档。 */\r\n  coverage: number;\r\n  executed: number;\r\n  total: number;\r\n  /** 1 = v1 未快照的旧行；2 = v2（有证据/阈值快照，可复算）。 */\r\n  coverageVersion: number;\r\n  /** 全塔口径覆盖率：仅展示，不参与定档。 *\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":true,"durationMs":7,"resultId":"6ff44e58-d102-4480-a1bc-5bccdcca02f9"}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me continue"}
+
+event: reasoning
+data: {"text":" reading the api"}
+
+event: reasoning
+data: {"text":".ts file to see"}
+
+event: reasoning
+data: {"text":" if there are any RSI"}
+
+event: reasoning
+data: {"text":"-related endpoints."}
+
+event: tool_call
+data: {"callId":"call-b0f8ef33-d0dd-4656-8cf0-68e3f908e51e","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts","lineStart":178},"risk":"low","approvalMode":"none","source":"builtin","iteration":12,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-b0f8ef33-d0dd-4656-8cf0-68e3f908e51e","stage":"reading","message":"读取 services\\api.ts","at":1794498853857}
+
+event: tool_result
+data: {"callId":"call-b0f8ef33-d0dd-4656-8cf0-68e3f908e51e","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":242,"total":419},"content":"  return get('/providers/sync-status');\r\n}\r\n\r\n// ── 会话（服务端持久化 + 恢复码） ────────────────────────────\r\n\r\n/** GET /api/v1/sessions —— 列表（带 X-Device-Token 时只返回本设备会话） */\r\nexport async function listSessions(deviceToken?: string | null): Promise<SessionListResponse> {\r\n  const res = await fetch(`${BASE}/sessions?limit=100`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionListResponse;\r\n}\r\n\r\n/** POST /api/v1/sessions —— 创建；recoveryCode 只此一次明文 */\r\nexport async function createSession(input: {\r\n  provider: string;\r\n  model: string;\r\n  title?: string;\r\n}): Promise<{ session: ServerSession; recoveryCode: string; deviceToken: string }> {\r\n  return send('/sessions', input);\r\n}\r\n\r\n/** GET /api/v1/sessions/:id —— 详情（消息 + 工具调用 + 审批） */\r\nexport async function getSessionDetail(\r\n  sessionId: string,\r\n  deviceToken?: string | null,\r\n): Promise<SessionDetail> {\r\n  const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, {\r\n    headers: deviceToken ? { 'X-Device-Token': deviceToken } : undefined,\r\n  });\r\n  if (!res.ok) throw await parseErrorResponse(res);\r\n  return (await res.json()) as SessionDetail;\r\n}\r\n\r\n/** PATCH /api/v1/sessions/:id —— 重命名 / 改模型 */\r\nexport async function patchSession(\r\n  sessionId: string,\r\n  patch: { title?: string; model?: string; channelMode?: 'auto' | 'native' | 'react' },\r\n  deviceToken?: string | null,\r\n): Promise<{ session: ServerSession }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}`, patch, 'PATCH', deviceToken);\r\n}\r\n\r\n/** DELETE /api/v1/sessions/:id —— 删除（级联） */\r\nexport async function deleteSession(sessionId: string, deviceToken?: string | null): Promise<void> {\r\n  await send(`/sessions/${encodeURIComponent(sessionId)}`, undefined, 'DELETE', deviceToken);\r\n}\r\n\r\n/** POST /api/v1/sessions/:id/recovery-code —— 重生成（旧码立即失效） */\r\nexport async function regenerateRecoveryCode(sessionId: string): Promise<{ recoveryCode: string }> {\r\n  return send(`/sessions/${encodeURIComponent(sessionId)}/recovery-code`, {});\r\n}\r\n\r\n/** POST /api/v1/sessions/recover —— 恢复码换回会话（旧码立即失效） */\r\nexport async function recoverSession(recoveryCode: string, deviceToken: string): Promise<{\r\n  session: ServerSession;\r\n  deviceToken: string;\r\n}> {\r\n  return send('/sessions/recover', { recoveryCode, deviceToken });\r\n}\r\n\r\n// ── 工具注册表 ──────────────────────────────────────────────\r\n\r\n/** GET /api/v1/tools —— 双轨名 + 风险分组 */\r\nexport async function listTools(): Promise<{\r\n  tools: ToolDefinitionPublic[];\r\n  grouped: Record<'low' | 'medium' | 'high', string[]>;\r\n}> {\r\n  return get('/tools');\r\n}\r\n\r\n/** PATCH /api/v1/tools/:name —— 启用 / 禁用 */\r\nexport async function patchTool(name: string, enabled: boolean): Promise<{ name: string; enabled: boolean }> {\r\n  return send(`/tools/${encodeURIComponent(name)}`, { enabled }, 'PATCH');\r\n}\r\n\r\n// ── 审批（独立端点，不走 SSE 同流） ─────────────────────────\r\n\r\n/** POST /api/v1/approvals/:id —— 三值决定（.strict()：body 出现 arguments 一律 400） */\r\nexport async function submitApproval(approvalId: string, body: ApprovalSubmitRequest): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}`, body);\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/revise —— AC-10 改参数重试（唯一可带 arguments 的端点） */\r\nexport async function reviseApproval(\r\n  approvalId: string,\r\n  token: string,\r\n  args: Record<string, unknown>,\r\n): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/revise`, { token, arguments: args });\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/reissue —— AUDIT-009 续期（重新签发未过期令牌，延长 5 分钟） */\r\nexport async function reissueApproval(\r\n  approvalId: string,\r\n  token: string,\r\n): Promise<{ ok: true; approvalId: string; approvalToken: string; expiresAt: number }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/reissue`, { token });\r\n}\r\n\r\n// ── Agent 运行控制 ─────────────────────────────────────────\r\n\r\n/**\r\n * POST /api/v1/agent/abort —— 服务端直停当前会话的运行（P1-6）。\r\n * 本地 abort() 经「断开→res.close」也能停，但该端点不等 TCP 关闭传播到\r\n * AbortRegistry，且跨标签页（本页无活跃 controller）时是唯一入口。\r\n * aborted=false 表示该会话当前没有在跑的任务（幂等无害）。\r\n */\r\nexport async function abortAgentRun(sessionId: string): Promise<{ ok: boolean; aborted: boolean }> {\r\n  return send('/agent/abort', { sessionId });\r\n}\r\n\r\n/** 兜底 Key 试用/预算状态（按请求 IP）。 */\r\nexport interface TrialStatus {\r\n  enabled: boolean;\r\n  trialModeEnabled: boolean;\r\n  serverKeyConfigured: boolean;\r\n  dailyLimit: number | null;\r\n  usedRuns: number;\r\n  remainingRuns: number | null;\r\n  perTaskTokenLimit: number;\r\n  budgetExceeded: boolean;\r\n  budgetReason: 'trial_exhausted' | 'global_budget_exhausted' | 'per_ip_budget_exhausted' | null;\r\n  /** 试用锁定的上游（未启用试用锁定时为 null）。只含地址与模型，不含密钥。 */\r\n  trialUpstream: {\r\n    provider: string;\r\n    model: string;\r\n    baseUrl: string | null;\r\n    /** R4：真实最小生成探测的三态结果（ok / auth_failed / unreachable）。 */\r\n    health: {\r\n      status: 'unknown' | 'ok' | 'auth_failed' | 'unreachable';\r\n      detail: string | null;\r\n      checkedAt: number | null;\r\n      durationMs: number | null;\r\n      tokens: { promptTokens: number; completionTokens: number } | null;\r\n      cached: boolean;\r\n    };\r\n  } | null;\r\n}\r\n\r\n/** GET /api/v1/agent/trial-status —— 前端无 Key 引导条据此展示试用剩余次数。 */\r\nexport async function getTrialStatus(): Promise<TrialStatus> {\r\n  return get('/agent/trial-status');\r\n}\r\n\r\n// ── MCP 连接器（P1） ────────────────────────────────────────\r\n\r\nexport async function listMcpServers(): Promise<{ servers: McpServer[] }> {\r\n  return get('/mcp/servers');\r\n}\r\n\r\nexport async function createMcpServer(input: {\r\n  name: string;\r\n  command: string;\r\n  args?: string[];\r\n  env?: Record<string, string>;\r\n  cwd?: string;\r\n}): Promise<{ server: McpServer }> {\r\n  return send('/mcp/servers', input);\r\n}\r\n\r\nexport async function patchMcpServer(\r\n  id: string,\r\n  patch: { name?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },\r\n): Promise<{ server: McpServer }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}`, patch, 'PATCH');\r\n}\r\n\r\nexport async function deleteMcpServer(id: string): Promise<void> {\r\n  await send(`/mcp/servers/${encodeURIComponent(id)}`, undefined, 'DELETE');\r\n}\r\n\r\nexport async function connectMcpServer(id: string): Promise<{ status: string; tools: number }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/connect`, {});\r\n}\r\n\r\nexport async function disconnectMcpServer(id: string): Promise<{ status: string }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/disconnect`, {});\r\n}\r\n\r\n// ── 沙箱权限（放开沙箱外目录 + 审批豁免；持久化配置） ──\r\n\r\n/** 沙箱权限配置：沙箱外允许目录（白名单）+ 自动放行高危操作开关。 */\r\nexport interface SandboxPermissionConfig {\r\n  allowDirs: string[];\r\n  autoApprove: {\r\n    fsDestructive: boolean;\r\n    purge: boolean;\r\n    httpWrite: boolean;\r\n  };\r\n}\r\n\r\n/** 沙箱权限更新载荷（allowDirs 为完整替换；autoApprove 为部分覆盖）。 */\r\nexport interface SandboxPermissionUpdate {\r\n  allowDirs?: string[];\r\n  autoApprove?: {\r\n    fsDestructive?: boolean;\r\n    purge?: boolean;\r\n    httpWrite?: boolean;\r\n  };\r\n}\r\n\r\n/** 被拒目录（422）。 */\r\nexport interface SandboxPermissionRejected {\r\n  dir: string;\r\n  error: string;\r\n}\r\n\r\n/** GET /api/v1/sandbox-permissions —— 当前沙箱权限配置。 */\r\nexport async function getSandboxPermissions(): Promise<SandboxPermissionConfig> {\r\n  return get('/sandbox-permissions');\r\n}\r\n\r\n/**\r\n * PUT /api/v1/sandbox-permissions —— 更新（服务端硬校验）。\r\n * 任一 allowDir 被拒则整体 422 拒绝（不部分写入），rejected 列出被拒目录与原因。\r\n */\r\nexport async function updateSandboxPermissions(input: SandboxPermissionUpdate): Promise<SandboxPermissionConfig> {\r\n  return send('/sandbox-permissions', input, 'PUT');\r\n}\r\n\r\n// ── 判据塔（Judge）：只读视图 ─────────────────────────────────────────────\r\n// 服务端不接受判决写入：r 只能来自运行期 Judge，不能由 HTTP 请求伪造。\r\n\r\nexport type JudgeVerdictStatus = 'pass' | 'fail' | 'unexec';\r\nexport type JudgeRunVerdict = 'pass' | 'fail' | 'inconclusive';\r\nexport type JudgeLayerId = 'L0' | 'L1' | 'L2' | 'L3';\r\n\r\n/** 一次判决的汇总。coverage < 1 表示有判据未执行（不是失败，但也不等于通过）。 */\r\nexport interface JudgeRunSummary {\r\n  id: number;\r\n  sessionId: string;\r\n  verdict: JudgeRunVerdict;\r\n  score: number;\r\n  /** 主口径覆盖率：分母只含本进程真正有能力判定的层。判决据此定档。 */\r\n  coverage: number;\r\n  executed: number;\r\n  total: number;\r\n  /** 1 = v1 未快照的旧行；2 = v2（有证据/阈值快照，可复算）。 */\r\n  coverageVersion: number;\r\n  /** 全塔口径覆盖率：仅展示，不参与定档。 *\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":true,"durationMs":6,"resultId":"83702711-d731-4d21-b9c8-65ee3c56cbba"}
+
+: ping
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me continue reading the api"}
+
+event: reasoning
+data: {"text":".ts file to see"}
+
+event: reasoning
+data: {"text":" if there are any RSI"}
+
+event: reasoning
+data: {"text":"-related endpoints."}
+
+event: tool_call
+data: {"callId":"call-bdb0e5e3-3986-4314-86cb-9c912faa4c44","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts","lineStart":255},"risk":"low","approvalMode":"none","source":"builtin","iteration":13,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-bdb0e5e3-3986-4314-86cb-9c912faa4c44","stage":"reading","message":"读取 services\\api.ts","at":1794498856257}
+
+event: tool_result
+data: {"callId":"call-bdb0e5e3-3986-4314-86cb-9c912faa4c44","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":165,"total":419},"content":"// ── 审批（独立端点，不走 SSE 同流） ─────────────────────────\r\n\r\n/** POST /api/v1/approvals/:id —— 三值决定（.strict()：body 出现 arguments 一律 400） */\r\nexport async function submitApproval(approvalId: string, body: ApprovalSubmitRequest): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}`, body);\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/revise —— AC-10 改参数重试（唯一可带 arguments 的端点） */\r\nexport async function reviseApproval(\r\n  approvalId: string,\r\n  token: string,\r\n  args: Record<string, unknown>,\r\n): Promise<{ ok: true }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/revise`, { token, arguments: args });\r\n}\r\n\r\n/** POST /api/v1/approvals/:id/reissue —— AUDIT-009 续期（重新签发未过期令牌，延长 5 分钟） */\r\nexport async function reissueApproval(\r\n  approvalId: string,\r\n  token: string,\r\n): Promise<{ ok: true; approvalId: string; approvalToken: string; expiresAt: number }> {\r\n  return send(`/approvals/${encodeURIComponent(approvalId)}/reissue`, { token });\r\n}\r\n\r\n// ── Agent 运行控制 ─────────────────────────────────────────\r\n\r\n/**\r\n * POST /api/v1/agent/abort —— 服务端直停当前会话的运行（P1-6）。\r\n * 本地 abort() 经「断开→res.close」也能停，但该端点不等 TCP 关闭传播到\r\n * AbortRegistry，且跨标签页（本页无活跃 controller）时是唯一入口。\r\n * aborted=false 表示该会话当前没有在跑的任务（幂等无害）。\r\n */\r\nexport async function abortAgentRun(sessionId: string): Promise<{ ok: boolean; aborted: boolean }> {\r\n  return send('/agent/abort', { sessionId });\r\n}\r\n\r\n/** 兜底 Key 试用/预算状态（按请求 IP）。 */\r\nexport interface TrialStatus {\r\n  enabled: boolean;\r\n  trialModeEnabled: boolean;\r\n  serverKeyConfigured: boolean;\r\n  dailyLimit: number | null;\r\n  usedRuns: number;\r\n  remainingRuns: number | null;\r\n  perTaskTokenLimit: number;\r\n  budgetExceeded: boolean;\r\n  budgetReason: 'trial_exhausted' | 'global_budget_exhausted' | 'per_ip_budget_exhausted' | null;\r\n  /** 试用锁定的上游（未启用试用锁定时为 null）。只含地址与模型，不含密钥。 */\r\n  trialUpstream: {\r\n    provider: string;\r\n    model: string;\r\n    baseUrl: string | null;\r\n    /** R4：真实最小生成探测的三态结果（ok / auth_failed / unreachable）。 */\r\n    health: {\r\n      status: 'unknown' | 'ok' | 'auth_failed' | 'unreachable';\r\n      detail: string | null;\r\n      checkedAt: number | null;\r\n      durationMs: number | null;\r\n      tokens: { promptTokens: number; completionTokens: number } | null;\r\n      cached: boolean;\r\n    };\r\n  } | null;\r\n}\r\n\r\n/** GET /api/v1/agent/trial-status —— 前端无 Key 引导条据此展示试用剩余次数。 */\r\nexport async function getTrialStatus(): Promise<TrialStatus> {\r\n  return get('/agent/trial-status');\r\n}\r\n\r\n// ── MCP 连接器（P1） ────────────────────────────────────────\r\n\r\nexport async function listMcpServers(): Promise<{ servers: McpServer[] }> {\r\n  return get('/mcp/servers');\r\n}\r\n\r\nexport async function createMcpServer(input: {\r\n  name: string;\r\n  command: string;\r\n  args?: string[];\r\n  env?: Record<string, string>;\r\n  cwd?: string;\r\n}): Promise<{ server: McpServer }> {\r\n  return send('/mcp/servers', input);\r\n}\r\n\r\nexport async function patchMcpServer(\r\n  id: string,\r\n  patch: { name?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },\r\n): Promise<{ server: McpServer }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}`, patch, 'PATCH');\r\n}\r\n\r\nexport async function deleteMcpServer(id: string): Promise<void> {\r\n  await send(`/mcp/servers/${encodeURIComponent(id)}`, undefined, 'DELETE');\r\n}\r\n\r\nexport async function connectMcpServer(id: string): Promise<{ status: string; tools: number }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/connect`, {});\r\n}\r\n\r\nexport async function disconnectMcpServer(id: string): Promise<{ status: string }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/disconnect`, {});\r\n}\r\n\r\n// ── 沙箱权限（放开沙箱外目录 + 审批豁免；持久化配置） ──\r\n\r\n/** 沙箱权限配置：沙箱外允许目录（白名单）+ 自动放行高危操作开关。 */\r\nexport interface SandboxPermissionConfig {\r\n  allowDirs: string[];\r\n  autoApprove: {\r\n    fsDestructive: boolean;\r\n    purge: boolean;\r\n    httpWrite: boolean;\r\n  };\r\n}\r\n\r\n/** 沙箱权限更新载荷（allowDirs 为完整替换；autoApprove 为部分覆盖）。 */\r\nexport interface SandboxPermissionUpdate {\r\n  allowDirs?: string[];\r\n  autoApprove?: {\r\n    fsDestructive?: boolean;\r\n    purge?: boolean;\r\n    httpWrite?: boolean;\r\n  };\r\n}\r\n\r\n/** 被拒目录（422）。 */\r\nexport interface SandboxPermissionRejected {\r\n  dir: string;\r\n  error: string;\r\n}\r\n\r\n/** GET /api/v1/sandbox-permissions —— 当前沙箱权限配置。 */\r\nexport async function getSandboxPermissions(): Promise<SandboxPermissionConfig> {\r\n  return get('/sandbox-permissions');\r\n}\r\n\r\n/**\r\n * PUT /api/v1/sandbox-permissions —— 更新（服务端硬校验）。\r\n * 任一 allowDir 被拒则整体 422 拒绝（不部分写入），rejected 列出被拒目录与原因。\r\n */\r\nexport async function updateSandboxPermissions(input: SandboxPermissionUpdate): Promise<SandboxPermissionConfig> {\r\n  return send('/sandbox-permissions', input, 'PUT');\r\n}\r\n\r\n// ── 判据塔（Judge）：只读视图 ─────────────────────────────────────────────\r\n// 服务端不接受判决写入：r 只能来自运行期 Judge，不能由 HTTP 请求伪造。\r\n\r\nexport type JudgeVerdictStatus = 'pass' | 'fail' | 'unexec';\r\nexport type JudgeRunVerdict = 'pass' | 'fail' | 'inconclusive';\r\nexport type JudgeLayerId = 'L0' | 'L1' | 'L2' | 'L3';\r\n\r\n/** 一次判决的汇总。coverage < 1 表示有判据未执行（不是失败，但也不等于通过）。 */\r\nexport interface JudgeRunSummary {\r\n  id: number;\r\n  sessionId: string;\r\n  verdict: JudgeRunVerdict;\r\n  score: number;\r\n  /** 主口径覆盖率：分母只含本进程真正有能力判定的层。判决据此定档。 */\r\n  coverage: number;\r\n  executed: number;\r\n  total: number;\r\n  /** 1 = v1 未快照的旧行；2 = v2（有证据/阈值快照，可复算）。 */\r\n  coverageVersion: number;\r\n  /** 全塔口径覆盖率：仅展示，不参与定档。 *\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":true,"durationMs":6,"resultId":"f7c72d5c-0958-48df-9e4a-202a4f4ff5d1"}
+
+event: reasoning
+data: {"text":"Let"}
+
+event: reasoning
+data: {"text":" me continue reading the rest of"}
+
+event: reasoning
+data: {"text":" the file to see"}
+
+event: reasoning
+data: {"text":" if there are any RSI"}
+
+event: reasoning
+data: {"text":"-related endpoints."}
+
+event: tool_call
+data: {"callId":"call-7e0d1d2e-0821-43f6-ab31-f8b3faa95d87","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/client/src/services/api.ts","lineStart":328},"risk":"low","approvalMode":"none","source":"builtin","iteration":14,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-7e0d1d2e-0821-43f6-ab31-f8b3faa95d87","stage":"reading","message":"读取 services\\api.ts","at":1794498859167}
+
+event: tool_result
+data: {"callId":"call-7e0d1d2e-0821-43f6-ab31-f8b3faa95d87","name":"fs.read","status":"success","summary":"已读取 services\\api.ts（52064 字节，419 行，已截断）","data":{"kind":"file","path":"services\\api.ts","encoding":"utf8","sizeBytes":52064,"truncated":true,"lines":{"returned":92,"total":419},"content":"}\r\n\r\nexport async function createMcpServer(input: {\r\n  name: string;\r\n  command: string;\r\n  args?: string[];\r\n  env?: Record<string, string>;\r\n  cwd?: string;\r\n}): Promise<{ server: McpServer }> {\r\n  return send('/mcp/servers', input);\r\n}\r\n\r\nexport async function patchMcpServer(\r\n  id: string,\r\n  patch: { name?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean },\r\n): Promise<{ server: McpServer }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}`, patch, 'PATCH');\r\n}\r\n\r\nexport async function deleteMcpServer(id: string): Promise<void> {\r\n  await send(`/mcp/servers/${encodeURIComponent(id)}`, undefined, 'DELETE');\r\n}\r\n\r\nexport async function connectMcpServer(id: string): Promise<{ status: string; tools: number }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/connect`, {});\r\n}\r\n\r\nexport async function disconnectMcpServer(id: string): Promise<{ status: string }> {\r\n  return send(`/mcp/servers/${encodeURIComponent(id)}/disconnect`, {});\r\n}\r\n\r\n// ── 沙箱权限（放开沙箱外目录 + 审批豁免；持久化配置） ──\r\n\r\n/** 沙箱权限配置：沙箱外允许目录（白名单）+ 自动放行高危操作开关。 */\r\nexport interface SandboxPermissionConfig {\r\n  allowDirs: string[];\r\n  autoApprove: {\r\n    fsDestructive: boolean;\r\n    purge: boolean;\r\n    httpWrite: boolean;\r\n  };\r\n}\r\n\r\n/** 沙箱权限更新载荷（allowDirs 为完整替换；autoApprove 为部分覆盖）。 */\r\nexport interface SandboxPermissionUpdate {\r\n  allowDirs?: string[];\r\n  autoApprove?: {\r\n    fsDestructive?: boolean;\r\n    purge?: boolean;\r\n    httpWrite?: boolean;\r\n  };\r\n}\r\n\r\n/** 被拒目录（422）。 */\r\nexport interface SandboxPermissionRejected {\r\n  dir: string;\r\n  error: string;\r\n}\r\n\r\n/** GET /api/v1/sandbox-permissions —— 当前沙箱权限配置。 */\r\nexport async function getSandboxPermissions(): Promise<SandboxPermissionConfig> {\r\n  return get('/sandbox-permissions');\r\n}\r\n\r\n/**\r\n * PUT /api/v1/sandbox-permissions —— 更新（服务端硬校验）。\r\n * 任一 allowDir 被拒则整体 422 拒绝（不部分写入），rejected 列出被拒目录与原因。\r\n */\r\nexport async function updateSandboxPermissions(input: SandboxPermissionUpdate): Promise<SandboxPermissionConfig> {\r\n  return send('/sandbox-permissions', input, 'PUT');\r\n}\r\n\r\n// ── 判据塔（Judge）：只读视图 ─────────────────────────────────────────────\r\n// 服务端不接受判决写入：r 只能来自运行期 Judge，不能由 HTTP 请求伪造。\r\n\r\nexport type JudgeVerdictStatus = 'pass' | 'fail' | 'unexec';\r\nexport type JudgeRunVerdict = 'pass' | 'fail' | 'inconclusive';\r\nexport type JudgeLayerId = 'L0' | 'L1' | 'L2' | 'L3';\r\n\r\n/** 一次判决的汇总。coverage < 1 表示有判据未执行（不是失败，但也不等于通过）。 */\r\nexport interface JudgeRunSummary {\r\n  id: number;\r\n  sessionId: string;\r\n  verdict: JudgeRunVerdict;\r\n  score: number;\r\n  /** 主口径覆盖率：分母只含本进程真正有能力判定的层。判决据此定档。 */\r\n  coverage: number;\r\n  executed: number;\r\n  total: number;\r\n  /** 1 = v1 未快照的旧行；2 = v2（有证据/阈值快照，可复算）。 */\r\n  coverageVersion: number;\r\n  /** 全塔口径覆盖率：仅展示，不参与定档。 *\n…[截断：字节超过 16384]\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）"},"truncated":false,"durationMs":7,"resultId":"64f557be-a8c3-466a-9a96-f54997e887d6"}
+
+event: reasoning
+data: {"text":"Now"}
+
+event: reasoning
+data: {"text":" I have a good understanding of"}
+
+event: reasoning
+data: {"text":" the codebase. Let me"}
+
+event: reasoning
+data: {"text":" summarize"}
+
+event: reasoning
+data: {"text":" what I need to do:"}
+
+event: reasoning
+data: {"text":"\n\n1. **`"}
+
+event: reasoning
+data: {"text":"controllers/rsi.controller.ts`"}
+
+event: reasoning
+data: {"text":"** - Add two"}
+
+event: reasoning
+data: {"text":" new methods:"}
+
+event: reasoning
+data: {"text":"\n   - `overview(req,"}
+
+event: reasoning
+data: {"text":" res)` - Move"}
+
+event: reasoning
+data: {"text":" the inline"}
+
+event: reasoning
+data: {"text":" handler from `"}
+
+event: reasoning
+data: {"text":"app.ts` ("}
+
+event: reasoning
+data: {"text":"lines 109-"}
+
+event: reasoning
+data: {"text":"164)"}
+
+event: reasoning
+data: {"text":"\n   - `rules(_"}
+
+event: reasoning
+data: {"text":"req, res)` - Move"}
+
+event: reasoning
+data: {"text":" the inline handler from `app"}
+
+event: reasoning
+data: {"text":".ts` (lines 1"}
+
+event: reasoning
+data: {"text":"03-106"}
+
+event: reasoning
+data: {"text":")\n\n2. **`routes"}
+
+event: reasoning
+data: {"text":"/rsi.routes.ts`"}
+
+event: reasoning
+data: {"text":"** - Add two new routes"}
+
+event: reasoning
+data: {"text":":\n   - `router.get"}
+
+event: reasoning
+data: {"text":"('/rsi/overview',"}
+
+event: reasoning
+data: {"text":" (req, res) =>"}
+
+event: reasoning
+data: {"text":" controller.overview(req, res"}
+
+event: reasoning
+data: {"text":"));`\n   - `router"}
+
+event: reasoning
+data: {"text":".get('/rsi/rules"}
+
+event: reasoning
+data: {"text":"', (_req, res)"}
+
+event: reasoning
+data: {"text":" => controller.rules(_req"}
+
+event: reasoning
+data: {"text":", res));`"}
+
+event: reasoning
+data: {"text":"\n   - These"}
+
+event: reasoning
+data: {"text":" should be placed before `/r"}
+
+event: reasoning
+data: {"text":"si/iterations/:id"}
+
+event: reasoning
+data: {"text":"` to avoid being caught as"}
+
+event: reasoning
+data: {"text":" an"}
+
+event: reasoning
+data: {"text":" ID\n\n3. **`"}
+
+event: reasoning
+data: {"text":"app.ts`** - Remove"}
+
+event: reasoning
+data: {"text":" the inline handlers"}
+
+event: reasoning
+data: {"text":" and replace"}
+
+event: reasoning
+data: {"text":" with forwarding to"}
+
+event: reasoning
+data: {"text":" the controller:"}
+
+event: reasoning
+data: {"text":"\n   - Remove"}
+
+event: reasoning
+data: {"text":" lines"}
+
+event: reasoning
+data: {"text":" 101"}
+
+event: reasoning
+data: {"text":"-164 (the"}
+
+event: reasoning
+data: {"text":" two inline handlers)\n   -"}
+
+event: reasoning
+data: {"text":" Add forwarding lines: `app"}
+
+event: reasoning
+data: {"text":".get('/api/rsi/"}
+
+event: reasoning
+data: {"text":"overview', (req, res"}
+
+event: reasoning
+data: {"text":") => rsiController."}
+
+event: reasoning
+data: {"text":"overview(req, res));`"}
+
+event: reasoning
+data: {"text":" and similar"}
+
+event: reasoning
+data: {"text":" for `/api/rsi/r"}
+
+event: reasoning
+data: {"text":"ules`\n\n4. **`"}
+
+event: reasoning
+data: {"text":"server/tests/contract/rsi"}
+
+event: reasoning
+data: {"text":"-exit-consistency.test"}
+
+event: reasoning
+data: {"text":".ts`** - New"}
+
+event: reasoning
+data: {"text":" test file with:\n   -"}
+
+event: reasoning
+data: {"text":" Test that `/api/v"}
+
+event: reasoning
+data: {"text":"1/rsi/rules`"}
+
+event: reasoning
+data: {"text":" and `/api/rsi/r"}
+
+event: reasoning
+data: {"text":"ules` have same status,"}
+
+event: reasoning
+data: {"text":" cache-control, and JSON"}
+
+event: reasoning
+data: {"text":"\n   - Test that `/api"}
+
+event: reasoning
+data: {"text":"/v1/rsi/overview"}
+
+event: reasoning
+data: {"text":"?session=<none"}
+
+event: reasoning
+data: {"text":"xistent>`"}
+
+event: reasoning
+data: {"text":" and old"}
+
+event: reasoning
+data: {"text":" exit"}
+
+event: reasoning
+data: {"text":" return 404 with"}
+
+event: reasoning
+data: {"text":" same error.code\n   -"}
+
+event: reasoning
+data: {"text":" Test"}
+
+event: reasoning
+data: {"text":" that `client/src/services/api"}
+
+event: reasoning
+data: {"text":".ts` doesn't contain `/"}
+
+event: reasoning
+data: {"text":"api/rsi/overview`"}
+
+event: reasoning
+data: {"text":" or"}
+
+event: reasoning
+data: {"text":" `/api/rsi/rules"}
+
+event: reasoning
+data: {"text":"` literals (marked"}
+
+event: reasoning
+data: {"text":" as todo for round"}
+
+event: reasoning
+data: {"text":" 2)\n\nLet me start"}
+
+event: reasoning
+data: {"text":" implementing these"}
+
+event: reasoning
+data: {"text":" changes. First, let me"}
+
+event: reasoning
+data: {"text":" check the exact lines"}
+
+event: reasoning
+data: {"text":" in app.ts that need to"}
+
+event: reasoning
+data: {"text":" be moved."}
+
+event: delta
+data: {"text":"Now"}
+
+event: delta
+data: {"text":" I have a complete"}
+
+: ping
+
+event: delta
+data: {"text":" understanding of the codebase."}
+
+event: delta
+data: {"text":" Let me implement"}
+
+event: delta
+data: {"text":" the changes step"}
+
+event: delta
+data: {"text":" by step.\n\n## Step"}
+
+event: delta
+data: {"text":" 1: Add `overview"}
+
+event: delta
+data: {"text":"` and `rules` methods"}
+
+event: delta
+data: {"text":" to `rsi.controller.ts"}
+
+event: delta
+data: {"text":"`\n"}
+
+event: tool_call
+data: {"callId":"call-cf83f519-e157-4f64-ba24-7a7f67a2810f","name":"fs.read","displayName":"读取文件","category":"file","arguments":{"path":"C:/Users/Admin/Desktop/新建文件夹 (2)/server/src/controllers/rsi.controller.ts","lineStart":139},"risk":"low","approvalMode":"none","source":"builtin","iteration":15,"status":"pending"}
+
+event: tool_progress
+data: {"callId":"call-cf83f519-e157-4f64-ba24-7a7f67a2810f","stage":"reading","message":"读取 controllers\\rsi.controller.ts","at":1794498870716}
+
+event: tool_result
+data: {"callId":"call-cf83f519-e157-4f64-ba24-7a7f67a2810f","name":"fs.read","status":"success","summary":"已读取 controllers\\rsi.controller.ts（7008 字节，169 行）","data":{"kind":"file","path":"controllers\\rsi.controller.ts","encoding":"utf8","sizeBytes":7008,"truncated":false,"lines":{"returned":31,"total":169},"content":"      // 明确告诉调用方：这只是记录，不是执行\r\n      note:\r\n        action === 'rollback'\r\n          ? '已记录回滚决定。实际还原由脚本按快照执行（change-domain.rollbackTo），本接口不改动任何代码。'\r\n          : '已记录决定。',\r\n    });\r\n  }\r\n\r\n  /** 决策历史（供前端展示\"谁在什么时候拍了什么板\"）。 */\r\n  decisions(_req: Request, res: Response): void {\r\n    if (!existsSync(DECISIONS)) {\r\n      res.json({ items: [] });\r\n      return;\r\n    }\r\n    const items = readFileSync(DECISIONS, 'utf8')\r\n      .split('\\n')\r\n      .filter(Boolean)\r\n      .map((l) => {\r\n        try {\r\n          return JSON.parse(l) as Record<string, unknown>;\r\n        } catch {\r\n          return null;\r\n        }\r\n      })\r\n      .filter((x): x is Record<string, unknown> => x !== null)\r\n      .reverse()\r\n      .slice(0, 100);\r\n    res.json({ items });\r\n  }\r\n}\r\n"},"truncated":false,"durationMs":4,"resultId":"423e59fb-db98-4a62-906a-4ab0f83af4eb"}
+
+event: run_report
+data: {"runId":"5f11a2db-67d3-4ceb-ba51-ffaafb57a65a","sessionId":"ca2bb8ec-01d1-4530-b0eb-e1174f65c8a9","outcome":"budget_exhausted","statusCode":"RUN_BUDGET_TOKENS","reason":"token 预算在第 15 步触发（258227/256000 token）；已做：已完成 18 次工具调用；未做：后续轮次因 token 上限未执行","notDone":["后续轮次因 token 上限未执行"],"hasMaterialChange":true,"triggers":["成本超阈值","预算耗尽"],"finishReason":"budget_exhausted","fileChangeCount":0,"irreversibleCount":0,"approvalCount":0,"errorCount":0,"toolCallCount":18,"promptTokens":256370,"completionTokens":1857,"durationMs":60834,"summary":"工具调用 18 次；耗时 60.8s；token 258227（复核 0）"}
+
+event: delta
+data: {"text":"\n\n【任务 token 预算已用尽（256000）】"}
+
+event: stage
+data: {"runId":"5f11a2db-67d3-4ceb-ba51-ffaafb57a65a","stage":"done","at":1794498870774,"elapsedMs":60887,"detail":"任务 token 预算已用尽（256000）"}
+
+event: done
+data: {"finishReason":"budget_exhausted","iteration":15,"toolCallCount":19,"usage":{"promptTokens":256370,"completionTokens":1857},"tokenBudget":256000,"messageId":"","firstTokenMs":984}
+

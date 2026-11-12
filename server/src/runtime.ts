@@ -350,8 +350,8 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   const healthController = new HealthController(db, mcpManager, config.sandboxRoot, config.agentDbPath);
   const sandboxPermissionsController = new SandboxPermissionsController(sandboxPermissions);
   const judgeController = new JudgeController(judge, policy);
-  // RSI 自我迭代视图：无依赖（直接读账本与契约），构造即可用。
-  const rsiController = new RsiController();
+  // RSI 自我迭代视图：依赖 db —— 看板读数（overview）要查会话/判决/代际对比。
+  const rsiController = new RsiController(db);
 
   // ── 可观测面（只读）─────────────────────────────────────────────────────────
   // 三者都不在执行路径上：轨迹 / 技能库是数据面，能力目录是状态面。

@@ -885,12 +885,14 @@ export async function listSkills(
 }
 
 // ─── RSI 判据读数 ────────────────────────────────────────────────────────
-// 数据源：GET /api/rsi/overview?session=<id>（注意：不是 /api/v1 前缀）。
+// 数据源：GET /api/v1/rsi/overview?session=<id>
+// （历史：曾走不带版本的前缀 —— /api 下直接挂 rsi/*；2.11 起旧路径仅作兼容转发，
+//   前端一律走 /api/v1，与 /api/v1/rsi/iterations 同源同前缀。）
 // 服务端返回的是逐会话的判据塔判决 + RSI 代际 + 归因；字段名以实际响应为准，
 // 这里统一转成 camelCase，组件层不再接触 snake_case。
 
 // ── 规则契约镜像（Spec §2 逐字段一致，与 server 的 buildRsiRulesContract 同源）──
-// 只做类型镜像，不做任何取值加工：overview.rules 与 /api/rsi/rules 都是后端
+// 只做类型镜像，不做任何取值加工：overview.rules 与独立的 rules 端点都是后端
 // 直接下发的契约 JSON，字段名本身已是 camelCase。契约的完整兜底值在
 // client/src/lib/rsi-rules.ts，旧后端不下发 rules 时由它接管渲染。
 
@@ -1234,7 +1236,7 @@ function isRulesContractLike(raw: unknown): raw is RsiRulesContract {
 export async function getRsiOverview(sessionId: string): Promise<RsiOverview> {
   let res: Response;
   try {
-    res = await fetch(`/api/rsi/overview?session=${encodeURIComponent(sessionId)}`, { cache: 'no-store' });
+    res = await fetch(`/api/v1/rsi/overview?session=${encodeURIComponent(sessionId)}`, { cache: 'no-store' });
   } catch {
     throw new ApiError(
       'BACKEND_UNREACHABLE',
@@ -1319,14 +1321,14 @@ export async function getRsiOverview(sessionId: string): Promise<RsiOverview> {
 }
 
 /**
- * GET /api/rsi/rules —— 独立规则契约（Spec §3 新增，无需 session）。
+ * GET /api/v1/rsi/rules —— 独立规则契约（Spec §3 新增，无需 session）。
  * 与 overview.rules 同源（后端同调 buildRsiRulesContract），供独立看板与
  * 一致性校验脚本消费。失败时抛 ApiError，由调用方降级到兜底契约。
  */
 export async function getRsiRules(): Promise<RsiRulesContract> {
   let res: Response;
   try {
-    res = await fetch('/api/rsi/rules', { cache: 'no-store' });
+    res = await fetch('/api/v1/rsi/rules', { cache: 'no-store' });
   } catch {
     throw new ApiError('BACKEND_UNREACHABLE', '无法连接后端服务（可能未启动或端口不通）。', 0);
   }

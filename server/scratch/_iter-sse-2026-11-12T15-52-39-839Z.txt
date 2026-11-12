@@ -1,0 +1,12 @@
+event: stage
+data: {"runId":"56fbf84f-a25b-4cb2-9609-dda1c24c1531","stage":"connecting","at":1794498759838,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"e3d35e10-1030-40d7-80d2-1d23b4634576","messageId":"d863a045-3879-4e2e-997b-cf4c6eea20f1","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":20,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":8,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"56fbf84f-a25b-4cb2-9609-dda1c24c1531","stage":"upstream_error","at":1794498769876,"elapsedMs":10038,"detail":"无法连接上游（1.92.150.5:8787）：fetch failed。请检查网络/代理，或改用可访问的 Base URL。"}
+
+event: error
+data: {"code":"UPSTREAM_ERROR","message":"无法连接上游（1.92.150.5:8787）：fetch failed。请检查网络/代理，或改用可访问的 Base URL。","retryable":false}
+

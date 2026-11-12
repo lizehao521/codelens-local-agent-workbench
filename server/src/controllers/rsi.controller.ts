@@ -17,8 +17,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Request, Response } from 'express';
 import { buildRsiRulesContract } from '../services/rsi/rules-contract.js';
+import { buildRsiOverview } from '../services/rsi/rsi-overview.service.js';
 import { CHANGE_DOMAINS, checkDomain, type IterationTrigger } from '../services/rsi/change-domain.js';
 import { getIteration, listIterations, summarize } from '../services/rsi/iteration-store.js';
+import type { Db } from '../repositories/db.js';
 
 // 本文件在 src/controllers/ 下：'../..' 才是 server/（少一级会指向 src/）。
 const SERVER = fileURLToPath(new URL('../..', import.meta.url));
@@ -46,9 +48,50 @@ function currentModel(): string {
 }
 
 export class RsiController {
+  constructor(private readonly db: Db) {}
+
   /** 契约：前后端共用的单一事实源（含 domains / decisions / iterationCriteria）。 */
   contract(_req: Request, res: Response): void {
     res.json(buildRsiRulesContract());
+  }
+
+  /**
+   * 规则契约（/api/rsi/rules 的新家）。
+   *
+   * 与 `contract` 同源同体，唯一差别是这里显式禁缓存：契约虽静态，
+   * 但它也嵌在 overview 的动态响应里，浏览器缓存旧 rules 会让两个出口
+   * 在 HTTP 层分叉（普通 curl 断言抓不到）。
+   */
+  rules(_req: Request, res: Response): void {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(buildRsiRulesContract());
+  }
+
+  /**
+   * 看板读数（/api/rsi/overview 的新家）。
+   *
+   * 装配逻辑在 `services/rsi/rsi-overview.service.ts`：控制器只做
+   * 「取参 → 调服务 → 按服务给的 status 出响应」，不再碰 SQL。
+   * 错误形状保持原样（字符串 error，不是 {code,message}），因为前端已按此解析。
+   */
+  overview(req: Request, res: Response): void {
+    const sessionId = typeof req.query.session === 'string' ? req.query.session : null;
+    if (!sessionId) {
+      res.status(400).json({ error: '?session=xxx required' });
+      return;
+    }
+    try {
+      const out = buildRsiOverview(this.db, sessionId);
+      if (!out.ok) {
+        res.status(out.status).json({ error: out.error });
+        return;
+      }
+      // 与 rules 一致禁用缓存：否则浏览器缓存旧 overview 会让两个出口分叉。
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(out.payload);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
+    }
   }
 
   /** 迭代列表 + 汇总。 */

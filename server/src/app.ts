@@ -18,7 +18,6 @@ import { notFoundHandler } from './middlewares/not-found.js';
 import { agentConcurrency } from './middlewares/agent-concurrency.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { createRuntime, type Runtime } from './runtime.js';
-import { buildRsiRulesContract } from './services/rsi/rules-contract.js';
 import { AppError, ErrorCode } from './utils/errors.js';
 
 export interface AppOptions {
@@ -98,70 +97,13 @@ export function createApp(options: AppOptions = {}): Express {
     }),
   );
 
-  // ── RSI 规则契约 ── 只读、无需 session，供独立看板与一致性校验脚本消费。
-  // 与 overview 共用同一个 buildRsiRulesContract()，保证两处同源、JSON 深度相等。
-  app.get('/api/rsi/rules', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    res.json(buildRsiRulesContract());
-  });
-
-  // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程
-  app.get('/api/rsi/overview', (req, res) => {
-    try {
-      const sessionId = typeof req.query.session === 'string' ? req.query.session : null;
-      if (!sessionId) { res.status(400).json({ error: '?session=xxx required' }); return; }
-      const db = runtime.db;
-
-      const session = db.get(`SELECT id, title, provider, model, created_at FROM sessions WHERE id = ?`, [sessionId]);
-      if (!session) { res.status(404).json({ error: 'session not found' }); return; }
-
-      // 每代 judge_run 汇总 + 其 verdicts
-      const judgeRuns = db.all(`SELECT id, verdict, score, coverage, executed, total, created_at
-                                FROM judge_runs WHERE session_id = ? ORDER BY id ASC`, [sessionId]);
-      const verdictsByRun = new Map<number, any[]>();
-      const allVerdicts = db.all<any>(`SELECT run_id, layer, criterion, status, score, detail, data_json
-                                  FROM judge_verdicts WHERE session_id = ? ORDER BY run_id, id ASC`, [sessionId]);
-      for (const v of allVerdicts) {
-        // data_json 是 007 迁移新增的列；旧行为 NULL，这里统一解成 data 字段，
-        // 解不出来就当没有（绝不能让一条脏 JSON 把整个看板打成 500）。
-        v.data = parseJsonColumn(v.data_json);
-        delete v.data_json;
-        if (!verdictsByRun.has(v.run_id)) verdictsByRun.set(v.run_id, []);
-        verdictsByRun.get(v.run_id)!.push(v);
-      }
-
-      // 每代 RSI 对比（prev → next）
-      const rsiRuns = db.all(`SELECT generation, prev_generation, verdict, exit_code,
-                                     reasons_json, prev_readings_json, next_readings_json
-                              FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC`, [sessionId]);
-
-      // 归因经验（policy_injections）—— 每条 π' 的增量
-      const attributions = db.all(`SELECT id, policy_version, lesson, created_at
-                                   FROM policy_injections WHERE session_id = ?
-                                   ORDER BY id DESC LIMIT 20`, [sessionId]);
-
-      // Map 不能直接交给 res.json：JSON.stringify(new Map()) 是 {}，
-      // 前端会拿到空对象，趋势图和指标条永远是空的。这里显式转成普通对象。
-      const verdictsByRunJson: Record<string, any[]> = Object.fromEntries(verdictsByRun);
-
-      // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析
-      // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。
-      // 与 /api/rsi/rules 一致禁用缓存：契约虽静态，但嵌在动态响应里，
-      // 浏览器缓存旧 overview 会让两个出口在 HTTP 层分叉（普通 curl 断言抓不到）。
-      res.setHeader('Cache-Control', 'no-store');
-      res.json({
-        session,
-        judgeRuns,
-        verdictsByRun: verdictsByRunJson,
-        rsiRuns,
-        attributions,
-        eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),
-        rules: buildRsiRulesContract(),
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
-    }
-  });
+  // ── RSI 旧路径兼容出口 ──
+  // 正式归属地已迁到 routes/rsi.routes.ts（/api/v1/rsi/rules、/api/v1/rsi/overview），
+  // 装配逻辑在 services/rsi/rsi-overview.service.ts。这里只留一行转发：
+  // 两个出口共用同一个 controller 方法，响应体在结构上不可能分叉。
+  // 等前端 api.ts 与外部脚本全部迁到 /api/v1 后，这两行即可删除。
+  app.get('/api/rsi/rules', (_req, res) => runtime.rsiController.rules(_req, res));
+  app.get('/api/rsi/overview', (req, res) => runtime.rsiController.overview(req, res));
 
   // RSI 看板静态页面 —— public/ 目录无论在 dist 还是 src 路径都能找到
   app.get('/rsi', (req, res) => {
@@ -213,68 +155,11 @@ export function createApp(options: AppOptions = {}): Express {
   return app;
 }
 
-/** 解析 judge_verdicts.data_json；旧行是 NULL、脏 JSON 也一律当成「没有」。 */
-function parseJsonColumn(raw: unknown): unknown {
-  if (typeof raw !== 'string' || raw.length === 0) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-const EVAL_CRITERION = 'task.test_pass_rate';
-
 /**
- * 把 task.test_pass_rate 的判决行整理成看板可直接消费的形状。
- *
- * 兼容策略：优先用带结构化 data 的**最新**判决；如果该会话还没有任何结构化行
- * （007 迁移之前的旧数据），退回最新一行并标 `source: 'detail_only'`，
- * 此时数值字段为 null、suites 为空 —— 前端据此走旧路径，不会拿到假数字。
+ * 注：`parseJsonColumn` / `buildEvalSummary` 已随 RSI 看板读数一起迁到
+ * `services/rsi/rsi-overview.service.ts`。它们只服务于 overview 一个响应，
+ * 留在入口文件里会让「装配」与「业务」混在一起，也无法单测。
  */
-function buildEvalSummary(
-  verdicts: any[],
-  judgeRuns: Array<{ id: number; created_at: number }>,
-): Record<string, unknown> | null {
-  let latest: any = null;
-  let latestStructured: any = null;
-  for (const v of verdicts) {
-    if (v.criterion !== EVAL_CRITERION) continue;
-    latest = v;
-    if (v.data) latestStructured = v;
-  }
-  const chosen = latestStructured ?? latest;
-  if (!chosen) return null;
-
-  const data = (chosen.data ?? null) as Record<string, any> | null;
-  const num = (key: string): number | null =>
-    typeof data?.[key] === 'number' ? (data[key] as number) : null;
-  const total = num('total');
-  const run = judgeRuns.find((r) => r.id === chosen.run_id);
-
-  return {
-    runId: chosen.run_id,
-    status: chosen.status,
-    score: chosen.score ?? null,
-    detail: chosen.detail ?? null,
-    measuredAt: run?.created_at ?? null,
-    passed: num('passed'),
-    total,
-    denominator: num('denominator') ?? total,
-    suites: Array.isArray(data?.suites) ? data!.suites : [],
-    source: data ? 'structured' : 'detail_only',
-    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，
-    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。
-    evalSetFingerprint:
-      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,
-    failureKinds:
-      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)
-        ? (data.failureKinds as Record<string, number>)
-        : {},
-    samples: num('samples') ?? 1,
-    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',
-  };
-}
 
 function cacheImmutableAssets(res: Response, filePath: string): void {
   // Vite emits content-hashed filenames under /assets/ — those are safe to
