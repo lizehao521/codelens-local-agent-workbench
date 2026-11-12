@@ -83,3 +83,8 @@ server/.artifacts/
 .audit_*.json
 .dep_*.json
 .perf-*.json
+# 带教对话与稳定性探针的临时产物（不属源码）
+server/scratch/_mentor*
+server/scratch/_stability-probe.*
+server/scratch/_db-consistency.mjs
+server/scratch/_list-models.mjs

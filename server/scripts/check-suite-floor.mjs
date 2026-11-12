@@ -20,7 +20,7 @@
  *   2 = 前置不可得（找不到 krsi 二进制）
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,46 @@ import { fileURLToPath } from 'node:url';
 const KRSI = process.env.KRSI_BIN_PATH || 'C:/Users/Admin/AppData/Local/Temp/krsi';
 // 必须用 fileURLToPath：仓库路径含中文，new URL().pathname 会给出 %E6%96%B0... 编码串。
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SRC = join(ROOT, 'data/rsi/7d7876d4-aee0-4ac2-b2f0-e61ed30c94f3-next-gen1.json');
+const RSI_DIR = join(ROOT, 'data/rsi');
+// 原写死的会话 id 作首选，保留可复现性；它不在了就退化选任一可用夹具。
+const PREFERRED = join(RSI_DIR, '7d7876d4-aee0-4ac2-b2f0-e61ed30c94f3-next-gen1.json');
+
+/**
+ * 找一个能当基准的 manifest。
+ *
+ * 原来这里写死一个会话 id 的绝对路径。`data/rsi` 被清账换过一批会话之后，
+ * 那个文件不存在 → readFileSync 抛 ENOENT → 进程 exit 1。可这是**前置不可得**，
+ * 不是「门禁失效」：脚本自己的退出码契约（2 = 前置不可得）被自己的崩栈覆盖了。
+ * 与 agent-feedback 那条 JUDGE_FIXTURE_BLOCKED 同一形态——尺子跑不动不能记成被衡量者的错。
+ *
+ * 判据：能解析 + readings 里真有 test_pass_rate（下面要用它的 n 改数）。
+ */
+function resolveFixture() {
+  const explicit = process.env.KRSI_FIXTURE_MANIFEST;
+  const candidates = [];
+  if (explicit) candidates.push(explicit);
+  candidates.push(PREFERRED);
+  try {
+    if (existsSync(RSI_DIR)) {
+      const rest = readdirSync(RSI_DIR)
+        .filter((f) => f.endsWith('-next-gen1.json'))
+        .sort()
+        .reverse()
+        .map((f) => join(RSI_DIR, f));
+      candidates.push(...rest);
+    }
+  } catch {}
+
+  for (const path of candidates) {
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8'));
+      if (!Array.isArray(parsed.readings)) continue;
+      if (!parsed.readings.some((r) => r && r.metric === 'test_pass_rate')) continue;
+      return { path, parsed };
+    } catch {}
+  }
+  return null;
+}
 
 /**
  * 前置判定用**能不能真的跑**，不用 existsSync。
@@ -53,7 +92,14 @@ if (!krsiRunnable()) {
   process.exit(2);
 }
 
-const base = JSON.parse(readFileSync(SRC, 'utf8'));
+const fixture = resolveFixture();
+if (!fixture) {
+  console.error('[P2] 前置不可得：data/rsi 下找不到可用的 *-next-gen1.json 基准 manifest');
+  console.error('     可用 KRSI_FIXTURE_MANIFEST=<path> 显式指定。这不是通过，也不是失败。');
+  process.exit(2);
+}
+
+const base = fixture.parsed;
 const FP = '522c3ddad8478b63d01074841fd2faaa68b5cef2d41fd0076f0003b51e11dee4';
 const TOTAL = 136;
 const BEFORE = 94;
