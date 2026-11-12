@@ -44,6 +44,7 @@ export type NextAction =
   | 'regenerate_taskbook' // 重新出题（规格层）
   | 'split_task' // 拆成更小的步（资源/行为层）
   | 'switch_model' // 换模型（行为层）
+  | 'skip_task' // 这题在 Agent 能力范围内无解（尺子/夹具坏），本轮跳过，不烧墙钟
   | 'halt_manual'; // 停机等人工（判据层、环境层修不好时）
 
 /** 一次派单 + 一次围栏的可观测事实。归因只吃这个结构，不吃自然语言。 */
@@ -64,6 +65,16 @@ export interface AttributionInput {
     fullOk: boolean; //          全量回归
     protectedIntact: boolean; // 受保护路径零改动
     judgeTampered: boolean; //   判据文件被改写
+    /**
+     * 全量回归是否**真的跑过**。缺省 true（老调用方语义不变）。
+     *
+     * 必须与 fullOk 分开：围栏在「类型检查红」时会**跳过**全量回归，
+     * 那时 fullOk 只能取 false，于是「没跑」被读成「跑了且红」——
+     * 实测这直接把一次 TS2322 误判成「踩坏既有行为」，喂了三轮错方向。
+     */
+    fullRan?: boolean;
+    /** 类型检查是否真的跑过（判据红时会被跳过）。缺省 true。 */
+    typeRan?: boolean;
   };
   /** 派单前服务健康检查是否通过（循环自己做的）。 */
   serviceHealthy: boolean;
@@ -121,6 +132,43 @@ function toolNameSequence(output: string): string[] {
 const READ_TOOLS = new Set(['fs.read', 'fs.list']);
 
 /**
+ * 从诊断里挑出**最该被引用的一句话**，塞进 note。
+ *
+ * 为什么要做这件事：note 原来是按层写死的模板句（「把编译器原文喂回去」），
+ * 而诊断原文只在旁边的文件里。派单只把 note 加上诊断一起送，模型往往照着
+ * 上一轮的层名去猜，猜错方向。实测第 2/3 轮收到的是
+ * 「新增工具没登记」，而真实错误是 `kind: "precondition_failed"` 不是合法枚举——
+ * 两句话的修法完全不同。note 里带上真实那一行，反馈才叫「明确具体」。
+ */
+export function pickErrorLine(diagnosis: string): string | null {
+  const clip = (s: string): string => (s.length > 220 ? `${s.slice(0, 220)}…` : s);
+  const lines = diagnosis
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  // 编译器错误优先：语法/类型不合法时判据一条都跑不起来，其它结论都没意义
+  const ts = lines.find((l) => /error TS\d{4}/.test(l));
+  if (ts) return clip(ts);
+
+  // 判据诊断的固定形状是「· 用例名」下一行「→ 差异」。
+  // 两个一起给才有用：只给用例名不知道差在哪，只给差异不知道是哪条断言。
+  // 原先只匹配 toBe/toEqual/toContain，遇到 `to match /line\s*\d+/i` 就落到
+  // 围栏那句「FAIL 判据未通过：xxx」上 —— 反馈退化成「这题没过」，等于没说。
+  const arrowAt = lines.findIndex((l) => /^→/.test(l));
+  if (arrowAt >= 0) {
+    const diff = (lines[arrowAt] ?? '').replace(/^→\s*/, '');
+    const name = [...lines.slice(0, arrowAt)].reverse().find((l) => /^·/.test(l));
+    const label = name ? `${name.replace(/^·\s*/, '')}｜` : '';
+    return clip(`${label}${diff}`);
+  }
+
+  const assertion = lines.find((l) => /AssertionError|expected .+ to (be|equal|contain|match|throw|have)/.test(l));
+  if (assertion) return clip(assertion);
+  const fail = lines.find((l) => /^FAIL\s/.test(l));
+  return fail ? clip(fail) : null;
+}
+
+/**
  * 归因主函数。纯函数：同样的输入永远同样的输出（可单测、可回放历史现场）。
  */
 export function attributeFailure(input: AttributionInput): Attribution {
@@ -152,6 +200,72 @@ export function attributeFailure(input: AttributionInput): Attribution {
       countsAgainstAgent: false,
       nextAction: 'halt_manual',
       note: '判据自身的 import 路径可能写错，先人工确认判据能独立跑通。',
+    };
+  }
+
+  // ── L0a 调度器缺件：题入队了，但派单脚本没有对应任务书 ──────────────────
+  //
+  // 实测：auto-adopt 采纳了新题，而 buildXxxTask 是一张静态表，派单脚本 3 秒退出报
+  // 「未知题目」，三轮全空转。当时归因判成 implementation/TARGET_UNTOUCHED 并计入 Agent——
+  // 可它连任务书都没收到，这不是能力缺口，是调度链断了。
+  // 这类失败重试没有意义（重派还是同一句报错），必须停机补任务书。
+  const taskbookSig = /未知题目|UNKNOWN_TASK|TASKBOOK_MISSING/.exec(input.dispatch.output);
+  if (taskbookSig) {
+    return {
+      layer: 'infra',
+      code: 'TASKBOOK_MISSING',
+      evidence: [taskbookSig[0]],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: 'halt_manual',
+      note: '题已入队但派单脚本没有任务书，Agent 根本没被派单。停机补任务书，不要重试、不要记成它的失败。',
+    };
+  }
+
+  // ── L0a1 LLM 上游额度耗尽 ──────────────────────────────────────────────
+  //
+  // 与「连不上」不同：端点通、/models 200，但 chat 返回 429 +
+  // "Daily usage limit exceeded ... resets at ..."。这是账户级日限额，
+  // 换模型也没用（同一账号共享），重派只会一直撞同一堵墙。
+  // 必须单独归类：否则它被当成一次空转，落到 Agent 的实现层账上。
+  const quotaSig =
+    /Daily usage limit exceeded|rate_limit_exceeded|insufficient_quota|quota.{0,20}exceed|额度耗尽|UPSTREAM_QUOTA_EXCEEDED/i.exec(
+      `${input.dispatch.output}\n${input.diagnosis}`,
+    );
+  if (quotaSig) {
+    return {
+      layer: 'infra',
+      code: 'UPSTREAM_QUOTA_EXCEEDED',
+      evidence: [quotaSig[0]],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: 'halt_manual',
+      note: '上游账户额度耗尽，重置前重派无意义。停机等重置；换模型无效（同一账号共享限额）。',
+    };
+  }
+
+  // ── L0a2 LLM 上游不可达 ────────────────────────────────────────────────
+  //
+  // 与「本地服务没起来」是两回事：8099 的 health 可以是 ok，服务也正常派单，
+  // 但它转发 LLM 请求时连不上 8787 —— 表现为 fetch failed / CONNECT_TIMEOUT，
+  // run_report 里既没工具调用也没正文，和「模型只说不做」长得几乎一样。
+  // 实测 2026-11-12：端点持续 UND_ERR_CONNECT_TIMEOUT，若不做这一层，
+  // 三轮空转会被记成 implementation/TARGET_UNTOUCHED 并计入 Agent 能力账。
+  //
+  // 重派没有意义（还是同一句超时），必须停机恢复上游。
+  const upstreamSig =
+    /UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET|UND_ERR_CONNECT|fetch failed|ETIMEDOUT|ECONNABORTED|CONNECT_TIMEOUT|connect timeout|UPSTREAM_UNREACHABLE|上游不可达/i.exec(
+      `${input.dispatch.output}\n${input.diagnosis}`,
+    );
+  if (upstreamSig) {
+    return {
+      layer: 'infra',
+      code: 'UPSTREAM_UNREACHABLE',
+      evidence: [upstreamSig[0]],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: 'halt_manual',
+      note: 'LLM 上游连不上（本地服务健康但转发失败）。重派还是同一句超时，停机恢复上游；不计入 Agent。',
     };
   }
 
@@ -233,27 +347,68 @@ export function attributeFailure(input: AttributionInput): Attribution {
     };
   }
 
-  // ── L4 集成层：判据绿但产品不认 ──────────────────────────────────────
-  if (input.fence.reached && input.fence.judgeOk && !input.fence.fullOk) {
+  // ── L6b 判据层：判据自己跑不动（夹具被安全策略拦住 / 依赖缺失） ─────────
+  //
+  // 实测 2026-11-12（test-run / iteration-view / exec-partial-on-timeout 三题）：
+  // 判据在夹具里一次删 50 个文件，被沙箱的 safe-delete 策略拦下，
+  // 于是每条断言都收到 `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED]`。
+  // 归因当时判成 implementation/BEHAVIOR_WRONG 并计入 Agent，三题共烧掉
+  // 8 次派单、约 45 分钟墙钟 —— 但它撞的是一堵 Agent 无权拆的墙。
+  // 判据跑不动 ≠ 代码写错；这类必须绕开（skip_task），不许重派。
+  const fixtureBlockedHits = [
+    ...`${input.diagnosis}\n${input.dispatch.output}`.matchAll(/SAFE_DELETE_BULK_CONFIRM_REQUIRED|\[safe-delete\]/gi),
+  ];
+  // 阈值取 3：合法行为只会在个别断言上出现一次（工具本来就该拒批量删），
+  // 而夹具被拦是**每条**断言都收到同一句策略拒绝。只用 1 次判据会洗白真缺陷。
+  if (fixtureBlockedHits.length >= 3) {
     return {
-      layer: 'integration',
-      code: 'FULL_SUITE_RED',
-      evidence: ['判据通过，全量回归失败'],
-      owner: 'agent',
-      countsAgainstAgent: true,
-      nextAction: 'retry_with_diagnosis',
-      note: '单题判据过了，但踩坏了既有行为（新增工具没登记、既有门禁不认它）。把回归失败的具体用例喂回去。',
+      layer: 'judge',
+      code: 'JUDGE_FIXTURE_BLOCKED',
+      evidence: [`安全策略拒绝出现 ${fixtureBlockedHits.length} 次（每条断言都收到，而非个别行为）`],
+      owner: 'author',
+      countsAgainstAgent: false,
+      nextAction: 'skip_task',
+      note:
+        '判据的夹具被沙箱安全策略（safe-delete 批量确认）拦住，断言收到的是策略拒绝而不是被测行为。' +
+        '这是尺子跑不动，不是代码错：把夹具改成 mkdtemp 独立目录 + 每次只删少量文件，在人工修好前跳过本题，别重派。',
     };
   }
-  if (input.fence.reached && input.fence.judgeOk && !input.fence.typeOk) {
+
+  // ── L4 集成层：判据绿但产品不认 ──────────────────────────────────────
+  //
+  // 顺序至关重要：**类型检查先于全量回归**。
+  // 因为围栏在类型红时会跳过全量回归（跑它只是花五分钟确认一件已知的事），
+  // 而 fullOk 拿不到 PASS 行就只能是 false —— 于是「没跑」伪装成「跑了且红」。
+  // 实测代价：一次 TS2322（kind 写成了非法枚举值）被归成 FULL_SUITE_RED，
+  // 反馈说「把回归失败用例喂回去」，模型照着去查回归，两轮都在错方向上改。
+  if (input.fence.reached && input.fence.judgeOk && input.fence.typeRan !== false && !input.fence.typeOk) {
+    const line = pickErrorLine(input.diagnosis);
     return {
       layer: 'integration',
       code: 'TYPECHECK_RED',
-      evidence: ['判据通过，tsc --noEmit 失败'],
+      evidence: ['判据通过，tsc --noEmit 失败', ...(line ? [line] : [])],
       owner: 'agent',
       countsAgainstAgent: true,
       nextAction: 'retry_with_diagnosis',
-      note: '行为对了、类型不过 —— 测试能过但构建会挂。把编译器原文喂回去。',
+      note:
+        '行为对了、类型不过 —— 测试能过但构建会挂。编译器原文' +
+        (line ? `：${line}` : '见诊断第 1 段') +
+        '。只改到类型合法为止，不要为了绕开类型错误去改判据或删断言。',
+    };
+  }
+  if (input.fence.reached && input.fence.judgeOk && input.fence.fullRan !== false && !input.fence.fullOk) {
+    const line = pickErrorLine(input.diagnosis);
+    return {
+      layer: 'integration',
+      code: 'FULL_SUITE_RED',
+      evidence: ['判据通过，全量回归失败', ...(line ? [line] : [])],
+      owner: 'agent',
+      countsAgainstAgent: true,
+      nextAction: 'retry_with_diagnosis',
+      note:
+        '单题判据过了，但踩坏了既有行为（新增工具没登记、既有门禁不认它）。回归失败用例' +
+        (line ? `：${line}` : '见诊断') +
+        '。先让这条恢复，再谈本题。',
     };
   }
 
@@ -266,17 +421,21 @@ export function attributeFailure(input: AttributionInput): Attribution {
       owner: 'agent',
       countsAgainstAgent: true,
       nextAction: 'retry_with_diagnosis',
-      note: '它动了别的文件或改动没落盘。把「靶子一个字节都没变」这个事实明确告诉它。',
+      note: '靶子文件一个字节都没变（你动的可能是别的文件，或改动没落盘）。这一轮必须把 diff 落在靶子文件里，描述计划不算完成。',
     };
   }
+  const behaviorLine = pickErrorLine(input.diagnosis);
   return {
     layer: 'implementation',
     code: 'BEHAVIOR_WRONG',
-    evidence: ['判据未通过，靶子已改动'],
+    evidence: ['判据未通过，靶子已改动', ...(behaviorLine ? [behaviorLine] : [])],
     owner: 'agent',
     countsAgainstAgent: true,
     nextAction: input.attempt >= input.maxAttempts ? 'split_task' : 'retry_with_diagnosis',
-    note: '这是唯一该记在 Agent 账上的层：代码写出来了，行为不对。诊断里已有断言差异。',
+    note:
+      '代码写出来了，行为不对。第一条断言差异' +
+      (behaviorLine ? `：${behaviorLine}` : '见诊断') +
+      '。改实现去满足它，不要改判据。',
   };
 }
 

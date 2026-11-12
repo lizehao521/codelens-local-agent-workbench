@@ -6,7 +6,9 @@
  * provider capability table. probeToolSupport() implements AC-01 detection.
  */
 
+import { appendFileSync } from 'node:fs';
 import { Agent, EnvHttpProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
+import { acquireRateLimit } from './rate-limit.js';
 import { AppError, ErrorCode } from '../utils/errors.js';
 import type {
   NormalizedToolCall,
@@ -250,6 +252,17 @@ export async function* parseUpstreamSSE(body: ReadableStream<Uint8Array>): Async
   };
 
   const handleData = (data: string): UpstreamEvent[] => {
+    // 诊断开关（默认关闭）：把上游原始 data 行逐条落盘。
+    // 排查「计费了 N token 但 SSE 一条 delta 都没有」这类形状问题时，
+    // 光看归一化后的事件是猜不出来的，必须看线上原文。
+    const dump = process.env.RSI_UPSTREAM_DUMP;
+    if (dump) {
+      try {
+        appendFileSync(dump, data + '\n');
+      } catch {
+        /* 诊断失败不影响主流程 */
+      }
+    }
     let payload: unknown;
     try {
       payload = JSON.parse(data);
@@ -267,7 +280,11 @@ export async function* parseUpstreamSSE(body: ReadableStream<Uint8Array>): Async
     if (typeof choice.finish_reason === 'string' && choice.finish_reason.length > 0) {
       finishReason = choice.finish_reason;
     }
-    const delta = choice.delta as Record<string, unknown> | undefined;
+    // 部分 OpenAI 兼容端点（实测 Cloudflare Workers AI /ai/v1 在长 prompt + tools 下）
+    // 即使请求 stream:true，也会回 `choices[0].message` 而不是 `choices[0].delta`。
+    // 只认 delta 的后果很隐蔽：usage 照常累加、finish_reason 照常 stop，
+    // 但正文被整段丢弃 —— run_report 里显示计费了 94 token，SSE 里一条 delta 都没有。
+    const delta = (choice.delta ?? choice.message) as Record<string, unknown> | undefined;
     if (!delta) return [];
 
     const events: UpstreamEvent[] = [];
@@ -462,6 +479,9 @@ export class OpenAICompatibleAdapter {
     timeoutPromise.catch(() => {});
 
     try {
+      // 统一出网限速：NVIDIA 等端点按分钟限流，超了整轮派单拿到空报告又被归因成能力失败。
+      // 所有服务端 LLM 请求都经此闸门（propose / trial / deep-assessor 全共用同一 host 计数）。
+      await acquireRateLimit(params.baseUrl);
       const fetchPromise = this.fetchFn(`${params.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {

@@ -88,6 +88,7 @@ export function createApp(options: AppOptions = {}): Express {
       health: runtime.healthController,
       sandboxPermissions: runtime.sandboxPermissionsController,
       judge: runtime.judgeController,
+      rsi: runtime.rsiController,
       capabilities: runtime.capabilitiesController,
       traces: runtime.tracesController,
       skills: runtime.skillsController,

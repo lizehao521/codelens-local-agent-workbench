@@ -1,6 +1,6 @@
 {
   "name": "codelens-server",
-  "version": "2.5.0",
+  "version": "2.10.0",
   "private": true,
   "type": "module",
   "description": "CodeLens programming agent backend: LLM proxy layer (BYOK, zero retention)",

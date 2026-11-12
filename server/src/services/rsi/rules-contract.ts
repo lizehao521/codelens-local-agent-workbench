@@ -12,6 +12,8 @@
 
 import { DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js';
 import { COVERAGE_THRESHOLD } from '../judge/types.js';
+import { CHANGE_DOMAINS, type ChangeDomainId, type IterationTrigger } from './change-domain.js';
+import { DECISION_META, type IterationDecision } from './iteration-gate.js';
 
 // ── 类型契约（Spec §2 锁定，前后端逐字段一致）────────────────────────────
 
@@ -57,6 +59,32 @@ export interface RsiBasisDefinition {
   note: string;
 }
 
+/** 变更域：自我迭代的权限分级。 */
+export interface RsiDomainDefinition {
+  id: ChangeDomainId;
+  label: string;
+  requiresHumanApproval: boolean;
+  maxFiles: number;
+  autoAllowedBy: IterationTrigger[];
+  rationale: string;
+}
+
+/** 迭代决策：每轮的去留。 */
+export interface RsiDecisionDefinition {
+  decision: IterationDecision;
+  label: string;
+  tone: RsiTone;
+  action: string;
+}
+
+/** 迭代判据：量化阈值。 */
+export interface RsiCriterionDefinition {
+  id: string;
+  name: string;
+  threshold: string;
+  onFail: IterationDecision | null;
+}
+
 export interface RsiRulesContract {
   version: 'rsi-rules-contract-v1';
   authority: string;
@@ -74,6 +102,17 @@ export interface RsiRulesContract {
   };
   reasonRuleIdPattern: '^(R[1-6]):';
   outOfScope: string[];
+  /**
+   * 以下三组是「自我迭代」能力的机器可读定义（可选字段）。
+   *
+   * 为什么用可选而不是升版本号：升版本是**破坏性变更**的标记，
+   * 而新增字段不是破坏性——旧前端读到 undefined 时降级即可，
+   * 新前端读到就渲染。用版本号强制会让前端必须同步发布，
+   * 而这两端本来就允许不同步（前端有兜底契约）。
+   */
+  domains?: RsiDomainDefinition[];
+  decisions?: RsiDecisionDefinition[];
+  iterationCriteria?: RsiCriterionDefinition[];
 }
 
 /**
@@ -258,9 +297,34 @@ export function buildRsiRulesContract(): RsiRulesContract {
 
     reasonRuleIdPattern: '^(R[1-6]):',
 
+    // ── 自我迭代能力（新增，可选字段）────────────────────────────────
+    // 数字与枚举一律从实现 import：域上限、审批要求、决策标签都不允许在这里复制一份。
+    domains: CHANGE_DOMAINS.map((d) => ({
+      id: d.id,
+      label: d.label,
+      requiresHumanApproval: d.requiresHumanApproval,
+      maxFiles: d.maxFiles,
+      autoAllowedBy: [...d.autoAllowedBy],
+      rationale: d.rationale,
+    })),
+    decisions: (Object.keys(DECISION_META) as IterationDecision[]).map((k) => ({
+      decision: k,
+      label: DECISION_META[k].label,
+      tone: DECISION_META[k].tone as RsiTone,
+      action: DECISION_META[k].action,
+    })),
+    iterationCriteria: [
+      { id: 'G1', name: '跨代判定为 improved', threshold: 'verdict = improved', onFail: 'retry' },
+      { id: 'G2', name: '护栏指标不回退', threshold: 'guardRegressed = 0', onFail: 'rollback' },
+      { id: 'G3', name: '围栏全部通过（无 fail、无 unexec）', threshold: 'fail = 0 且 unexec = 0', onFail: 'retry' },
+      { id: 'G4', name: '改动全部在授权域内', threshold: 'outOfScopeChanges = 0', onFail: 'rollback' },
+      { id: 'G5', name: '判据执行覆盖率', threshold: `coverage ≥ ${COVERAGE_THRESHOLD}`, onFail: 'retry' },
+      { id: 'G6', name: '尝试次数未耗尽', threshold: 'attempts < maxAttempts', onFail: 'rollback' },
+    ],
+
     outOfScope: [
       'budget.efficiency 刻意不进 RSI readings：成本是 L0 闸（用量超预算上限即判 fail），不是「越低越好」的目标；把它当目标会让「越学越贵」被误判成「越学越差」（manifest-builder.ts:70-73，C3）',
-      '强化Agent.txt 的 C1–C4 与 产品宪法补丁.md 仍是宣言 / 草案，尚未拍板，不作机械判定依据；本契约不据其新增规则、状态或触发条件（Spec §0.4、§5、§2.1）',
+      '强化Agent.txt 的 C1–C4 已落地为 domains / decisions / iterationCriteria 三组可选字段（权限分级、去留决策、量化判据），但**判定仍由 R1–R6 与围栏执行**：这三组只描述"允许改到哪、达标线在哪、不达标怎么处置"，不新增驱逐规则、不改 6 态语义',
       'criteria_sha256 判据集内容指纹由 manifest-builder.ts 的 criteriaFingerprint() / CRITERIA_FINGERPRINT 计算；本契约只描述 R2 如何校验它，不参与计算也不复制其值（manifest-builder.ts:192-215）',
       'judge/replay.ts:39 的 RULES_VERSION = criterion-set-v2 是判据集版本标识，与本契约版本 rsi-rules-contract-v1 分属不同维度；本轮只登记，不定义其判据条目清单（Spec §2.2、§8 OPEN）',
     ],

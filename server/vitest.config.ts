@@ -17,7 +17,13 @@ export default defineConfig({
     // tsc 会把 src 下的 *.test.ts 一并编译进 dist/；不排除的话 vitest 会把
     // 同一批用例按 src 和 dist 各跑一遍（文件数虚增、耗时翻倍，且 dist 还是
     // 旧构建时会给出误导性结论）。在默认排除项之上显式追加 dist。
-    exclude: [...configDefaults.exclude, '**/dist/**'],
+    exclude: [
+      ...configDefaults.exclude,
+      '**/dist/**',
+      // 未采纳的判据草案：它们针对尚未实现的缺口，跑进全量回归必然红。
+      // 命名上已经用 .candidate.ts 避开 include，这里再兜一层（有人改了后缀也不至于污染回归）。
+      'candidates/**',
+    ],
     // 2 个 worker：与 4 个相比，单个 worker 拿到的 CPU 更充裕，hook 不再超时。
     //
     // 为什么从 4 降到 2：本仓库 80 个测试文件，每个文件都要 spawn 一个 worker

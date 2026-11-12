@@ -805,10 +805,16 @@ export class AgentLoopService {
            * 现在单独报 UPSTREAM_EMPTY：调用方可以重试或换通道，
            * 失败归因也不会把它错记成模型的能力缺口。
            */
-          const producedNothing =
-            turn.text.trim() === '' && turn.reasoning.trim() === '' && (turn.usage.completionTokens ?? 0) === 0;
-          if (producedNothing) {
-            const message = '上游返回空响应（无正文/无推理/无工具调用，0 token）';
+          const noOutput = turn.text.trim() === '' && turn.reasoning.trim() === '';
+          const billed = turn.usage.completionTokens ?? 0;
+          // 不能只看「0 token」：实测撞到过计费 94 token、正文与推理却都是空的轮次。
+          // 旧判定放它走 finish('stop')，于是接口/解析故障以「模型什么都没说」的形态
+          // 静默落库，调用方拿不到任何错误码。对调用方来说「有 token 但没内容」同样是
+          // 上游空响应，而且更危险 —— 它连 UPSTREAM_EMPTY 都不会报。
+          if (noOutput) {
+            const message = billed === 0
+              ? '上游返回空响应（无正文/无推理/无工具调用，0 token）'
+              : `上游返回空响应（无正文/无推理/无工具调用，但计费 ${billed} token）`;
             sse.emitStage('upstream_empty', message);
             sse.emit('error', { code: 'UPSTREAM_EMPTY', message, retryable: true });
             this.deps.abortRegistry.markDone(session.id);

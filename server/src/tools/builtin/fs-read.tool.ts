@@ -42,13 +42,16 @@ export const fsReadTool: ToolDefinition = {
   displayName: '读取文件',
   category: 'file',
   description:
-    '读取沙箱内文件内容。支持 encoding（utf8/base64）、maxBytes（上限，默认 256KB）、lineStart/lineEnd（1 起的行号窗口）、keyword（只返回含该关键字的行）、glob（目录时按名过滤）。路径必须是沙箱相对路径。',
+    '读取沙箱内文件内容。支持 encoding（utf8/base64）、maxBytes（上限，默认 16KB）、lineStart/lineEnd（1 起的行号窗口）、keyword（只返回含该关键字的行）、glob（目录时按名过滤）。路径必须是沙箱相对路径。',
   inputSchema: {
     type: 'object',
     properties: {
       path: { type: 'string', description: '沙箱相对路径', maxLength: 512 },
       encoding: { type: 'string', enum: ['utf8', 'base64'], description: '缺省 utf8' },
-      maxBytes: { type: 'number', description: '读取字节上限，默认 262144', minimum: 1, maximum: 10485760 },
+      // 默认值必须与 DEFAULT_MAX_BYTES 一致（16384）。这里曾写 262144 ——
+      // 常量早就刻意降到 16 KiB（理由见文件头注释：磁盘放大 / 归档体积 / SSE 推送），
+      // 只有这句描述忘了跟着改，于是被当成「实现错、文档对」的缺陷提了一轮。
+      maxBytes: { type: 'number', description: '读取字节上限，默认 16384（16KB）', minimum: 1, maximum: 10485760 },
       lineStart: { type: 'number', description: '起始行号（1 起，含）', minimum: 1 },
       lineEnd: { type: 'number', description: '结束行号（含）', minimum: 1 },
       keyword: { type: 'string', description: '只返回包含该关键字的行', maxLength: 200 },

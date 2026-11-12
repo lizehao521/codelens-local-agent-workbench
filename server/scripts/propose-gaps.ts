@@ -26,7 +26,9 @@
 import { existsSync, appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { checkDomain } from '../src/services/rsi/change-domain.js';
+import { TOOL_CONTRACT, appendRejection, recentExemplars, recentRejections } from './lib/agent-feedback.js';
 import { PROTECTED_PATHS, isProtected } from './lib/protected-paths.js';
 import { formatResult } from './lib/propose-result.js';
 
@@ -40,6 +42,7 @@ if (existsSync(envPath)) process.loadEnvFile(envPath);
 const PROPOSALS = path.join(ROOT, '.self-upgrade', 'proposals.jsonl');
 const LEDGER = path.join(ROOT, '.self-upgrade', 'ledger.jsonl');
 const TASKS = path.join(SERVER, 'self-upgrade', 'tasks.json');
+const BACKLOG = path.join(SERVER, 'self-upgrade', 'backlog.json');
 
 const BASE = (process.env.UPGRADE_BASE ?? 'http://127.0.0.1:8099').replace(/\/$/, '');
 const MODEL = process.env.RSI_MODEL ?? 'nemotron-3-ultra-550b-a55b';
@@ -57,6 +60,14 @@ interface Proposal {
   targetFile: string;
   observable: string;
   boundary: string;
+  /**
+   * 缺口类型，决定后续出题/采纳走哪条管线：
+   *   defect     —— 现有能力在部分输入下行为错误/不安全/不符合预期，能用**现有**公开 API 复现验证。
+   *                这类最优先，判据走 red-baseline：在现状上必须红，采纳后成为回归尺。
+   *   capability —— 现在确实做不到、需要新增 API/字段/导出才能满足的功能。
+   *                走 implement-first：先由 agent 实现该能力，再验证判据变绿后采纳。
+   */
+  gapType: 'defect' | 'capability';
 }
 
 function request(method: string, p: string, base = BASE): Promise<string> {
@@ -104,6 +115,35 @@ function failureDigest(): string {
   return `层分布 ${fmt(byLayer)}；原因码 ${fmt(byCode)}`;
 }
 
+/**
+ * 已知缺口池（人维护）。
+ *
+ * 为什么需要它：让模型「自由提名」时，它经常直接回 `{"id":"none"}`——
+ * 不是没有缺口，而是它不知道系统自己登记了哪些。
+ * 而缺口其实一直摆在那里：宣言第 10 节的 UNEXEC 清单就是一份现成的池子。
+ * 有了池子，它的活从「凭空想一个」变成「从已知缺口里挑一个能落地的」，
+ * 并说清为什么现在挑它。
+ */
+function backlogDigest(): string {
+  if (!existsSync(BACKLOG)) return '（缺口池为空）';
+  try {
+    const j = JSON.parse(readFileSync(BACKLOG, 'utf8')) as {
+      items?: { id: string; title: string; why: string; targetHint?: string; size?: string; agentActionable?: boolean }[];
+    };
+    // 只把「能做」的交给它：靶子在 scripts/ 或 judge/ 下的缺口改的是尺子，只能人做。
+    // 混在一起给它，它会挑一条看着最该做的、然后必然被机械筛挡掉——白跑一轮。
+    const items = (j.items ?? []).filter(
+      (i) => i.agentActionable === true && (i as { status?: string }).status !== 'done',
+    );
+    if (items.length === 0) return '（当前没有可自动做的缺口，需要人工补题）';
+    return items
+      .map((i) => `· ${i.id}｜${i.title}（规模 ${i.size ?? '?'}，靶子参考 ${i.targetHint ?? '?'}）\n  为什么算缺口：${i.why}`)
+      .join('\n');
+  } catch {
+    return '（缺口池读取失败）';
+  }
+}
+
 /** 已做过的题：避免重复提议同一件事。 */
 function doneTasks(): string {
   if (!existsSync(TASKS)) return '（无）';
@@ -112,11 +152,23 @@ function doneTasks(): string {
 }
 
 /**
+ * 靶子是否落在**可自动采纳的 D1 域**（src/tools/ 或 src/utils/ 下的叶子能力）。
+ *
+ * 自动管线（无人值守、无人批）只允许 D1：D2 首次需人批、D3 每次需人批、D4 是尺子
+ * 严禁自动改。所以提议若指向 D2/D3，A4 域闸必然拦下 —— 与其让采纳端拒、白烧一轮，
+ * 不如在提议端就只给 / 只收 D1 靶子。这条是纯函数，便于单测自证。
+ */
+export function isAdoptableTarget(file: string): boolean {
+  return checkDomain({ files: [file], trigger: 'schedule', humanApproved: false }).ok;
+}
+
+/**
  * 提议的机械校验。
  *
- * 这里不判断「提议好不好」——那是出题环节和人的事。这里只挡三类废提议：
+ * 这里不判断「提议好不好」——那是出题环节和人的事。这里只挡四类废提议：
  *   · 指向的靶子不是 src/ 下的真实文件（没法改）
  *   · 指向受保护路径（tests/、krsi/、judge/、rsi/、eval/）——那是改尺子
+ *   · 靶子不在可自动采纳的 D1 域（D2/D3 需人批，自动管线收不了）
  *   · 已经有同 id 的提议（重复）
  */
 export function screen(p: Proposal): { ok: boolean; reason?: string } {
@@ -128,8 +180,23 @@ export function screen(p: Proposal): { ok: boolean; reason?: string } {
   const prot = PROTECTED_PATHS.find((prefix) => p.targetFile.startsWith(prefix));
   if (prot) return { ok: false, reason: `targetFile 不能在受保护路径 ${prot} 下` };
   if (!existsSync(path.join(SERVER, p.targetFile))) return { ok: false, reason: `targetFile 不存在：${p.targetFile}` };
+  if (!isAdoptableTarget(p.targetFile)) {
+    return { ok: false, reason: `targetFile 不在可自动采纳的 D1 域（仅 src/tools/、src/utils/）：${p.targetFile}` };
+  }
   if (!p.observable || p.observable.length < 8) return { ok: false, reason: 'observable 说清楚「怎么看出修好了」' };
   if (!p.boundary || p.boundary.length < 4) return { ok: false, reason: 'boundary 说清楚这条不能碰什么' };
+  if (p.gapType !== 'defect' && p.gapType !== 'capability') return { ok: false, reason: 'gapType 必须是 defect 或 capability' };
+  // defect 必须引用**具体行号**：这是「真的读过实现」与「凭想象编缺口」之间唯一可机械判定的差别。
+  // 编出来的字段（error.matches）就是没读代码的产物，这一闸专治它。
+  if (p.gapType === 'defect') {
+    const hasLine = p.evidence.some((e) => /[:：]\s*\d{1,5}\b|\bline\s*\d{1,5}\b|第\s*\d{1,5}\s*行/i.test(String(e)));
+    if (!hasLine) {
+      return {
+        ok: false,
+        reason: 'defect 的 evidence 没有引用具体行号——判为「没读源码的臆测」。先用工具读实现，再写带行号的证据',
+      };
+    }
+  }
   return { ok: true };
 }
 
@@ -172,6 +239,12 @@ export function sourceFiles(): string[] {
   return out.slice(0, 120);
 }
 
+/** 已提过的提议，避免重复提名同一件事。 */
+function propsDigest(): string {
+  const ids = [...existingIds()];
+  return ids.length ? ids.join('、') : '（还没有提过）';
+}
+
 function buildPrompt(tools: string[], digest: string, done: string, files: string[]): string {
   return `你刚做完一轮「自我升级」，现在轮到你提下一个缺口。
 
@@ -181,19 +254,74 @@ ${tools}
 可以改的源码文件（targetFile 必须从这份清单里挑，不要编路径）：
 ${files.join('\n')}
 
+⚠ 域约束（决定这条提议能否被自动采纳）：只有 **D1 域**的文件能被自动管线采纳落地——
+即 \`src/tools/\` 与 \`src/utils/\` 下的叶子能力（工具实现、纯函数）。\`src/services/\`、\`src/middlewares/\`、
+\`src/routes/\`、\`src/controllers/\` 等属于 D2/D3，自动采纳每次都要人批，**自动管线采纳不了**。
+所以：优先从 \`src/tools/\` 或 \`src/utils/\` 里挑靶子；除非你确认那是能用现有公开 API
+直接复现/验证的行为缺陷，否则不要选服务层/架构层文件（选了也会被域闸拦下，白跑一轮）。
+
 最近的失败归因（按层聚合）：
 ${digest}
 
 已经做过的题（别重复提）：
 ${done}
 
+──── 已知缺口池（优先从这里挑，也可以提池子之外的）────
+${backlogDigest()}
+
+──── 已经提过的缺口（别再提同一件事）────
+${propsDigest()}
+
+──── 你的历史错题（硬事实，同一错法再犯就是浪费一轮）────
+${recentRejections(5)}
+
+──── 成功样例（这些是真的被采纳过的，照它们的形状找）────
+${recentExemplars(2)}
+
+──── 动手之前：你必须先读源码 ────
+你有 fs.read / grep 这类工具。**不允许**只看文件名就猜缺口——那是臆测，会被机械闸直接拒。
+正确顺序：
+  1) 从上面清单里挑 1 个 D1 文件；
+  2) 用工具把它的**实现完整读一遍**（必要时再读它依赖的类型/工具）；
+  3) 在代码里找「某个输入下行为不对」的那一行，再写提议。
+evidence 里**必须有一条带具体行号**（形如 \`fs-write.tool.ts:118\`），并写清：什么输入、当前给出什么、为什么不对。
+没有行号的 evidence 会被判为「没读过代码」，整条提议作废。
+
+⚠ 预算纪律（实测踩过）：你只有有限的工具调用次数，上一轮就读文件读到超预算，
+  被截断在半句话上，整条提议作废。所以：
+  · 读文件**最多 3 次**（优先读你选中的那一个靶子文件；够用就停）；
+  · 读完后**立刻**输出 JSON，不要复述代码、不要写"让我继续读"这类过程话；
+  · 拿不准的细节就不写，宁可证据少一条，也要把 JSON 完整吐出来。
+
+──── 工具返回值契约（硬事实，不得发明字段）────
+${TOOL_CONTRACT}
+
+──── defect 的原型（照这些形状找，别凭空想功能）────
+  · 错误分型错：该 invalid_args / not_found 的分支给了 unknown，调用方无法据 kind 决定重试；
+  · 边界值错：0 次匹配 / 多次匹配 / 空字符串 / 末尾换行 / CRLF 下行为不一致；
+  · 校验漏分支：相对路径 ../ 逃逸、符号链接、大小写、超长输入未被拦；
+  · 半成品：多步写入中途失败后留下部分修改，且没有回滚或明确报错；
+  · 契约不一致：description / inputSchema 声明支持的参数，handler 实际没实现或实现不符。
+
 ──── 你要回答什么 ────
 下一个**能力缺口**：现在这套系统还做不到、但应该做到的一件事。
-必须是「缺一个能力」，不是「修一个 bug」也不是「优化一下」。
+分两类，你必须二选一，并在 JSON 里写 \`gapType\`：
 
-判定标准：一个具体场景，现在做不到，做到了就明显更好。
+  · defect（优先）：系统**已有**这个能力，但在某些输入下行为错误 / 不安全 / 不符合预期，
+    而且能用**现有**公开 API 直接复现、直接验证（不要新增字段、不要新增参数、不要新增导出）。
+    例：「工具执行失败时，错误只报 kind，模型看不到该改什么」「多文件改动中途失败会留半成品」。
+  · capability：现在确实做不到、必须**新增 API / 字段 / 导出**才能满足的功能。
+    例：「给 fs.write 加一个批量原子写入口」。
+
+**优先提 defect**：它能被自动判据直接验证并采纳，是闭环价值最高的一类。
+capability 也接受，但会走「先实现后采纳」管线（见 boundary）。
+
+⚠ 标 defect 之前的自检（必须过，否则一定被拒）：
+  · 你的 observable 里如果出现「返回 / 新增 / 带上 X 字段」→ 你要的是新 API，**必须标 capability**；
+  · 你的 evidence 里如果没有一行现成代码能证明「现在就是错的」→ 这不是 defect，别标它。
+
+判定标准：一个具体场景，现在做不到/做不对，做到了就明显更好。
 反例（不合格）：「提升代码质量」「优化性能」「让模型更聪明」。
-正例（合格）：「工具执行失败时，模型看不到失败原因，只能猜」。
 
 ──── 输出格式 ────
 **第一行必须是左花括号**。不要前言、不要解释、不要逐个点评工具、不要写推理过程。
@@ -201,13 +329,18 @@ ${done}
 
 {
   "id": "kebab-case-短标识",
-  "title": "一句话说清缺口",
-  "gap": "现在做不到什么，做到后能做什么（≥10 字）",
-  "evidence": ["支撑这个缺口的现象，至少一条，尽量引用你刚经历过的具体失败"],
+  "title": "一句话说清缺口（≤30 字）",
+  "gapType": "defect 或 capability（二选一）",
+  "gap": "现在做不到什么/做错什么、做到了能做什么（≥10 字，≤80 字）",
+  "evidence": ["支撑现象，最多 2 条，每条 ≤60 字；**第 1 条必须带行号**，如 fs-write.tool.ts:118"],
   "targetFile": "src/ 下真实存在的文件路径",
-  "observable": "怎么看出它修好了：哪个输入、期望什么结果（≥8 字）",
-  "boundary": "这条不能碰什么（越界即作废）"
+  "observable": "怎么看出修好了：哪个输入、期望什么结果（≤60 字）",
+  "boundary": "这条不能碰什么（≤40 字）"
 }
+
+**篇幅是硬约束**：整个 JSON 必须在一屏内写完。输出上限是 8192 token，
+上一轮你写了很长的 evidence，JSON 在中途被截断，整份提议作废。
+宁可少写一条证据，也不要被截断。
 
 不要写判据、不要写测试代码、不要写实现方案——那些不是你的活。
 只提名。想不出来就输出 {"id":"none"}。`;
@@ -259,6 +392,9 @@ function extractJson(text: string): Proposal | null {
       const obj = JSON.parse(chunk) as Record<string, unknown>;
       if (typeof obj.id !== 'string' || obj.id === 'none') continue;
       if (typeof obj.gap !== 'string') continue;
+      const rawType = typeof obj.gapType === 'string' ? (obj.gapType as string).toLowerCase() : '';
+      const gapType: 'defect' | 'capability' =
+        rawType === 'capability' ? 'capability' : rawType === 'defect' ? 'defect' : 'defect';
       return {
         id: String(obj.id),
         title: String(obj.title ?? ''),
@@ -267,6 +403,7 @@ function extractJson(text: string): Proposal | null {
         targetFile: String(obj.targetFile ?? ''),
         observable: String(obj.observable ?? ''),
         boundary: String(obj.boundary ?? ''),
+        gapType,
       };
     } catch {
       /* 这不是那个 JSON，换下一个起点 */
@@ -308,7 +445,13 @@ async function main(): Promise<void> {
     tools = ['（工具清单取不到）'];
   }
 
-  const message = buildPrompt(tools, failureDigest(), doneTasks(), sourceFiles());
+  // 只把 D1 叶子能力列给模型：D2/D3 需人批、自动管线采纳不了，列出来只会诱导它白提。
+  const message = buildPrompt(
+    tools,
+    failureDigest(),
+    doneTasks(),
+    sourceFiles().filter(isAdoptableTarget),
+  );
   console.log(`▶ 请 Agent 提名缺口（模型 ${MODEL}）…`);
 
   const body = {
@@ -318,7 +461,9 @@ async function main(): Promise<void> {
     apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
     channelMode: 'native',
     maxTokens: 8192,
-    maxIterations: 6,
+    // 6 次不够：要求它先读源码后，实测 6 次会全花在读文件上、被截断在半句话里。
+    // 12 次能覆盖「读 1 个靶子 + 查 1 个类型 + 作答」，且不会多花钱（读完就停）。
+    maxIterations: 12,
     temperature: 0.2,
     message,
   };
@@ -377,6 +522,14 @@ async function main(): Promise<void> {
   if (!v.ok) {
     console.log(`  ✗ 提议被机械筛掉：${v.reason}`);
     console.log(`     ${JSON.stringify(proposal, null, 2)}`);
+    // 落进错题本：下一轮原样回灌「你上次因为什么被拒」，否则它会一直重复同一种错法。
+    appendRejection({
+      id: String(proposal.id ?? 'unknown'),
+      stage: 'propose',
+      code: 'SCREEN_REJECTED',
+      detail: `${v.reason ?? ''}｜原文：${JSON.stringify({ evidence: proposal.evidence, observable: proposal.observable, targetFile: proposal.targetFile }).slice(0, 240)}`,
+      fix: '按拒绝理由修正后重提：defect 必须先在源码里定位到出错行，evidence 带行号；要新增字段就改标 capability',
+    });
     console.log(formatResult({ status: 'rejected', reason: v.reason, targetFile: proposal.targetFile, id: proposal.id }));
     stop?.();
     return;
@@ -393,6 +546,7 @@ async function main(): Promise<void> {
     PROPOSALS,
     `${JSON.stringify({ ...proposal, proposedAt: new Date().toISOString(), source: 'agent' })}\n`,
   );
+  console.log(`    gapType=${proposal.gapType}${proposal.gapType === 'capability' ? '（走 implement-first 管线）' : ''}`);
   console.log(`  ✔ 提议已记入 ${path.relative(ROOT, PROPOSALS)}`);
   console.log(`    ${proposal.id}｜${proposal.title}`);
   console.log(`    靶子 ${proposal.targetFile}｜可观察 ${proposal.observable}`);
@@ -402,9 +556,8 @@ async function main(): Promise<void> {
   stop?.();
 }
 
-const invokedDirectly = process.argv[1] !== undefined
-  && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+// 入口守卫：允许测试 import isAdoptableTarget() 做单元验证，不触发整轮实跑（会起服务 + 真调模型）。
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((e: unknown) => {
     console.error(`FATAL: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);

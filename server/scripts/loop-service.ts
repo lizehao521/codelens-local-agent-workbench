@@ -183,7 +183,11 @@ async function waitPortFree(port: number, timeoutMs = 20_000): Promise<void> {
  *
  * 若外部显式给了 `UPGRADE_BASE`，则只校验、不启停 —— 保留「我自己起了服务，你直接用」的老用法。
  */
-export async function startLoopService(): Promise<LoopService> {
+export async function startLoopService(opts: { sandboxRoot?: string } = {}): Promise<LoopService> {
+  // 沙箱根按题所属的包切换：server 题用 server/，前端题用 client/。
+  // 两者不共用同一个根，Agent 的世界里才不会出现「任务书写的路径找不到」——
+  // 上一版前端题连续两轮都在 fs.list 里找 client/，直到墙钟耗尽、零写入。
+  const sandboxRoot = opts.sandboxRoot ?? SERVER;
   const explicit = process.env.UPGRADE_BASE;
   const expected = readVersion();
 
@@ -234,15 +238,20 @@ export async function startLoopService(): Promise<LoopService> {
   if (!existsSync(tsxCli)) throw new Error(`找不到 tsx 入口 ${tsxCli}`);
   // 沙箱根下一句快速自检：指到 server 之外，Agent 第一件事就会撞「路径越出沙箱根」，
   // 而那个报错看起来像越界，实际是配置错。宁可在启动时就响。
-  if (!existsSync(path.join(SERVER, 'src', 'app.ts'))) {
-    throw new Error(`SANDBOX_ROOT=${SERVER} 下没有 src/app.ts，沙箱根指错了`);
+  // server 根的标志是 src/app.ts；client 根的标志是 src/main.tsx。
+  const isServer = existsSync(path.join(sandboxRoot, 'src', 'app.ts'));
+  const isClient = existsSync(path.join(sandboxRoot, 'src', 'main.tsx'));
+  if (!isServer && !isClient) {
+    throw new Error(
+      `SANDBOX_ROOT=${sandboxRoot} 下既没有 src/app.ts 也没有 src/main.tsx，沙箱根指错了`,
+    );
   }
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PORT: String(port),
     // 关键一步：沙箱根 = server 目录本身。Agent 改 src/ 才不需要人工介入。
-    SANDBOX_ROOT: SERVER,
+    SANDBOX_ROOT: sandboxRoot,
     AGENT_DB_PATH: dbPath,
   };
 

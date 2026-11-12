@@ -3,7 +3,7 @@
 // AC-10 干预：打断（输入框停止钮）/ 单步重试 / 从某步重跑 / 改参数（审批条内）全部接 agent/stream
 
 import { useCallback, useState } from 'react';
-import { AlertTriangle, Gauge, History, LineChart, MessageSquare, ShieldAlert, Sparkles, Wrench } from 'lucide-react';
+import { AlertTriangle, Gauge, History, LineChart, MessageSquare, ShieldAlert, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
 import type { AgentStreamRequest, SessionMessageRow, Task } from '../../types';
 import { buildAgentStreamRequest, rerunFromPatch, TASK_MODES } from '../../lib/agent-request';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -25,6 +25,8 @@ import { SandboxGrantBar } from './SandboxGrantBar';
 import { SandboxPermissionModal } from '../settings/SandboxPermissionModal';
 import { JudgePanelModal } from './JudgePanelModal';
 import { RsiDashboardModal } from './RsiDashboardModal';
+import { RsiIterationGate } from './RsiIterationGate';
+import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
 
 /**
@@ -113,6 +115,7 @@ export function AgentWorkbench() {
   const [permOpen, setPermOpen] = useState(false);
   const [judgeOpen, setJudgeOpen] = useState(false);
   const [rsiOpen, setRsiOpen] = useState(() => rsiDeepLink().open);
+  const [iterationOpen, setIterationOpen] = useState(false);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const showRecoveryCode = useUiStore((s) => s.showRecoveryCode);
   // F：主视图切换（会话 / 审计台）。审计台按当前 runId 取数，不另存一份运行态。
@@ -296,6 +299,16 @@ export function AgentWorkbench() {
         </button>
         <button
           type="button"
+          onClick={() => setIterationOpen(true)}
+          title="自我迭代闸门：逐轮的量化判据、去留决策与人工处置"
+          aria-label="自我迭代闸门"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+        >
+          <ShieldCheck size={13} />
+          <span className="hidden sm:inline">迭代闸门</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setPermOpen(true)}
           title="沙箱权限：放开沙箱外目录与免审批"
           className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
@@ -392,6 +405,9 @@ export function AgentWorkbench() {
       <SandboxPermissionModal open={permOpen} onClose={() => setPermOpen(false)} />
       <JudgePanelModal open={judgeOpen} onClose={() => setJudgeOpen(false)} />
       <RsiDashboardModal open={rsiOpen} onClose={() => setRsiOpen(false)} sessionId={rsiDeepLink().sessionId ?? session?.id ?? null} />
+      <Modal open={iterationOpen} onClose={() => setIterationOpen(false)} title="自我迭代闸门" maxWidth={880}>
+        <RsiIterationGate />
+      </Modal>
     </div>
   );
 }

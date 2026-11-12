@@ -25,6 +25,7 @@ import { UpdateService } from './services/agent/update.service.js';
 import { JudgeService } from './services/judge/judge.service.js';
 import { ruleSemanticAssessor } from './services/judge/semantic.js';
 import { JudgeController } from './controllers/judge.controller.js';
+import { RsiController } from './controllers/rsi.controller.js';
 import { ApprovalService } from './services/agent/approval.service.js';
 import { FallbackBudgetService } from './services/agent/fallback-budget.service.js';
 import { TrialHealthService } from './services/agent/trial-health.service.js';
@@ -77,6 +78,7 @@ export interface Runtime {
   healthController: HealthController;
   sandboxPermissionsController: SandboxPermissionsController;
   judgeController: JudgeController;
+  rsiController: RsiController;
   judge: JudgeService;
   policy: UpdateService;
   rsi?: RsiBridgeService;
@@ -348,6 +350,8 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   const healthController = new HealthController(db, mcpManager, config.sandboxRoot, config.agentDbPath);
   const sandboxPermissionsController = new SandboxPermissionsController(sandboxPermissions);
   const judgeController = new JudgeController(judge, policy);
+  // RSI 自我迭代视图：无依赖（直接读账本与契约），构造即可用。
+  const rsiController = new RsiController();
 
   // ── 可观测面（只读）─────────────────────────────────────────────────────────
   // 三者都不在执行路径上：轨迹 / 技能库是数据面，能力目录是状态面。
@@ -417,6 +421,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     healthController,
     sandboxPermissionsController,
     judgeController,
+    rsiController,
     judge,
     policy,
     rsi,

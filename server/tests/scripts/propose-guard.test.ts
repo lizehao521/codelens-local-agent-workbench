@@ -12,10 +12,11 @@ const valid = {
   id: 'test-gap',
   title: '测试用缺口标题',
   gap: '这是一个足够长的缺口描述，超过十个字',
-  evidence: ['某次真实失败的现象'],
-  targetFile: 'src/app.ts',
+  evidence: ['src/utils/errors.ts:12 某输入下错误分型不对'],
+  targetFile: 'src/utils/errors.ts',
   observable: '给定输入 X，期望输出 Y，可机械判定',
   boundary: '不碰判据与账本',
+  gapType: 'defect' as const,
 };
 
 describe('保护路径单源', () => {

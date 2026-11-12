@@ -955,6 +955,78 @@ export interface RsiRulesContract {
   };
   reasonRuleIdPattern: '^(R[1-6]):';
   outOfScope: string[];
+  /**
+   * 自我迭代能力的三组定义（后端为可选字段，旧后端不下发时前端降级）。
+   * 不升契约版本：新增可选字段不是破坏性变更，两端可以不同步发布。
+   */
+  domains?: RsiDomainDefinition[];
+  decisions?: RsiDecisionDefinition[];
+  iterationCriteria?: RsiCriterionDefinition[];
+}
+
+/** 变更域：能改到哪、要谁批、上限多少。 */
+export interface RsiDomainDefinition {
+  id: 'D0' | 'D1' | 'D2' | 'D3' | 'D4';
+  label: string;
+  requiresHumanApproval: boolean;
+  maxFiles: number;
+  autoAllowedBy: string[];
+  rationale: string;
+}
+
+/** 迭代决策：这一轮的去留。 */
+export interface RsiDecisionDefinition {
+  decision: 'continue' | 'retry' | 'rollback' | 'escalate' | 'halt';
+  label: string;
+  tone: RsiTone;
+  action: string;
+}
+
+/** 迭代判据：量化阈值。 */
+export interface RsiCriterionDefinition {
+  id: string;
+  name: string;
+  threshold: string;
+  onFail: 'continue' | 'retry' | 'rollback' | 'escalate' | 'halt' | null;
+}
+
+/** 单条迭代记录（GET /api/v1/rsi/iterations）。 */
+export interface RsiIterationRecord {
+  id: string;
+  task: string;
+  at: string;
+  attempt: number;
+  verdict: RsiVerdictState;
+  domain: string;
+  trigger: string;
+  version: string | null;
+  raw: Record<string, unknown>;
+  result: {
+    decision: 'continue' | 'retry' | 'rollback' | 'escalate' | 'halt';
+    headline: string;
+    criteria: Array<{ id: string; name: string; threshold: string; actual: string; status: 'pass' | 'fail' | 'unexec'; onFail: string | null }>;
+    rollbackReasons: string[];
+    confidence: number;
+  };
+}
+
+export interface RsiIterationList {
+  items: RsiIterationRecord[];
+  summary: { total: number; byDecision: Record<string, number>; byDomain: Record<string, number>; attention: number };
+  domains: Array<{ id: string; label: string; requiresHumanApproval: boolean }>;
+  /** 此刻循环正在用的模型（按归因轮换）与服务端时间，供状态条显示新鲜度。 */
+  model?: string;
+  serverTime?: string;
+}
+
+/** 域申请的结果（POST /api/v1/rsi/iterations/plan）。 */
+export interface RsiDomainPlan {
+  ok: boolean;
+  domain: string;
+  domainLabel: string;
+  reasons: string[];
+  required?: 'human-approval';
+  limits: { maxFiles: number; fileCount: number };
 }
 
 /** 判据塔的一次判决（judge_runs 行）。 */
@@ -1269,4 +1341,66 @@ export async function getRsiRules(): Promise<RsiRulesContract> {
     throw new ApiError('BAD_RESPONSE', '规则契约接口返回格式异常：缺少 rules[] / states[]。', res.status);
   }
   return raw;
+}
+
+// ── 自我迭代（RSI）──────────────────────────────────────────────────────
+// 统一走 /api/v1/rsi/*：读端点三个、动作端点两个。动作端点后端只记录不改代码，
+// 回滚由脚本按快照执行——所以这里没有「一键还原仓库」这种危险方法。
+
+/** 迭代列表 + 汇总 + 域表。 */
+export async function getRsiIterations(limit = 50): Promise<RsiIterationList> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/rsi/iterations?limit=${limit}`, { cache: 'no-store' });
+  } catch {
+    throw new ApiError('BACKEND_UNREACHABLE', '无法连接后端服务（可能未启动或端口不通）。', 0);
+  }
+  if (!res.ok) throw new ApiError('RSI_ITERATIONS_FAILED', `读取迭代列表失败（HTTP ${res.status}）`, res.status);
+  return (await res.json()) as RsiIterationList;
+}
+
+/** 域申请：给定拟改文件与触发方式，问「能不能改、要谁批」。纯计算，无副作用。 */
+export async function planRsiDomain(input: {
+  files: string[];
+  trigger?: string;
+  humanApproved?: boolean;
+}): Promise<RsiDomainPlan> {
+  let res: Response;
+  try {
+    res = await fetch('/api/v1/rsi/iterations/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger: 'manual', humanApproved: false, ...input }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError('BACKEND_UNREACHABLE', '无法连接后端服务（可能未启动或端口不通）。', 0);
+  }
+  if (!res.ok) throw new ApiError('RSI_PLAN_FAILED', `域申请失败（HTTP ${res.status}）`, res.status);
+  return (await res.json()) as RsiDomainPlan;
+}
+
+/** 记录人对某条迭代的决定。后端只追加一行决策日志，不改动任何代码。 */
+export async function decideRsiIteration(
+  id: string,
+  action: 'approve' | 'rollback' | 'halt',
+  note?: string,
+): Promise<{ ok: boolean; note: string }> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1/rsi/iterations/${encodeURIComponent(id)}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // confirm 只对破坏性动作有意义，但统一带上：后端对 approve 不校验它。
+      body: JSON.stringify({ action, confirm: action !== 'approve', note }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError('BACKEND_UNREACHABLE', '无法连接后端服务（可能未启动或端口不通）。', 0);
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new ApiError('RSI_DECIDE_FAILED', body.error?.message ?? `记录决定失败（HTTP ${res.status}）`, res.status);
+  }
+  return (await res.json()) as { ok: boolean; note: string };
 }

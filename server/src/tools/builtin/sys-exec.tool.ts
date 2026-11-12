@@ -306,15 +306,25 @@ export const sysExecTool: ToolDefinition = {
         // 但 close 理论上可能不来（进程卡在不可中断状态），留个兜底。
         // 兜底也必须带 data —— pid / 已收集输出正是事后审计的凭据，丢了就查不出是谁没死。
         settleGuard = setTimeout(() => {
+          // 兜底结算时 close 可能永远不来：已产出的部分输出必须随 data 一起交回，
+          // 否则「跑对了但慢」与「卡死在第一步」在模型看来完全无差别。
+          const partial = dataOf(null, null);
+          const partialNote =
+            outSink.bytesTotal + errSink.bytesTotal > 0
+              ? `（超时前已产出 stdout ${outSink.bytesTotal}B / stderr ${errSink.bytesTotal}B，见 data.stdout / data.stderr）`
+              : '（超时前没有任何输出）';
           settle({
             ok: false,
-            summary: `命令执行超时（${timeoutMs}ms），已请求终止进程组但未等到退出事件`,
-            data: dataOf(null, null),
+            summary: `命令执行超时（${timeoutMs}ms），已请求终止进程组但未等到退出事件${partialNote}`,
+            data: partial,
             error: {
               code: 'EXEC_TIMEOUT',
               kind: 'timeout',
-              message: `命令在 ${timeoutMs}ms 内未结束，已发送终止信号但未收到 close 事件`,
-              suggestion: '缩小任务范围，或调大 timeoutMs（受服务端硬上限约束）',
+              message: `命令在 ${timeoutMs}ms 内未结束，已发送终止信号但未收到 close 事件${partialNote}`,
+              suggestion:
+                outSink.bytesTotal + errSink.bytesTotal > 0
+                  ? '已有部分输出说明命令确实跑起来了、只是慢：缩小任务范围或调大 timeoutMs（受服务端硬上限约束）'
+                  : '没有任何输出：可能卡在启动/首步，检查命令与参数是否会在无输入时阻塞',
               retryable: false,
             },
           });

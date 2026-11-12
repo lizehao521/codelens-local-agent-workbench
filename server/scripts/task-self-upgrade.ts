@@ -577,6 +577,55 @@ ${regTail}
 不要写执行逻辑，不要读别的文件，不要解释。`;
 }
 
+/**
+ * 前端题：把迭代闸门的展示逻辑从组件里抽成可测的纯函数。
+ *
+ * 为什么值得做：后端已经把「未执行」当成三态之一，但**界面上怎么画**没人守。
+ * 把 unexec 渲染成绿色 = 在界面把「没跑」说成「通过」——用户看的恰恰是界面。
+ * 内联在组件里的逻辑没法被这样检验，所以第一步是把它抽出来。
+ */
+function buildIterationViewTask(): string {
+  return `给**你自己**的前端抽一份展示逻辑：把迭代闸门里内联的筛选与三态映射，抽成可测的纯函数模块。
+
+你的第一个动作就是这次调用，前面不要任何说明文字：
+  fs.write { operation: "create", path: "src/lib/iteration-gate-view.ts", content: "…完整实现…" }
+
+──── 只改这两个文件 ────
+新建 src/lib/iteration-gate-view.ts
+改   src/components/agent/RsiIterationGate.tsx（把内联的筛选与映射换成从上面 import）
+
+**只准改这两个**。不要动 hooks/ lib 里的其它文件、不要动 App.tsx、不要动任何 .test.ts。
+
+──── 新模块要导出什么（字段名必须完全一致）────
+type FilterMode = 'all' | 'attention' | 'ok';
+type DecisionLike = string;
+type ItemLike = { id: string; task: string; decision: string };
+
+function filterIterations(items: ItemLike[], filter: FilterMode): ItemLike[]
+function decisionTone(decision: DecisionLike): 'success' | 'danger' | 'warning' | 'muted'
+function statusLabel(status: 'pass' | 'fail' | 'unexec'): string
+function statusClass(status: 'pass' | 'fail' | 'unexec'): string
+
+**必须是纯函数**：不 import React、不碰 window、不读全局。参数进、值出。
+
+──── 行为（逐条，判据就是按它写的）────
+1) filterIterations：'all' 返回原样；'attention' 只留 decision 为 rollback/escalate/halt 的；
+   'ok' 只留 decision 为 continue 的。空数组进来出空数组，不许抛异常。
+2) statusLabel：pass → 通过；fail → 未通过；**unexec → 未执行**（绝不能是「通过」或「成功」）。
+3) statusClass：用项目既有的语义类（text-success / text-danger / text-warning / text-text-tertiary）。
+   **unexec 绝不能含 success**；pass 与 fail 必须不同色，且 pass 不含 danger。
+4) decisionTone：continue → success；rollback / halt → danger；retry / escalate → warning；
+   未知值 → muted（**不要抛异常**）。
+
+──── 组件那边怎么改 ────
+把 RsiIterationGate.tsx 里那段筛选 items 的 if，以及 TONE_CLASS / DECISION_TONE / DECISION_LABEL /
+STATUS_CLASS / STATUS_LABEL 这几处映射，改成从新模块 import。**页面渲染结果不能变。**
+
+──── 自查 ────
+用 code.check 查这两个文件语法；然后用 fs.read 只看新模块的导出名，确认四个函数名一个没写错。
+写完只回一句「已抽出展示逻辑并接回组件」。`;
+}
+
 function buildTestRunTask(): string {
   const example = readFileSync(path.join(process.cwd(), 'src/tools/builtin/code-check.tool.ts'), 'utf8');
   const registryRaw = readFileSync(path.join(process.cwd(), 'src/tools/builtin/index.ts'), 'utf8');
@@ -724,6 +773,62 @@ function postStream(body: Record<string, unknown>): Promise<StreamResult> {
   });
 }
 
+/**
+ * 通用任务书：给「自动采纳进来的题」用。
+ *
+ * 之前 builders 是一张静态表，auto-adopt 把新题写进 tasks.json 后这里不认识它，
+ * 派单脚本 3 秒退出报「未知题目」，三轮全空转 —— 而归因还把它记成 Agent 的实现层失败。
+ * 自动采纳的题没有专属任务书，但 spec 里有 gap / observable / boundary，
+ * 足够生成一份「说清缺什么、怎么算修好、只准改哪几个文件」的任务书。
+ *
+ * 刻意不给实现方案、不猜 API：让它自己读现有代码，这是它该做的活。
+ */
+function buildGenericTask(spec: Record<string, unknown>): string {
+  const title = String(spec.title ?? spec.id ?? '能力缺口');
+  const gap = String(spec.gap ?? '（提议里没写清，先读靶子代码判断）');
+  const observable = String(spec.observable ?? '（以判据为准）');
+  const boundary = String(spec.boundary ?? '不改判据、不改其它文件');
+  const evidence = Array.isArray(spec.evidence) ? (spec.evidence as unknown[]).slice(0, 2).map(String) : [];
+  const allowed = Array.isArray(spec.allowed) ? (spec.allowed as unknown[]).map(String) : [];
+  const judge = String(spec.judge ?? '');
+
+  return `给**你自己**修一个真实缺口：${title}
+
+──── 缺什么 ────
+${gap}
+
+──── 怎么看出修好了（这是判据要验的行为）────
+${observable}
+${evidence.length ? `现象：${evidence.join('；')}` : ''}
+${judge ? `\n判据文件（**必须逐条读**）：${judge}` : ''}
+
+──── 边界 ────
+${boundary}
+只准改下面这些文件，不要改判据、不要新建无关文件。
+
+──── 只准改 ────
+${allowed.join('\n')}
+
+──── 怎么做 ────
+1. 第一个动作：fs.read 读上面每个文件的当前实现，看清现有的错误码与返回结构。
+${judge ? `2. 第二个动作：fs.read 读判据文件，把里面每一条 expect **抄成一张清单**（断言的是哪个字段、期望什么值）。
+   实测教训：写了「命中位置」却只放进 data.matches、没写进 error.message，判据断言的是 message
+   → 行为其实对了，判据照样红，白跑一轮。**断言落在哪个字段，信息就必须出现在那个字段里**。` : ''}
+3. 用 fs.write 修改，让「怎么看出修好了」那一条成立。保留其它现有行为，不要重写整个文件。
+4. 用 code.check 查这两个文件的语法。
+5. 交付前拿第 2 步的清单逐条自检；有一条对不上就继续改，不要先交。
+6. 写完只回一句「已修」，前面不要任何说明文字。`;
+}
+
+function loadFullSpec(id: string): Record<string, unknown> {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(process.cwd(), 'self-upgrade', 'tasks.json'), 'utf8')) as { tasks?: Array<Record<string, unknown> & { id?: string }> };
+    return (raw.tasks ?? []).find((t) => t.id === id) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 async function main(): Promise<void> {
   const taskspec = TASKS[TASK_ID];
   if (!taskspec) {
@@ -738,14 +843,16 @@ async function main(): Promise<void> {
     'fs-replace-fix': buildFsReplaceFixTask,
     'test-run': buildTestRunTask,
     'test-run-scaffold': buildTestRunScaffoldTask,
+    'iteration-view': buildIterationViewTask,
     'obs-render': buildTask,
   };
   const build = builders[TASK_ID];
-  if (!build) {
-    console.error(`未知题目：${TASK_ID}（可选：${Object.keys(builders).join(' / ')}）`);
+  const fullSpec = loadFullSpec(TASK_ID);
+  if (!build && Object.keys(fullSpec).length === 0) {
+    console.error(`未知题目：${TASK_ID}（既没有专属任务书，也不在 tasks.json 里）`);
     process.exit(1);
   }
-  let book = build();
+  let book = build ? build() : buildGenericTask(fullSpec);
 
   // 外部反馈：自动循环把「上一轮为什么没过」写进一个文件，由这里追加到任务书末尾。
   //
