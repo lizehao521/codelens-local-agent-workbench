@@ -61,6 +61,20 @@ describe('RunState + 汇报卡', () => {
     expect(report!.statusCode).not.toBe('RUN_COMPLETED');
     expect(report!.finishReason).toBe('context_full');
     expect(report!.reason).toContain('建议');
+    // #8-④：不再与 reason 里的「上下文已满…安全回退」并列出现「异常终止」；
+    // 但 triggers 必须非空，否则 hasMaterialChange=false 会让整张卡消失。
+    expect(report!.triggers).toContain('上下文已满');
+    expect(report!.triggers).not.toContain('异常终止');
+    expect(report!.hasMaterialChange).toBe(true);
+  });
+
+  it('#8-④ 对照：非 context_full 的 error 仍保留「异常终止」标签', () => {
+    const svc = new RunStateService(db);
+    start(svc, 'run_err');
+    svc.stage('run_err', 'connecting');
+    const report = svc.finish('run_err', 'error', 'error', { promptTokens: 100, completionTokens: 20 });
+    expect(report!.triggers).toContain('异常终止');
+    expect(report!.triggers).not.toContain('上下文已满');
   });
 
   it('场景 1 纯问答：无实质变化 → 不出卡', () => {

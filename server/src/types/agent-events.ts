@@ -190,6 +190,12 @@ export type AgentRunStage =
   | 'done'
   | 'upstream_error'
   | 'upstream_timeout'
+  /**
+   * 上游流正常结束，但整轮没有任何产出（无正文/无推理/无工具调用/0 token）。
+   * 与 upstream_timeout 分开：超时是「没等到」，空响应是「等到了但是空的」，
+   * 前者该放宽超时或换通道，后者该重试或换模型。
+   */
+  | 'upstream_empty'
   | 'aborted';
 
 export interface SseStagePayload {

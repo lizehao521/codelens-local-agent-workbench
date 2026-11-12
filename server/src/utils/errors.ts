@@ -8,6 +8,15 @@ export const ErrorCode = {
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   UPSTREAM_ERROR: 'UPSTREAM_ERROR',
   UPSTREAM_TIMEOUT: 'UPSTREAM_TIMEOUT',
+  /**
+   * 上游返回了「空轮」：首字节到了、流正常结束，但没有正文、没有推理、没有工具调用，
+   * completionTokens 为 0。实测某网关上的 claude-3-5-sonnet 就是这样（firstTokenMs=null）。
+   *
+   * 单独一个错误码，因为它和「模型选择不做事」长得几乎一样：都会在 run_report 里
+   * 表现为 toolCallCount=0 / finishReason=stop。前者该重试或切通道，后者该换模型——
+   * 不分开就会把接口故障记成模型能力缺口（失败归因的 behavior 层）。
+   */
+  UPSTREAM_EMPTY: 'UPSTREAM_EMPTY',
   NOT_FOUND: 'NOT_FOUND',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   // ---- Agent platform additions (spec section 5 / architecture detail 3.2) ----
@@ -49,6 +58,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   NOT_FOUND: 404,
   UPSTREAM_ERROR: 502,
   UPSTREAM_TIMEOUT: 504,
+  UPSTREAM_EMPTY: 502,
   INTERNAL_ERROR: 500,
   AGENT_BUSY: 429,
   SESSION_NOT_FOUND: 404,

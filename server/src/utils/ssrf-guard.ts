@@ -85,27 +85,108 @@ function inBlockedV4(ip: string): boolean {
   return false;
 }
 
-/** IPv4-mapped IPv6 (`::ffff:10.0.0.1`) must be judged by its embedded IPv4 address. */
-function unmapIpv6(ip: string): string | null {
-  const lower = ip.toLowerCase();
-  const tail = lower.split(':').pop() ?? '';
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(tail)) return tail;
-  return null;
+/**
+ * Expand any textual IPv6 form into its 16 bytes, so judgement is numeric rather than
+ * textual. Handles `::` compression, full 8-group forms, zero-padded groups, and a
+ * trailing dotted-quad (`::ffff:10.0.0.1`). Returns null when the input is not IPv6.
+ */
+function ipv6ToBytes(ip: string): number[] | null {
+  let text = ip.toLowerCase();
+  if (text.startsWith('[') && text.endsWith(']')) text = text.slice(1, -1);
+  // Strip a zone id (`fe80::1%eth0`); it does not affect the address bytes.
+  const zone = text.indexOf('%');
+  if (zone !== -1) text = text.slice(0, zone);
+  if (text === '') return null;
+
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+
+  const parseGroups = (part: string): string[] | null => {
+    if (part === '') return [];
+    const groups = part.split(':');
+    // A trailing dotted-quad occupies the last two groups.
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.includes('.')) {
+      const octets = last.split('.');
+      if (octets.length !== 4) return null;
+      const nums = octets.map((o) => Number(o));
+      if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+      groups.pop();
+      groups.push(((nums[0]! << 8) | nums[1]!).toString(16));
+      groups.push(((nums[2]! << 8) | nums[3]!).toString(16));
+    }
+    for (const group of groups) {
+      if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+    }
+    return groups;
+  };
+
+  const head = parseGroups(halves[0] ?? '');
+  if (head === null) return null;
+  let groups: string[];
+  if (halves.length === 2) {
+    const tail = parseGroups(halves[1] ?? '');
+    if (tail === null) return null;
+    const missing = 8 - head.length - tail.length;
+    if (missing < 0) return null;
+    groups = [...head, ...new Array(missing).fill('0'), ...tail];
+  } else {
+    groups = head;
+  }
+  if (groups.length !== 8) return null;
+
+  const bytes: number[] = [];
+  for (const group of groups) {
+    const value = parseInt(group, 16);
+    bytes.push((value >> 8) & 0xff, value & 0xff);
+  }
+  return bytes;
+}
+
+/** True when the 16 bytes are an IPv4-mapped address (`::ffff:a.b.c.d`). */
+function isIpv4Mapped(bytes: number[]): boolean {
+  for (let i = 0; i < 10; i += 1) if (bytes[i] !== 0) return false;
+  return bytes[10] === 0xff && bytes[11] === 0xff;
+}
+
+function bytesToIpv4(bytes: number[], offset: number): string {
+  return `${bytes[offset]}.${bytes[offset + 1]}.${bytes[offset + 2]}.${bytes[offset + 3]}`;
+}
+
+/** Numeric IPv6 judgement: loopback, unspecified, unique-local, link-local, 6to4, NAT64. */
+function isBlockedIpv6(bytes: number[]): boolean {
+  if (isIpv4Mapped(bytes)) return inBlockedV4(bytesToIpv4(bytes, 12));
+  // :: and ::1
+  const allZero = bytes.every((b) => b === 0);
+  if (allZero) return true;
+  const loopback = bytes.slice(0, 15).every((b) => b === 0) && bytes[15] === 1;
+  if (loopback) return true;
+  // fc00::/7 unique-local
+  if ((bytes[0]! & 0xfe) === 0xfc) return true;
+  // fe80::/10 link-local
+  if (bytes[0] === 0xfe && (bytes[1]! & 0xc0) === 0x80) return true;
+  // 2002::/16 6to4 (embeds IPv4)
+  if (bytes[0] === 0x20 && bytes[1] === 0x02) return true;
+  // 64:ff9b::/96 NAT64
+  if (
+    bytes[0] === 0x00 &&
+    bytes[1] === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    bytes.slice(4, 12).every((b) => b === 0)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function isBlockedIp(ip: string): boolean {
   const version = net.isIP(ip);
   if (version === 4) return inBlockedV4(ip);
   if (version === 6) {
-    const mapped = unmapIpv6(ip);
-    if (mapped) return inBlockedV4(mapped);
-    const lower = ip.toLowerCase();
-    if (lower === '::' || lower === '::1') return true;
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7 unique-local
-    if (/^fe[89ab]/.test(lower)) return true; // fe80::/10 link-local
-    if (lower.startsWith('2002:')) return true; // 6to4 (embeds IPv4)
-    if (lower.startsWith('64:ff9b:')) return true; // NAT64
-    return false;
+    const bytes = ipv6ToBytes(ip);
+    if (bytes === null) return true;
+    return isBlockedIpv6(bytes);
   }
   return true;
 }
@@ -150,7 +231,16 @@ export function inspectUrl(
   if (list.length > 0 && !list.includes(url.hostname.toLowerCase())) {
     return { ok: false, reason: 'ALLOWLIST', message: `域名 ${url.hostname} 不在白名单内` };
   }
-  return { ok: true, url, hostname: url.hostname, port: url.port ? Number(url.port) : 443 };
+  // The effective port is protocol-dependent: an explicit `url.port` wins,
+  // otherwise http falls back to 80 and https to 443.
+  const port = url.port ? Number(url.port) : url.protocol === 'http:' ? 80 : 443;
+  return { ok: true, url, hostname: url.hostname, port };
+}
+
+/** `URL.hostname` keeps the brackets on IPv6 literals; `net.isIP` wants them bare. */
+function stripBrackets(hostname: string): string {
+  if (hostname.startsWith('[') && hostname.endsWith(']')) return hostname.slice(1, -1);
+  return hostname;
 }
 
 /**
@@ -165,12 +255,13 @@ export async function validateTarget(
   const base = inspectUrl(rawUrl, opts);
   if (!base.ok || !base.url || !base.hostname) return base;
 
-  const literal = net.isIP(base.hostname) !== 0;
-  if (literal) {
-    if (!opts?.allowPrivate && isBlockedIp(base.hostname)) {
-      return { ok: false, reason: 'DISALLOWED_IP', message: `目标 IP ${base.hostname} 位于禁用网段` };
+  const literal = stripBrackets(base.hostname);
+  const isLiteral = net.isIP(literal) !== 0;
+  if (isLiteral) {
+    if (!opts?.allowPrivate && isBlockedIp(literal)) {
+      return { ok: false, reason: 'DISALLOWED_IP', message: `目标 IP ${literal} 位于禁用网段` };
     }
-    return { ...base, addresses: [base.hostname] };
+    return { ...base, addresses: [literal] };
   }
 
   let records: Array<{ address: string; family: number }>;

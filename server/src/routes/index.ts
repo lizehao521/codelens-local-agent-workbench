@@ -11,6 +11,7 @@ import { createMcpRoutes } from './mcp.routes.js';
 import { createProvidersRoutes } from './providers.routes.js';
 import { createSandboxPermissionsRoutes } from './sandbox-permissions.routes.js';
 import { createJudgeRoutes } from './judge.routes.js';
+import { createRsiRoutes } from './rsi.routes.js';
 import { createCapabilitiesRoutes } from './capabilities.routes.js';
 import { createTracesRoutes } from './traces.routes.js';
 import { createSkillsRoutes } from './skills.routes.js';
@@ -26,6 +27,7 @@ import type { ProvidersController } from '../controllers/providers.controller.js
 import type { HealthController } from '../controllers/health.controller.js';
 import type { SandboxPermissionsController } from '../controllers/sandbox-permissions.controller.js';
 import type { JudgeController } from '../controllers/judge.controller.js';
+import type { RsiController } from '../controllers/rsi.controller.js';
 import type { CapabilitiesController } from '../controllers/capabilities.controller.js';
 import type { TracesController } from '../controllers/traces.controller.js';
 import type { SkillsController } from '../controllers/skills.controller.js';
@@ -43,6 +45,7 @@ export interface ApiRouterDeps {
   health: HealthController;
   sandboxPermissions: SandboxPermissionsController;
   judge: JudgeController;
+  rsi: RsiController;
   capabilities: CapabilitiesController;
   traces: TracesController;
   skills: SkillsController;
@@ -69,6 +72,7 @@ export function createApiRouter(deps: ApiRouterDeps): Router {
   // 于是文档里的 PUT /api/v1/sandbox-permissions 返回 404。
   v1.use('/sandbox-permissions', createSandboxPermissionsRoutes(deps.sandboxPermissions));
   v1.use(createJudgeRoutes(deps.judge));
+  v1.use(createRsiRoutes(deps.rsi));
   v1.use(createCapabilitiesRoutes({ capabilities: deps.capabilities }));
   v1.use(createTracesRoutes({ traces: deps.traces }));
   v1.use(createSkillsRoutes({ skills: deps.skills }));

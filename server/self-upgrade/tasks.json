@@ -1,0 +1,191 @@
+{
+  "_comment": [
+    "自我升级的题目规格表 —— 唯一真源。派单脚本与围栏都从这里读，避免「允许清单」和「判据」各写一份后漂移。",
+    "改这张表 = 换题。改完必须重打基线（loop 会自动做），否则基线指纹仍指向上一道题。",
+    "status 只用于人工标注语义，真正的完成状态记在 .self-upgrade/ledger.jsonl —— 那是外部账本，Agent 改不到。"
+  ],
+  "version": 1,
+  "tasks": [
+    {
+      "id": "ip-form",
+      "title": "SSRF 守卫按书写形态判 IPv6，十六进制映射可穿透",
+      "allowed": [
+        "src/utils/ssrf-guard.ts"
+      ],
+      "judge": "tests/self-upgrade/ip-form.test.ts",
+      "status": "done",
+      "releasedIn": "2.1.0"
+    },
+    {
+      "id": "obs-render",
+      "title": "工具结果回灌被字符截断，模型拿到半截 JSON 且无法续读",
+      "allowed": [
+        "src/services/tools/observation-render.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-observation.test.ts",
+      "status": "done",
+      "releasedIn": "2.2.0"
+    },
+    {
+      "id": "code-check",
+      "title": "没有自检手段：改完不能编译、不能试跑",
+      "allowed": [
+        "src/tools/builtin/code-check.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/code-check.test.ts",
+      "status": "done",
+      "releasedIn": "2.3.0"
+    },
+    {
+      "id": "fs-replace",
+      "title": "改动粒度太粗：改一行要重抄整份文件，长文件必然带字面量噪声",
+      "allowed": [
+        "src/tools/builtin/fs-write.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-write-replace.test.ts",
+      "status": "done",
+      "releasedIn": "2.3.0"
+    },
+    {
+      "id": "code-check-column",
+      "title": "语法错误只报行不报列，模型还得自己在该行里找",
+      "allowed": [
+        "src/tools/builtin/code-check.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/code-check-column.test.ts",
+      "maxAttempts": 3,
+      "status": "done",
+      "releasedIn": "2.4.0"
+    },
+    {
+      "id": "test-run-scaffold",
+      "title": "第一步：test.run 的骨架、三个校验、注册（约 50 行，不写执行逻辑）",
+      "allowed": [
+        "src/tools/builtin/test-run.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/test-run-scaffold.test.ts",
+      "excludeJudges": [
+        "tests/self-upgrade/test-run.test.ts"
+      ],
+      "maxAttempts": 3,
+      "status": "done",
+      "releasedIn": "2.5.0"
+    },
+    {
+      "id": "test-run",
+      "title": "第二步：给骨架补上执行逻辑（跑 vitest、读回断言差异、超时熔断、环境白名单）",
+      "allowed": [
+        "src/tools/builtin/test-run.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/test-run.test.ts",
+      "maxAttempts": 3,
+      "acceptCurrent": "实现已由 Agent 写完并在新判据下 11/11 通过；仅判据被出题人修正（骨架阶段 A6 改为双向断言、跳过判定改为运行时探测），故靶子相对新基线无变化。",
+      "status": "done",
+      "releasedIn": "2.5.0"
+    },
+    {
+      "id": "iteration-view",
+      "title": "前端改进：把迭代闸门的展示逻辑抽成可测纯函数（三态不得混）",
+      "package": "client",
+      "allowed": [
+        "src/lib/iteration-gate-view.ts",
+        "src/components/agent/RsiIterationGate.tsx"
+      ],
+      "judge": "tests/iteration-gate-view.test.ts",
+      "maxAttempts": 3,
+      "status": "done",
+      "requireAllTargets": true,
+      "releasedIn": "2.6.0",
+      "verifiedBy": "human"
+    },
+    {
+      "id": "exec-partial-on-timeout",
+      "title": "命令超时丢弃已产出的输出，模型无法区分慢与卡死",
+      "allowed": [
+        "src/tools/builtin/sys-exec.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/exec-partial-on-timeout.test.ts",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不改超时判定逻辑，只补回已产生的部分输出。",
+      "adoptedAt": "2026-11-11T16:34:10.182Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "sys.exec 超时杀掉子进程时，已写入 stdout 的内容一并丢弃，模型拿不到任何中间输出，无法判断是跑对了但慢还是卡死在第一步。",
+      "observable": "对会先打印再 sleep 超时的命令，超时结果里能看到已打印的部分而非空。",
+      "evidence": [
+        "超时只回一句「超时」，已产生的 stdout 全部丢失",
+        "慢任务与卡死任务在模型看来无差别，下一步动作完全相反"
+      ],
+      "releasedIn": "2.7.0",
+      "verifiedBy": "human"
+    },
+    {
+      "id": "fs-delete-dir-requires-recursive",
+      "title": "删除目录未校验 recursive 参数，直接抛出系统错误",
+      "allowed": [
+        "src/tools/builtin/fs-write.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-delete-dir-requires-recursive.test.ts",
+      "probe": "fs-delete-dir-requires-recursive.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不改变文件删除、recursive=true 删除目录、purge 等其它分支行为",
+      "adoptedAt": "2026-11-12T05:57:49.315Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "fs.write delete 操作对目录不校验 recursive=true，直接调用 rm 导致抛出原生错误而非返回结构化 ToolOutcome",
+      "observable": "调用 fs.write {path:'dir', operation:'delete'}（不传 recursive）对已有目录 → 期望返回 kind=invalid_args 并提示需 recursive=true，现状抛出 ENOTEMPTY/EPERM",
+      "evidence": [
+        "fs-write.tool.ts:294-295 删除分支仅读取 args.recursive 并传给 rm，未先判断目标是否为目录",
+        "fs-write.tool.ts:287-292 仅检查目标存在性，未区分文件/目录"
+      ],
+      "releasedIn": "2.8.0"
+    },
+    {
+      "id": "fs-write-delete-recursive-missing-schema",
+      "title": "delete 操作需 recursive 参数但 schema 未声明，目录无法删除",
+      "allowed": [
+        "src/tools/builtin/fs-write.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-write-delete-recursive-missing-schema.test.ts",
+      "probe": "fs-write-delete-recursive-missing-schema.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不改动 purge/rename/replace 等其它操作，不新增导出",
+      "adoptedAt": "2026-11-12T06:46:29.001Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "delete 目录时要求 recursive=true，但 inputSchema 缺少 recursive 字段，导致用户无法通过合法 API 删除目录",
+      "observable": "调用 fs.write {path:'dir', operation:'delete', recursive:true} → 期望删除成功，现状因 schema 校验拒绝或参数被丢弃导致失败",
+      "evidence": [
+        "fs-write.tool.ts:68-80 inputSchema 仅含 path/operation/content/newPath/oldText/newText，无 recursive",
+        "fs-write.tool.ts:294-306 handler 读取 args.recursive 并强制要求目录删除必须 recursive=true"
+      ],
+      "releasedIn": "2.9.0"
+    },
+    {
+      "id": "fs-replace-match-count",
+      "title": "fs.write replace 操作在 oldText 出现 0/多次时仅报错不给定位",
+      "allowed": [
+        "src/tools/builtin/fs-write.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-replace-match-count.test.ts",
+      "probe": "fs-replace-match-count.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不新增参数/字段，仅在现有错误对象里补位置信息",
+      "adoptedAt": "2026-11-12T07:28:30.051Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "replace 要求 oldText 恰好出现 1 次，违反时只抛幂错误，不返回匹配行号/计数，导致模型无法定位修正",
+      "observable": "对含 2 处相同 oldText 的文件调用 replace，期望错误体含 matches: [{line, col}, …]",
+      "evidence": [
+        "BEHAVIOR_WRONG×3 中含 replace 误用",
+        "模型需自行 fs.read 找行号才能再试"
+      ]
+    }
+  ]
+}

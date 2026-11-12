@@ -10,6 +10,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import vm from 'node:vm';
 import { allSuites, type EvalCase, type EvalSuite } from './suites.js';
@@ -41,6 +42,18 @@ export interface EvalBatteryResult {
   /** 0–1；total=0 时为 0。 */
   score: number;
   suites: EvalSuiteResult[];
+  /**
+   * 评测集指纹（套件定义 + 用例内容的规范化哈希）。
+   * 只用于标识「测量对象是否变化」，不参与计分、不进 anchor 原像。
+   * 指纹或分母变化时跨代读数不可比，必须另起新链（见交接文档 §3.4）。
+   */
+  evalSetFingerprint: string;
+  /**
+   * 套件级机械失败分类，不依赖模型自述：
+   * public_fail（公开用例就挂）/ hidden_only（公开全过、隐藏打红，过拟合信号）
+   * / suite_error（实现缺失或加载失败）/ passed。
+   */
+  failureKinds: Record<string, number>;
 }
 
 /** 源码级执行的返回值：propose 的变异验证与 suite 打分共用这一份口径。 */
@@ -353,21 +366,66 @@ export function runSuite(
   };
 }
 
+/**
+ * 规范化序列化：对象键按字典序，保证同一份评测集在任何机器/任何进程
+ * 得到同一指纹。与 krsi 的 canonical JSON 同口径（键序、无空白）。
+ */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/** 评测集版本指纹：套件定义与用例内容变化即变化，用于机器判定「基线是否断裂」。 */
+export function computeEvalSetFingerprint(suites: EvalSuite[]): string {
+  const payload = suites
+    .map((s) => ({
+      id: s.id,
+      implPath: s.implPath,
+      exportName: s.exportName,
+      files: [...(s.files ?? [])].sort(),
+      publicCases: s.publicCases,
+      hiddenCases: s.hiddenCases,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return createHash('sha256').update(canonical(payload)).digest('hex').slice(0, 16);
+}
+
+/** 套件级失败分类：公开也挂 / 仅隐藏挂（过拟合信号）/ 套件级错误 / 满分。 */
+function classifySuite(s: EvalSuiteResult): string {
+  if (s.error) return 'suite_error';
+  if (s.ok) return 'passed';
+  if (s.publicPassed === s.publicTotal) return 'hidden_only';
+  return 'public_fail';
+}
+
 /** 跑全部固定套件（内置 + 已晋升的提案套件）。 */
 export function runEvalBattery(
   sandboxRoot: string,
   options: { includeHidden?: boolean; only?: string } = {},
 ): EvalBatteryResult {
   const includeHidden = options.includeHidden ?? true;
-  const suites = allSuites(sandboxRoot)
-    .filter((s) => !options.only || s.id === options.only)
-    .map((s) => runSuite(sandboxRoot, s, includeHidden));
+  const suiteDefs = allSuites(sandboxRoot).filter((s) => !options.only || s.id === options.only);
+  const suites = suiteDefs.map((s) => runSuite(sandboxRoot, s, includeHidden));
   const passed = suites.reduce((sum, s) => sum + s.passed, 0);
   const total = suites.reduce((sum, s) => sum + s.total, 0);
+  const failureKinds: Record<string, number> = {};
+  for (const s of suites) {
+    const kind = classifySuite(s);
+    failureKinds[kind] = (failureKinds[kind] ?? 0) + 1;
+  }
   return {
     passed,
     total,
     score: total === 0 ? 0 : Math.round((passed / total) * 1000) / 1000,
     suites,
+    evalSetFingerprint: computeEvalSetFingerprint(suiteDefs),
+    failureKinds,
   };
 }

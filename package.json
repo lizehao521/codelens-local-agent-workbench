@@ -1,6 +1,6 @@
 {
   "name": "codelens",
-  "version": "2.0.0",
+  "version": "2.10.0",
   "private": true,
   "description": "CodeLens - 编程 Agent Web 应用（React + Express 全栈）",
   "scripts": {
@@ -10,9 +10,10 @@
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server",
     "test": "npm test --prefix server && npm test --prefix client",
-    "e2e": "bash scripts/e2e.sh"
+    "e2e": "bash scripts/e2e.sh",
+    "check:config": "node scripts/check-eval-config.mjs"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.5.0"
   }
 }

@@ -18,6 +18,7 @@ import { notFoundHandler } from './middlewares/not-found.js';
 import { agentConcurrency } from './middlewares/agent-concurrency.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { createRuntime, type Runtime } from './runtime.js';
+import { buildRsiRulesContract } from './services/rsi/rules-contract.js';
 import { AppError, ErrorCode } from './utils/errors.js';
 
 export interface AppOptions {
@@ -87,6 +88,7 @@ export function createApp(options: AppOptions = {}): Express {
       health: runtime.healthController,
       sandboxPermissions: runtime.sandboxPermissionsController,
       judge: runtime.judgeController,
+      rsi: runtime.rsiController,
       capabilities: runtime.capabilitiesController,
       traces: runtime.tracesController,
       skills: runtime.skillsController,
@@ -95,6 +97,13 @@ export function createApp(options: AppOptions = {}): Express {
       runs: runtime.runsController,
     }),
   );
+
+  // ── RSI 规则契约 ── 只读、无需 session，供独立看板与一致性校验脚本消费。
+  // 与 overview 共用同一个 buildRsiRulesContract()，保证两处同源、JSON 深度相等。
+  app.get('/api/rsi/rules', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(buildRsiRulesContract());
+  });
 
   // ── RSI 看板专用路由 ── 开发态旁路，直接查 db，不走 controller 流程
   app.get('/api/rsi/overview', (req, res) => {
@@ -137,6 +146,9 @@ export function createApp(options: AppOptions = {}): Express {
 
       // 结构化评测读数（新增字段，不改动既有字段）：前端此前只能正则解析
       // task.test_pass_rate 的 detail 文本拿分母，文案一改就断。
+      // 与 /api/rsi/rules 一致禁用缓存：契约虽静态，但嵌在动态响应里，
+      // 浏览器缓存旧 overview 会让两个出口在 HTTP 层分叉（普通 curl 断言抓不到）。
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         session,
         judgeRuns,
@@ -144,6 +156,7 @@ export function createApp(options: AppOptions = {}): Express {
         rsiRuns,
         attributions,
         eval: buildEvalSummary(allVerdicts, judgeRuns as Array<{ id: number; created_at: number }>),
+        rules: buildRsiRulesContract(),
       });
     } catch (e: any) {
       res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
@@ -250,6 +263,16 @@ function buildEvalSummary(
     denominator: num('denominator') ?? total,
     suites: Array.isArray(data?.suites) ? data!.suites : [],
     source: data ? 'structured' : 'detail_only',
+    // 评测运行元数据：旧行没有这些字段时给中性缺省值，前端据此显示「未标注」，
+    // 绝不把缺失伪装成 0 或已测量（与 detail_only 的兼容策略同一口径）。
+    evalSetFingerprint:
+      typeof data?.evalSetFingerprint === 'string' ? data.evalSetFingerprint : null,
+    failureKinds:
+      data?.failureKinds && typeof data.failureKinds === 'object' && !Array.isArray(data.failureKinds)
+        ? (data.failureKinds as Record<string, number>)
+        : {},
+    samples: num('samples') ?? 1,
+    reliability: typeof data?.reliability === 'string' ? data.reliability : 'unmeasured',
   };
 }
 

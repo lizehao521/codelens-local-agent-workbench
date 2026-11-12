@@ -1,0 +1,81 @@
+{
+  "note": "已知缺口池。来源：server/docs/rsi-kernel-charter.md 第 10 节 UNEXEC 清单 + 各文档边界。propose-gaps.ts 只把 agentActionable=true 的条目交给 Agent——因为靶子在 scripts/ 或 src/services/{judge,rsi,eval}/ 下的缺口，改它等于改尺子，只能人做。人维护此文件，Agent 够不到。 已完成的缺口保留在池里作留痕，但 status=done 且 agentActionable=false，不会再喂给提议模型。",
+  "updatedAt": "2026-11-12",
+  "items": [
+    {
+      "id": "orphan-tool-gate",
+      "title": "工具用完不回收：造出来就留在主树，没有孤儿闸",
+      "why": "宣言第 6 节要求「任务结束必删工具」并配三道机器闸。现在 Agent 能 tool.forge 造工具，但没有任何回收与配对检查——按第 6 节这属于熵。",
+      "targetHint": "src/tools/builtin/tool-forge.tool.ts",
+      "size": "中",
+      "agentActionable": true,
+      "source": "charter §10 UNEXEC"
+    },
+    {
+      "id": "exec-partial-on-timeout",
+      "title": "命令超时只剩一句「超时」，拿不到已经产生的输出",
+      "why": "sys.exec 超时时把子进程杀掉，已写进 stdout 的内容一并丢弃。模型于是不知道它是「跑对了但慢」还是「卡死在第一步」——这两种情况的下一步动作完全相反。",
+      "targetHint": "src/tools/builtin/sys-exec.tool.ts",
+      "size": "小",
+      "agentActionable": false,
+      "source": "实测：诊断里超时轮次只有一句 timeout，无任何输出",
+      "status": "done",
+      "releasedIn": "2.7.0",
+      "note": "已由 Agent 实现（超时分支返回 data.partial），判据按真实 API 修正后 7/7 通过；人工复核 verified。"
+    },
+    {
+      "id": "error-next-action",
+      "title": "错误只报「哪种错」，不报「下一步该做什么」",
+      "why": "错误有 10 种 kind，但 kind 只说明分类。模型拿到 invalid_args 仍不知道该改成什么。可观察的差别：修复所需轮次。",
+      "targetHint": "src/tools/builtin/fs-write.tool.ts",
+      "size": "小",
+      "agentActionable": true,
+      "source": "实测：字面量改错那几轮，反馈里只有「未找到」，没有「你给的第 3 行在文件里是第 5 行」"
+    },
+    {
+      "id": "batch-atomicity",
+      "title": "多文件改动没有原子性：中途失败留半成品",
+      "why": "一次任务要改 2~3 个文件时，第二个失败会让第一个的改动留在盘上，围栏看到的是「靶子改了一半」。这在集成层失败里占了一类。",
+      "targetHint": "src/tools/builtin/fs-write.tool.ts",
+      "size": "中",
+      "agentActionable": true,
+      "source": "实测：integration/FULL_SUITE_RED 两轮均为多文件改动"
+    },
+    {
+      "id": "judge-mutation-probe",
+      "title": "判据没被破坏过：只验「有反向断言」，没验「改坏必红」",
+      "why": "宣言 C3 要求判据有破坏夹具。现在 judge-audit.mjs 只查反向断言占比，弱反向断言（恒真条件）仍能通过。",
+      "targetHint": "scripts/judge-audit.mjs",
+      "size": "中",
+      "agentActionable": false,
+      "blockedBy": "靶子在 scripts/（受保护）——改它等于改尺子，只能人做"
+    },
+    {
+      "id": "unexec-third-state",
+      "title": "只有 PASS/FAIL 两态：没跑到的步骤被记成失败",
+      "why": "宣言 C4 明确 UNEXEC 既不等于 PASS 也不等于 FAIL。现在「判据没跑」和「判据跑红」都落同一个 FAIL 桶，归因只能按 FAIL 的层标签往下归。",
+      "targetHint": "scripts/check-self-upgrade.mjs",
+      "size": "中",
+      "agentActionable": false,
+      "blockedBy": "靶子在 scripts/（受保护）"
+    },
+    {
+      "id": "strengthens-field",
+      "title": "新增模块不必回答「强化了哪一维」",
+      "why": "宣言 C1 要求每个新增模块必须能回答强化了 Act/Judge/Update/Memory 的哪一维。现在 tasks.json 没有这个字段，全靠人审。",
+      "targetHint": "self-upgrade/tasks.json",
+      "size": "小",
+      "agentActionable": false,
+      "blockedBy": "靶子在 self-upgrade/（受保护规格）"
+    },
+    {
+      "id": "judge-semantic-layer",
+      "title": "判据塔只有 L0：没有 L2 语义判据",
+      "why": "宣言第 3 节要求低层不能替高层签字。现在全部判据都是机械断言，没有一条回答「质量是否真的提升」。",
+      "targetHint": "src/services/judge/",
+      "size": "大",
+      "agentActionable": false,
+      "blockedBy": "靶子在 src/services/judge/（受保护：那是判据计算层）"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "codelens-server",
-  "version": "2.0.0",
+  "version": "2.10.0",
   "private": true,
   "type": "module",
   "description": "CodeLens programming agent backend: LLM proxy layer (BYOK, zero retention)",
@@ -12,14 +12,17 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "test": "vitest run && npm run test:krsi",
-    "test:krsi": "go build -C krsi -o /tmp/krsi . && node --import tsx scripts/krsi-conformance.ts",
+    "test:krsi": "node scripts/run-krsi-conformance.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-real.mjs",
     "rsi:propose": "tsx scripts/seed-agent-loop.ts 1 --propose",
     "rsi:code": "tsx scripts/seed-agent-loop.ts 3 --code",
     "rsi:auto": "tsx scripts/seed-agent-loop.ts 2 --auto",
     "rsi:verify": "tsx scripts/verify-rsi-ledger.ts",
-    "rsi:migrate-hash": "tsx scripts/migrate-rsi-hash-version.ts"
+    "rsi:migrate-hash": "tsx scripts/migrate-rsi-hash-version.ts",
+    "check:rsi-contract": "tsx scripts/check-rsi-contract.mjs",
+    "check:suite-floor": "node scripts/check-suite-floor.mjs",
+    "check:self-upgrade": "node scripts/check-self-upgrade.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

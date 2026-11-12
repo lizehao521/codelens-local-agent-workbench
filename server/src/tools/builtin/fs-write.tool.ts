@@ -1,4 +1,4 @@
-/** fs.write — sandboxed create/overwrite/append/rename/delete. */
+/** fs.write — sandboxed create/overwrite/append/rename/delete/replace/purge. */
 
 import { existsSync, statSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -7,7 +7,7 @@ import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 import { resolveInSandboxAsync } from './path-jail.js';
 
 const MAX_CONTENT_CHARS = 2_000_000;
-const OPERATIONS = ['create', 'overwrite', 'append', 'rename', 'delete', 'purge'] as const;
+const OPERATIONS = ['create', 'overwrite', 'append', 'rename', 'delete', 'purge', 'replace'] as const;
 
 /** `fs.write` 碰到 git 执行面时的统一建议。 */
 const GIT_SURFACE_SUGGESTION =
@@ -64,7 +64,7 @@ export const fsWriteTool: ToolDefinition = {
   displayName: '写入文件',
   category: 'file',
   description:
-    '在沙箱内写文件。operation：create（不存在才建）/overwrite（覆盖）/append（追加）/rename（移动到 newPath）/delete（删除）/purge（清空目录内容并保留空目录）。路径必须是沙箱相对路径；覆盖、删除、清空属于高危操作，执行前需要用户确认。',
+    '在沙箱内写文件。operation：create（不存在才建）/overwrite（覆盖）/append（追加）/rename（移动到 newPath）/delete（删除）/purge（清空目录内容并保留空目录）/replace（精确替换一处 oldText 为 newText）。路径必须是沙箱相对路径；覆盖、删除、清空属于高危操作，执行前需要用户确认。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -72,6 +72,9 @@ export const fsWriteTool: ToolDefinition = {
       operation: { type: 'string', enum: [...OPERATIONS], description: '操作类型，必填' },
       content: { type: 'string', description: 'create/overwrite/append 的内容', maxLength: 2000000 },
       newPath: { type: 'string', description: 'rename 的目标相对路径', maxLength: 512 },
+      oldText: { type: 'string', description: '要被替换的原文片段（必须在文件里恰好出现一次）', maxLength: 200000 },
+      newText: { type: 'string', description: '替换成的新片段', maxLength: 200000 },
+      recursive: { type: 'boolean', description: '删除目录时是否递归删除（目录删除必须为 true）' },
     },
     required: ['path', 'operation'],
     additionalProperties: false,
@@ -149,6 +152,100 @@ export const fsWriteTool: ToolDefinition = {
       };
     }
 
+    if (operation === 'replace') {
+      // 精确替换：只允许恰好命中一处，其余字节保持不变。
+      if (!targetExists) {
+        return {
+          ok: false,
+          summary: `目标不存在：${jail.sandboxRelative}`,
+          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}` },
+        };
+      }
+      const oldText = String(args.oldText ?? '');
+      const newText = String(args.newText ?? '');
+      if (oldText.length > 200000 || newText.length > 200000) {
+        return {
+          ok: false,
+          summary: 'oldText/newText 超过 200000 字符上限',
+          error: { code: 'PAYLOAD_TOO_LARGE', kind: 'invalid_args', message: 'oldText/newText 超过 200000 字符上限' },
+        };
+      }
+      if (oldText === newText) {
+        return {
+          ok: false,
+          summary: 'oldText 与 newText 相同，空操作',
+          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'oldText 与 newText 相同，未发生任何修改' },
+        };
+      }
+      const original = await readFile(jail.absolutePath, 'utf8');
+      // 空 oldText 必须当场拒。下面用 indexOf 找全部命中、命中后从 hit+needle.length 继续；
+      // 当 needle 为空串时 indexOf 永远返回 from，from 永远不前进 —— 死循环，进程挂住到超时。
+      // 这不是理论风险：schema 只把 path/operation 设为必填，oldText 可以是空串。
+      // （这条是 RSI Agent 自己提名的，见 proposals 里 fs-replace-empty-oldtext-infinite-loop。）
+      if (oldText.length === 0) {
+        return {
+          ok: false,
+          summary: 'oldText 不能为空',
+          error: {
+            code: 'TOOL_INVALID_ARGS',
+            kind: 'invalid_args',
+            message: 'oldText 不能为空：空串会匹配任意位置且无法前进，替换无意义',
+          },
+        };
+      }
+      // 行尾归一化：若原文是 CRLF，把 oldText 里的 LF 归一化成 CRLF，保证跨行匹配。
+      const crlf = original.includes('\r\n');
+      const needle = crlf ? oldText.replace(/\r?\n/g, '\r\n') : oldText.replace(/\r\n/g, '\n');
+      let count = 0;
+      let index = -1;
+      let from = 0;
+      const matches: { line: number; col: number }[] = [];
+      while (true) {
+        const hit = original.indexOf(needle, from);
+        if (hit === -1) break;
+        count += 1;
+        if (count === 1) index = hit;
+        // 计算行号和列号（1-based）
+        const before = original.slice(0, hit);
+        const line = before.split('\n').length;
+        const col = before.split('\n').pop()!.length + 1;
+        matches.push({ line, col });
+        from = hit + needle.length;
+      }
+      if (count === 0) {
+        return {
+          ok: false,
+          summary: `未在 ${jail.sandboxRelative} 中找到匹配片段`,
+          error: { code: 'REPLACE_NO_MATCH', kind: 'invalid_args', message: 'oldText 在文件中未命中任何位置' },
+        };
+      }
+      if (count > 1) {
+        const locations = matches.map((m) => `line ${m.line}, col ${m.col}`).join('; ');
+        return {
+          ok: false,
+          summary: `oldText 在 ${jail.sandboxRelative} 中命中 ${count} 处，请提供更长上下文`,
+          error: { code: 'REPLACE_AMBIGUOUS', kind: 'invalid_args', message: `oldText 命中 ${count} 处（${locations}），拒绝模糊替换` },
+          // matches 是既有契约（命中次数，字符串化后等于 '3'），位置信息必须另开键。
+          // 实测教训：为了给位置信息复用 matches 会撞坏 fs-write-replace 的 C3 ——
+          // 新能力不许改变既有字段的含义与类型，只能加新键。
+          data: { matches: count, matchLocations: matches },
+        };
+      }
+      // 恰好命中 1 处：前段 + newText + 后段，其余字节原样保留。
+      const replacement = crlf ? newText.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n') : newText.replace(/\r\n/g, '\n');
+      const next = original.slice(0, index) + replacement + original.slice(index + needle.length);
+      ctx.reportProgress('writing', `替换 ${jail.sandboxRelative}`);
+      await mkdir(path.dirname(jail.absolutePath), { recursive: true });
+      await writeFile(jail.absolutePath, next, 'utf8');
+      const { stat } = await import('node:fs/promises');
+      const size = (await stat(jail.absolutePath)).size;
+      return {
+        ok: true,
+        summary: `已替换 ${jail.sandboxRelative} 中 1 处片段`,
+        data: { path: jail.sandboxRelative, operation, replaced: 1, sizeBytes: size },
+      };
+    }
+
     if (operation === 'rename') {
       if (args.newPath === undefined) {
         return {
@@ -220,7 +317,22 @@ export const fsWriteTool: ToolDefinition = {
         error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}` },
       };
     }
+    const isDirectory = statSync(jail.absolutePath).isDirectory();
     const recursive = args.recursive === true;
+    if (isDirectory && !recursive) {
+      return {
+        ok: false,
+        summary: `目标是目录，删除需指定 recursive=true：${jail.sandboxRelative}`,
+        error: {
+          // kind 必须取 ToolErrorKind 的锁定枚举值。早前这里被写成 precondition_failed
+          // （不在枚举内），是为了迎合一份错误判据 —— tsc 直接 TS2322，整次升级作废。
+          // 「参数不合法」对应的正确 kind 就是 invalid_args。详见 docs/rsi-self-iteration.md §20.8。
+          code: 'TOOL_INVALID_ARGS',
+          kind: 'invalid_args',
+          message: '删除目录必须指定 recursive=true',
+        },
+      };
+    }
     await rm(jail.absolutePath, { recursive: recursive && existsSync(jail.absolutePath) });
     return {
       ok: true,

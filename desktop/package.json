@@ -1,7 +1,7 @@
 {
   "name": "codelens-desktop",
   "productName": "CodeLens",
-  "version": "2.0.0",
+  "version": "2.10.0",
   "private": true,
   "author": "CodeLens",
   "description": "CodeLens desktop shell (Electron) - 通用 Agent 工具调用平台本地安装包",

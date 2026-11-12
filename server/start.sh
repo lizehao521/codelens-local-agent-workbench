@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 export LLM_SERVER_API_KEY='sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS'
-export DEEP_ASSESSOR_BASE_URL='http://1.92.92.200:8787/v1'
+export DEEP_ASSESSOR_BASE_URL='http://1.92.150.5:8787/v1'
 export DEEP_ASSESSOR_MODEL='deepseek-chat'
 export DEEP_ASSESSOR_PROVIDER='custom'
 export AGENT_DB_PATH='./data/codelens.db'

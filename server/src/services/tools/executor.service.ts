@@ -24,7 +24,14 @@ import type { SseWriter } from '../agent/sse-writer.js';
 import type { ApprovalService } from '../agent/approval.service.js';
 import type { ApprovalDedupService } from '../agent/approval-dedup.service.js';
 import { RETRYABLE_KINDS } from '../../types/error-kind.js';
-import { estimateTextTokens } from '../agent/token-estimator.js';
+import { renderToolObservation, serializeToolData } from './observation-render.js';
+
+/**
+ * 回灌渲染（「模型看到什么」）已拆到 `observation-render.ts`：那段逻辑决定了
+ * 模型能读到多少原文，混在 700 行执行器里既改不动也测不动。这里保留 re-export，
+ * 是因为既有用例与调用方从这里取这两个符号，对外契约不变。
+ */
+export { clipToTokenBudget, OBSERVATION_MAX_TOKENS } from './observation-render.js';
 
 export interface ExecuteItemInput {
   toolCall: ToolCallRow;
@@ -80,36 +87,6 @@ export interface ExecutionOutcome {
 
 const INLINE_PREVIEW_CHARS = 4000;
 const PARALLEL_LIMIT = 4;
-/**
- * 喂给模型的单条工具结果 token 硬顶。
- *
- * 为什么是 token 而不是字符：字符上限对 CJK 是灾难——中文 1 字 ≈ 1 token，
- * 原来的 3000 字符上限意味着单条 observation 最坏 3015 token，而且每一轮
- * 重发历史都要再付一次。实测一次 10 轮工具调用的任务，累计 prompt 烧掉 68K
- * 正是这么滚起来的（budget = contextWindow × 2 = 64000，被撑爆）。
- *
- * 1000 token 的取值依据：足够放下 50 行代码或一段结构化 JSON（Latin 约 4000
- * 字符、CJK 约 1000 字符），又把单条最坏值压到原来的三分之一。超过部分走
- * `.artifacts/<id>.json` 落盘，observation 里给可执行的续读指引。
- */
-const OBSERVATION_MAX_TOKENS = 1000;
-
-/**
- * 把文本裁到 token 预算内（estimator 对长度单调，二分找最长前缀）。
- * 直接按字符裁会误伤 CJK——一个汉字被劈成两半既丢语义又省不了 token。
- */
-export function clipToTokenBudget(text: string, maxTokens: number): string {
-  if (maxTokens <= 0) return '';
-  if (estimateTextTokens(text) <= maxTokens) return text;
-  let lo = 0;
-  let hi = text.length;
-  while (lo < hi) {
-    const mid = Math.ceil((lo + hi) / 2);
-    if (estimateTextTokens(text.slice(0, mid)) <= maxTokens) lo = mid;
-    else hi = mid - 1;
-  }
-  return text.slice(0, lo);
-}
 /** AUDIT-005: how many independent confirmations a `two_step` verdict needs. */
 const TWO_STEP_PASSES = 2;
 
@@ -491,7 +468,7 @@ export class ToolExecutor {
       const durationMs = Date.now() - startedAt;
 
       if (outcome.ok) {
-        return this.recordSuccess(toolCall, outcome, durationMs, definition);
+        return this.recordSuccess(toolCall, outcome, durationMs, definition, args);
       }
 
       const kind = outcome.error?.kind ?? 'internal';
@@ -604,8 +581,9 @@ export class ToolExecutor {
     outcome: ToolOutcome,
     durationMs: number,
     definition: ToolDefinition,
+    args: Record<string, unknown>,
   ): Promise<ExecutionOutcome> {
-    const serialized = outcome.data === undefined ? '' : JSON.stringify(outcome.data);
+    const serialized = serializeToolData(outcome.data);
     const bytes = Buffer.byteLength(serialized, 'utf8');
     const truncated = serialized.length > INLINE_PREVIEW_CHARS;
     let artifactPath: string | null = null;
@@ -642,34 +620,27 @@ export class ToolExecutor {
       durationMs,
       resultId: result.id,
     });
-    // 喂给模型的内容两道闸：先按**工具自己声明的字符预算**裁（`maxResultChars`
-    // —— 它此前是死元数据：12 处声明、0 处读取，正是 C2「加了模块但没人调用」），
-    // 再按全局 token 硬顶裁。两道都要过，因为它们管的不是一回事：
-    //   - maxResultChars 是**每工具**的（time-now 这种小结果不该有机会塞长文）；
-    //   - OBSERVATION_MAX_TOKENS 是**跨工具**的安全网（CJK 下字符与 token 1:1，
-    //     只看字符上限会失控）。
-    // artifact 仍存全量 serialized，审计链不因此缺损。
-    const charBudget = Number.isFinite(definition.maxResultChars) && definition.maxResultChars > 0
-      ? definition.maxResultChars
-      : Number.POSITIVE_INFINITY;
-    const charCapped = serialized.length > charBudget ? serialized.slice(0, charBudget) : serialized;
-    const observationData = clipToTokenBudget(charCapped, OBSERVATION_MAX_TOKENS);
-    const observationClipped = observationData.length < serialized.length;
+    // 喂给模型的内容两道闸，都收在 observation-render 里：先按**工具自己声明的
+    // 字符预算**裁（`maxResultChars` —— 它此前是死元数据：12 处声明、0 处读取，
+    // 正是 C2「加了模块但没人调用」），再按全局 token 硬顶裁。渲染层同时拿到
+    // 结构化 payload 与全量序列化，因此可以按语义取字段，而不是只能对一串 JSON
+    // 做字符前缀裁剪。审计链（sha256 / bytes / artifact）仍以全量 serialized 为准。
+    const observation = renderToolObservation({
+      toolName: toolCall.tool_name,
+      summary: outcome.summary,
+      data: outcome.data,
+      serialized,
+      artifactPath,
+      maxResultChars: definition.maxResultChars,
+      args,
+    });
     return {
       callId: toolCall.call_id,
       toolCallId: toolCall.id,
       toolName: toolCall.tool_name,
       status: 'success',
       summary: outcome.summary,
-      observation: observationData
-        ? `工具 ${toolCall.tool_name} 执行成功：${outcome.summary}\n结果数据：${observationData}${
-            observationClipped
-              ? artifactWritten
-                ? `\n（结果已截断：仅返回前段约 ${observationData.length} 字符，完整内容已存 .artifacts/${toolCall.id}.json，共 ${serialized.length} 字符。需要后续部分请用 fs.read 分段读该文件（配 lineStart/lineEnd 或 keyword 参数），不要重跑原工具）`
-                : `\n（结果已截断：仅返回前段约 ${observationData.length} 字符，且归档失败，完整内容不可用；请用更小的范围参数重跑本工具）`
-              : ''
-          }`
-        : `工具 ${toolCall.tool_name} 执行成功：${outcome.summary}`,
+      observation,
       errorKind: null,
     };
   }

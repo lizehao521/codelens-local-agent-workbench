@@ -29,6 +29,12 @@ import type { Db } from '../../repositories/db.js';
 import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
 import { canonicalJson } from './ledger-verify.js';
 import type { CriterionVerdict } from '../judge/types.js';
+import {
+  readSuiteScores,
+  suiteFloorVerdict,
+  SUITE_FLOOR_CRITERION,
+  type SuiteScore,
+} from '../judge/eval-rate.js';
 
 export type RsiVerdictState = 'improved' | 'not_improved' | 'refused' | 'undecidable' | 'skipped' | 'error';
 
@@ -163,6 +169,61 @@ export class RsiBridgeService {
             detail: `深判 score=${deepRow.score.toFixed(3)}`,
           },
         ];
+      }
+
+      // ── 0.5 套件级地板（护栏）：堵住「修 A 打坏 B，整机率仍上涨」的假绿 ──────
+      // task.test_pass_rate 是整机聚合率，两个套件可以互相抵消：
+      // 实测注入 parse_query 2/8→8/8（+6）同时 csv_import 7/17→2/17（-5），
+      // 整机率 0.691→0.699，krsi 判 improved 并写「全部指标严格变好」。
+      // 基线取**上一代证据文件**里的套件明细 —— manifest 只搬标量，
+      // 逐个套件的读数只存在于 evidence（evalPassRateGate 的 data.suites）。
+      // 读不到基线时记 absent 而不是不产出：否则 R3 会把「量不到」判成「删指标」。
+      if (prevGeneration > 0) {
+        const curSuites = readSuiteScores(enrichedVerdicts);
+        let prevSuites: SuiteScore[] | null = null;
+        try {
+          const prevEvidence = await readFile(
+            path.join(this.rsiDir, `${safe(sessionId)}-gen${prevGeneration}-evidence.json`),
+            'utf8',
+          );
+          prevSuites = readSuiteScores(
+            (JSON.parse(prevEvidence) as { verdicts?: CriterionVerdict[] }).verdicts ?? [],
+          );
+        } catch {
+          prevSuites = null;
+        }
+        const floor = suiteFloorVerdict(prevSuites, curSuites);
+        enrichedVerdicts = [
+          ...enrichedVerdicts,
+          floor ?? {
+            layer: 'L1',
+            criterion: SUITE_FLOOR_CRITERION,
+            status: 'unexec',
+            detail: prevSuites
+              ? '本代没有套件级读数，套件地板无法计算'
+              : `上一代（第 ${prevGeneration} 代）无可用的套件明细，套件地板无基线`,
+          },
+        ];
+      } else {
+        // 首代：确立基线。
+        // 没有更早的读数可比，"不回退"在本代真空成立 —— 这不是测量结论，
+        // 但必须写成 1.0 而不是 absent：否则下一代取 prev 时这条指标不存在，
+        // 护栏在**第一次加入的那一代**完全失效（实测：prev 无该指标时仍判 improved）。
+        // detail 明确标注这是基线确立，避免被当成"13 个套件全部通过"。
+        const curSuites = readSuiteScores(enrichedVerdicts);
+        if (curSuites) {
+          enrichedVerdicts = [
+            ...enrichedVerdicts,
+            {
+              layer: 'L1',
+              criterion: SUITE_FLOOR_CRITERION,
+              status: 'pass',
+              score: 1,
+              detail: `套件地板：确立基线（${curSuites.length} 个套件），本代无可比对象`,
+              data: { baseline: curSuites.map((s) => `${s.id} ${s.passed}/${s.total}`) },
+            },
+          ];
+        }
       }
 
       // ── 0. 钉住本轮判决的证据原像 ─────────────────────────────────────────────
@@ -721,10 +782,22 @@ function extractReasons(report: string): string[] {
   return reasons;
 }
 
-/** 从 krsi 报告里抓 per-metric 对比行。格式："metric: before → after（变好=true/false）" */
-function extractMetrics(report: string): RsiBridgeResult['metrics'] {
+/**
+ * 从 krsi 报告里抓 per-metric 对比行。
+ *
+ * 真实行格式（由 main.go:582 生成）：
+ *   "  · 指标名：旧值 → 新值（变好=true）（护栏：不得变差）"
+ * 指标名与数值之间的分隔符是**全角冒号**（U+FF1A）。这里原先只写了半角 ":",
+ * 与报告实际输出对不上，于是真实报告一条都匹配不到、metrics_json 恒为 null ——
+ * 判决一直有，per-metric 明细却从来是空的。
+ *
+ * 同时兼容历史报告的半角写法，并容忍半角括号与 "->" 箭头。
+ * 导出仅为可测：报告行格式是字节级契约，改动会被 rsi-report-metrics 测试打红。
+ */
+export function extractMetrics(report: string): RsiBridgeResult['metrics'] {
   const out: NonNullable<RsiBridgeResult['metrics']> = [];
-  const metricLine = /^\s*·\s+(\S+)\s*:\s*([\d.]+)\s*→\s*([\d.]+)\s*（变好=(\w+)）/;
+  const metricLine =
+    /^\s*·\s*(\S+?)\s*[：:]\s*(-?\d+(?:\.\d+)?)\s*(?:→|->)\s*(-?\d+(?:\.\d+)?)\s*[（(]\s*变好\s*=\s*([^）)]*?)\s*[）)]/;
   for (const line of report.split('\n')) {
     const m = line.match(metricLine);
     if (m && m[1] !== undefined) {

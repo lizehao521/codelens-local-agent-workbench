@@ -16,7 +16,19 @@ export default function App() {
 
   useEffect(() => {
     // 服务端会话列表（SQLite 是唯一事实源）；失败时侧栏展示错误可重试
-    void useServerSessionStore.getState().loadList();
+    const deepLinkSession = new URLSearchParams(window.location.search).get('session');
+    void (async () => {
+      await useServerSessionStore.getState().loadList();
+      // URL 直达：把指定会话选中，让侧栏与 RSI 面板指向同一会话。
+      // 失败不阻断 —— 面板会直接用 URL 里的 sessionId 独立取数。
+      if (deepLinkSession) {
+        try {
+          await useServerSessionStore.getState().selectSession(deepLinkSession);
+        } catch {
+          // 会话详情可能因设备令牌不匹配而取不到，RSI 面板仍可用
+        }
+      }
+    })();
     // provider / 模型列表：启动静默刷新一次（失败则用 settingsStore 内置兜底注册表）；
     // 之后定时轮询，仅用于在服务端已同步上游模型后刷新 UI（不重复打上游）。
     void useSettingsStore.getState().refreshProviders(false);

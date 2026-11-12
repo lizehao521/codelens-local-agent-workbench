@@ -94,7 +94,7 @@ async function main() {
   const baseArgs = {
     provider: 'custom',
     model: 'deepseek-chat',
-    customBaseUrl: 'http://1.92.92.200:8787/v1',
+    customBaseUrl: 'http://1.92.150.5:8787/v1',
     apiKey: 'sk-relay-qYbr8zxWfqAENi8rMCKvNg4-C_OFymcS',
     channelMode: 'react',
     maxIterations: 8,
