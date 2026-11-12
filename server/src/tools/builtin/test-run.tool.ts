@@ -6,22 +6,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { resolveInSandboxAsync, resolveProjectRoot } from './path-jail.js';
+import { buildCleanEnv } from './spawn-env.js';
+import { killProcessTree } from './process-tree.js';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
-
-const ALLOWED_ENV_KEYS = new Set([
-  'PATH', 'Path', 'SystemRoot', 'SYSTEMROOT', 'windir',
-  'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA',
-  'ComSpec', 'COMSPEC', 'NUMBER_OF_PROCESSORS', 'OS',
-]);
-
-function buildCleanEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { NODE_ENV: 'test' };
-  for (const key of ALLOWED_ENV_KEYS) {
-    const val = process.env[key];
-    if (val !== undefined) env[key] = val;
-  }
-  return env;
-}
 
 function extractAssertionMessage(failureMessages: string[]): string {
   for (const msg of failureMessages) {
@@ -52,13 +39,7 @@ function extractAssertionMessage(failureMessages: string[]): string {
   return 'Test failed';
 }
 
-function killProcessTree(pid: number): void {
-  if (process.platform === 'win32') {
-    spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
-  } else {
-    try { process.kill(-pid, 'SIGKILL'); } catch {}
-  }
-}
+
 
 export const testRunTool: ToolDefinition = {
   name: 'test.run',

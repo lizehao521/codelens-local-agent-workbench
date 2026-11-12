@@ -17,6 +17,7 @@ import { statSync } from 'node:fs';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 import { config } from '../../config/env.js';
 import { resolveInSandboxAsync } from './path-jail.js';
+import { killProcessTree } from './process-tree.js';
 import {
   buildExecEnv,
   evaluateExecCommand,
@@ -82,37 +83,6 @@ function makeSink(limitBytes: number): Sink {
       return total > limitBytes;
     },
   };
-}
-
-/** 杀掉整棵进程树。POSIX 用负 pid（进程组），Windows 用 taskkill /T。 */
-function killProcessTree(pid: number | undefined): void {
-  if (pid === undefined) return;
-  if (process.platform === 'win32') {
-    try {
-      const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
-        windowsHide: true,
-        stdio: 'ignore',
-      });
-      killer.on('error', () => undefined);
-    } catch {
-      // taskkill 不可用：退化为杀父进程（至少不会继续写管道）
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // 进程已退出
-      }
-    }
-    return;
-  }
-  try {
-    process.kill(-pid, 'SIGKILL'); // 负号 = 整个进程组
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // 进程已退出
-    }
-  }
 }
 
 function fail(
