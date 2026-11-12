@@ -392,13 +392,16 @@ describe('api.ts 映射层（C7 / AC-07）', () => {
     expect(overview.rules?.states).toHaveLength(6);
   });
 
-  it('getRsiRules 读取独立契约端点 GET /api/rsi/rules', async () => {
+  // 前缀锁定 /api/v1：879a082 已把 RSI 出口收敛到带版本的 /api/v1，旧 /api/rsi/*
+  // 仅作兼容转发且前端不再直连（见 tests/contract/rsi-exit-consistency.test.ts）。
+  // 这条断言原写死旧前缀，会在收敛后的代码上恒红——它该跟着契约走，而不是反过来。
+  it('getRsiRules 读取独立契约端点 GET /api/v1/rsi/rules', async () => {
     const rules = resolveContract(null);
     const fetchSpy = vi.fn(async () => jsonResponse(rules));
     vi.stubGlobal('fetch', fetchSpy);
     const result = await getRsiRules();
     expect(result).toEqual(rules);
-    expect(fetchSpy).toHaveBeenCalledWith('/api/rsi/rules', { cache: 'no-store' });
+    expect(fetchSpy).toHaveBeenCalledWith('/api/v1/rsi/rules', { cache: 'no-store' });
   });
 
   it('契约 version 升版时仍透传，不静默退回旧兜底（形状校验不锁版本串）', async () => {
