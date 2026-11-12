@@ -29,6 +29,8 @@ export interface EvalSuiteResult {
   ok: boolean;
   passed: number;
   total: number;
+  /** 未执行的用例数（实现缺失/加载失败）。unexec 不计入 fail，也不进 score 分母。 */
+  unexec: number;
   publicPassed: number;
   publicTotal: number;
   failures: EvalCaseFailure[];
@@ -39,7 +41,9 @@ export interface EvalSuiteResult {
 export interface EvalBatteryResult {
   passed: number;
   total: number;
-  /** 0–1；total=0 时为 0。 */
+  /** 未执行用例总数（尺子没跑）。与 fail 分开计数，不进 score 分母。 */
+  unexec: number;
+  /** 0–1；分母 = 已执行用例（total - unexec）；executed=0 时为 0。 */
   score: number;
   suites: EvalSuiteResult[];
   /**
@@ -60,6 +64,8 @@ export interface EvalBatteryResult {
 export interface SourceRunResult {
   passed: number;
   total: number;
+  /** 未执行用例数：加载失败时 = total，正常执行时 = 0。 */
+  unexec: number;
   failures: EvalCaseFailure[];
   error?: string;
 }
@@ -163,6 +169,7 @@ export function runSourceCases(
     return {
       passed: 0,
       total: cases.length,
+      unexec: cases.length,
       failures: [],
       error: `加载失败：${err instanceof Error ? err.message : String(err)}`,
     };
@@ -176,6 +183,7 @@ export function runSourceCases(
     return {
       passed: 0,
       total: cases.length,
+      unexec: cases.length,
       failures: [],
       error: `module.exports.${exportName} 不是函数（必须保持 CommonJS 导出）`,
     };
@@ -190,7 +198,7 @@ export function runSourceCases(
     else failures.push({ name: c.name, expected: outcome.expected, actual: outcome.actual, hidden });
   });
 
-  return { passed, total: cases.length, failures };
+  return { passed, total: cases.length, unexec: 0, failures };
 }
 
 /**
@@ -271,6 +279,7 @@ function runMultiFileCases(
     return {
       passed: 0,
       total: cases.length,
+      unexec: cases.length,
       failures: [],
       error: `加载失败：${err instanceof Error ? err.message : String(err)}`,
     };
@@ -285,6 +294,7 @@ function runMultiFileCases(
     return {
       passed: 0,
       total: cases.length,
+      unexec: cases.length,
       failures: [],
       error: `module.exports.${exportedName} 不是函数（必须保持 CommonJS 导出）`,
     };
@@ -306,7 +316,7 @@ function runMultiFileCases(
       });
     }
   });
-  return { passed, total: cases.length, failures };
+  return { passed, total: cases.length, unexec: 0, failures };
 }
 
 /**
@@ -319,25 +329,27 @@ export function runSuite(
   includeHidden: boolean,
 ): EvalSuiteResult {
   const abs = path.join(sandboxRoot, suite.implPath);
+  const cases = includeHidden
+    ? [...suite.publicCases, ...suite.hiddenCases]
+    : [...suite.publicCases];
+  const hiddenFrom = suite.publicCases.length;
+  // total = 尺子定义的用例数；unexec = 其中没跑起来的。实现缺失/加载失败时
+  // 全部用例未执行——旧口径把缺失记成 total=0、把加载失败记成全 fail，两头都不诚实。
   const base: EvalSuiteResult = {
     id: suite.id,
     title: suite.title,
     ok: false,
     passed: 0,
-    total: 0,
+    total: cases.length,
+    unexec: cases.length,
     publicPassed: 0,
-    publicTotal: 0,
+    publicTotal: suite.publicCases.length,
     failures: [],
   };
 
   if (!existsSync(abs)) {
     return { ...base, error: `实现文件不存在：${suite.implPath}` };
   }
-
-  const cases = includeHidden
-    ? [...suite.publicCases, ...suite.hiddenCases]
-    : [...suite.publicCases];
-  const hiddenFrom = suite.publicCases.length;
 
   let result: SourceRunResult;
   if (suite.files && suite.files.length > 0) {
@@ -359,8 +371,11 @@ export function runSuite(
     ok: result.error === undefined && result.passed === result.total,
     passed: result.passed,
     total: result.total,
+    unexec: result.unexec,
     publicTotal,
-    publicPassed: Math.max(0, publicTotal - publicFailures),
+    // 没跑起来的用例既不算 fail 也不算 pass：error 时 publicPassed 必须是 0，
+    // 否则加载失败会谎报「公开用例全过」。
+    publicPassed: result.error ? 0 : Math.max(0, publicTotal - publicFailures),
     failures: result.failures,
     ...(result.error ? { error: result.error } : {}),
   };
@@ -415,6 +430,8 @@ export function runEvalBattery(
   const suites = suiteDefs.map((s) => runSuite(sandboxRoot, s, includeHidden));
   const passed = suites.reduce((sum, s) => sum + s.passed, 0);
   const total = suites.reduce((sum, s) => sum + s.total, 0);
+  const unexec = suites.reduce((sum, s) => sum + s.unexec, 0);
+  const executed = total - unexec;
   const failureKinds: Record<string, number> = {};
   for (const s of suites) {
     const kind = classifySuite(s);
@@ -423,7 +440,9 @@ export function runEvalBattery(
   return {
     passed,
     total,
-    score: total === 0 ? 0 : Math.round((passed / total) * 1000) / 1000,
+    unexec,
+    // 分母只算真跑过的用例：「尺子没跑」不稀释通过率，也不伪装成失败。
+    score: executed === 0 ? 0 : Math.round((passed / executed) * 1000) / 1000,
     suites,
     evalSetFingerprint: computeEvalSetFingerprint(suiteDefs),
     failureKinds,

@@ -22,6 +22,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deletedRationaleComments } from './lib/rationale-guard.mjs';
+import { classifyJudgeRun } from './lib/judge-run-classify.mjs';
 
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 
@@ -397,14 +398,22 @@ if (process.argv.includes('--no-tests')) {
       shell: process.platform === 'win32',
     });
     ok(`判据通过：${baseline.judge}`);
+    console.log('JUDGE_VERDICT=pass');
   } catch (e) {
     judgeOk = false;
     const out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+    const { status } = classifyJudgeRun(out, false);
     const lines = out
       .split('\n')
       .filter((l) => /×|Tests\s|AssertionError/.test(l))
       .slice(0, 12);
-    fail(`判据未通过：${baseline.judge}`);
+    if (status === 'unexec') {
+      console.log('JUDGE_VERDICT=unexec');
+      fail(`判据未执行（unexec）：${baseline.judge} —— 尺子没跑起来（加载失败或无用例），不是「跑了没过」`);
+    } else {
+      console.log('JUDGE_VERDICT=fail');
+      fail(`判据未通过：${baseline.judge}`);
+    }
     for (const l of lines) console.log(`      ${l.trim()}`);
   }
 }

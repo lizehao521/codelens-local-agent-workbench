@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { bucketFailures, verdictsLine } from './lib/failure-buckets.mjs';
 
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 const LEDGER = join(SERVER, '..', '.self-upgrade', 'ledger.jsonl');
@@ -45,9 +46,17 @@ const rows = readFileSync(LEDGER, 'utf8')
 
 const failures = rows.filter((r) => r.verdict === 'failed' && typeof r.layer === 'string');
 const upgraded = rows.filter((r) => r.verdict === 'upgraded');
+const { unexec: rulerNotReached, ranFailed } = bucketFailures(failures);
+const gaps = [...new Set(rulerNotReached.map((f) => f.task ?? '(unknown)'))];
+const summaryLine = verdictsLine({
+  unexec: rulerNotReached.length,
+  fail: ranFailed.length,
+  pass: upgraded.length,
+  gaps,
+});
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ failures, upgraded }, null, 2));
+  console.log(JSON.stringify({ failures, upgraded, buckets: { unexec: rulerNotReached, ranFailed }, verdicts: summaryLine }, null, 2));
   process.exit(0);
 }
 
@@ -59,6 +68,8 @@ const count = (arr, key) =>
   }, {});
 
 console.log(`\n账本：${rows.length} 行（升级 ${upgraded.length} 次，带归因的失败 ${failures.length} 次）`);
+console.log(`尺子没跑（unexec，不计入能力账）：${rulerNotReached.length} 次｜跑了没过：${ranFailed.length} 次`);
+console.log(summaryLine);
 console.log(`无归因的旧失败记录：${rows.filter((r) => r.verdict === 'failed' && !r.layer).length} 条（分层机制上线前的老账）`);
 
 if (failures.length === 0) {
