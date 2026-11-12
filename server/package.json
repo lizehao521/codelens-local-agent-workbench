@@ -12,6 +12,7 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "test": "vitest run && npm run test:krsi",
+    "test:acceptance": "npm run typecheck && npm run test && npm run check:suite-floor",
     "test:krsi": "node scripts/run-krsi-conformance.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-real.mjs",
