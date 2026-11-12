@@ -1,0 +1,75 @@
+event: stage
+data: {"runId":"5cabb8cd-3ff9-4f3d-9665-063058908b55","stage":"connecting","at":1794500426309,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"25befd98-7efd-4af6-a081-b1f31d381763","messageId":"bffaedad-d84b-41d4-9c0d-c1689d9ebe43","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":8,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":8,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"5cabb8cd-3ff9-4f3d-9665-063058908b55","stage":"upstream_first_byte","at":1794500427899,"elapsedMs":1590,"detail":null}
+
+event: stage
+data: {"runId":"5cabb8cd-3ff9-4f3d-9665-063058908b55","stage":"reasoning","at":1794500427901,"elapsedMs":1592,"detail":null}
+
+event: reasoning
+data: {"text":"The"}
+
+event: reasoning
+data: {"text":" user wants me to run a"}
+
+event: reasoning
+data: {"text":" specific test file using the test"}
+
+event: reasoning
+data: {"text":"_run tool. They've provided"}
+
+event: reasoning
+data: {"text":" the exact parameters to"}
+
+event: reasoning
+data: {"text":" use. Let me execute"}
+
+event: reasoning
+data: {"text":" this directly."}
+
+event: tool_call
+data: {"callId":"call-daabdf51-e8e7-4d13-82db-b0ef478b1077","name":"test.run","displayName":"跑测试","category":"compute","arguments":{"file":"tests/contract/rsi-exit-consistency.test.ts","root":"C:/Users/Admin/Desktop/新建文件夹 (2)/server"},"risk":"medium","approvalMode":"none","source":"builtin","iteration":1,"status":"pending"}
+
+event: tool_result
+data: {"callId":"call-daabdf51-e8e7-4d13-82db-b0ef478b1077","name":"test.run","status":"success","summary":"全部通过：6/6","data":{"total":6,"passed":6,"failed":0,"failures":[]},"truncated":false,"durationMs":5243,"resultId":"98073ada-55b2-441e-bb56-c85262912c1c"}
+
+event: reasoning
+data: {"text":"The"}
+
+event: reasoning
+data: {"text":" test run was"}
+
+event: reasoning
+data: {"text":" successful. All 6 tests"}
+
+event: reasoning
+data: {"text":" passed. I need"}
+
+event: reasoning
+data: {"text":" to report the results in the"}
+
+event: reasoning
+data: {"text":" specified format."}
+
+event: delta
+data: {"text":"ok\n"}
+
+event: delta
+data: {"text":"data"}
+
+event: delta
+data: {"text":".total=6 /"}
+
+event: delta
+data: {"text":" data.passed=6"}
+
+event: stage
+data: {"runId":"5cabb8cd-3ff9-4f3d-9665-063058908b55","stage":"done","at":1794500438194,"elapsedMs":11885,"detail":null}
+
+event: done
+data: {"finishReason":"stop","iteration":2,"toolCallCount":1,"usage":{"promptTokens":7846,"completionTokens":130},"tokenBudget":256000,"messageId":"68ad4016-af3b-402a-9fd0-51ad414c60e4","firstTokenMs":1590}
+

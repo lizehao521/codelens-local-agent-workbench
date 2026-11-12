@@ -204,6 +204,89 @@ export async function resolveInSandboxAsync(
   return verdict;
 }
 
+/**
+ * 解析「在哪个项目根里干活」——给 test.run 这类需要 cwd 的工具用。
+ *
+ * ── 为什么不能直接用 resolveInSandbox ─────────────────────
+ * 沙箱根（`server/workspace`）是 Agent 的读写地盘，但**不是项目根**：
+ * 仓库在它外面。于是 `test.run` 只能用沙箱里的 `node_modules`、以沙箱为 cwd，
+ * 结果就是「永远在空目录里跑测试，永远绿/永远读不到报告」——被测对象根本不对。
+ *
+ * ── 判据（三条任一即可，其余一律拒）──────────────────────
+ *   1. 落在沙箱内（原有行为，不破坏）；
+ *   2. 落在某个 allowDir 内（授权目录本身可以是根）；
+ *   3. 是某个 allowDir 的**上级**（例如 allowDirs 有 `server/src`，则 `server` 可作根）。
+ *
+ * 第 3 条是这次的关键：项目根必然包着 `src/`，但它自己不一定是授权目录。
+ * 放宽到「上级」不会放大可写范围——**写盘仍走 resolveInSandbox + allowDirs**，
+ * 这里只决定子进程的 cwd 与 vitest/tsc 二进制的来源。
+ *
+ * Windows 上大小写不敏感，前缀比较统一转小写，避免 `C:\Repo` 与 `c:\repo` 判不中。
+ */
+export type ProjectRootVerdict =
+  | { ok: true; absolutePath: string }
+  | { ok: false; code: 'PATH_ABSOLUTE' | 'PATH_TRAVERSAL' | 'PATH_OUTSIDE_SANDBOX' | 'PATH_RESERVED'; message: string };
+
+function within(child: string, parent: string): boolean {
+  const c = child.toLowerCase();
+  const p = parent.toLowerCase();
+  return c === p || c.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
+}
+
+export async function resolveProjectRoot(
+  sandboxRoot: string,
+  raw: string,
+  allowedDirs?: string[],
+  fs: JailFs = realFs,
+): Promise<ProjectRootVerdict> {
+  const input = validateInput(raw);
+  // validateInput 只会返回两种：`{candidate}`（通过）或 `{ok:false,code,message}`（拒绝）。
+  // 这里按 candidate 判别，再用 ok===false 取错误字段——直接 `'ok' in input` 不够精确，
+  // 因为 InputVerdict 里还并了 ok:true 的 JailVerdict 形态。
+  if (!('candidate' in input)) {
+    if (input.ok === false) {
+      return { ok: false, code: input.code, message: input.message };
+    }
+    return { ok: false, code: 'PATH_OUTSIDE_SANDBOX', message: '路径校验失败' };
+  }
+
+  const root = await realSandboxRootAsync(sandboxRoot, fs);
+  const resolved = path.resolve(root, input.candidate);
+
+  let realTarget: string;
+  try {
+    realTarget = await fs.realpath(resolved);
+  } catch {
+    return {
+      ok: false,
+      code: 'PATH_OUTSIDE_SANDBOX',
+      message: `项目根不存在或无法解析：${resolved}`,
+    };
+  }
+
+  if (within(realTarget, root)) return { ok: true, absolutePath: realTarget };
+
+  const dirs = allowedDirs ?? [];
+  for (const dir of dirs) {
+    let realDir: string;
+    try {
+      realDir = await fs.realpath(path.resolve(dir));
+    } catch {
+      continue;
+    }
+    // 授权目录本身，或它的上级 —— 前者是「就在这里跑」，后者是「把整包当项目」。
+    if (within(realTarget, realDir) || within(realDir, realTarget)) {
+      return { ok: true, absolutePath: realTarget };
+    }
+  }
+
+  return {
+    ok: false,
+    code: 'PATH_OUTSIDE_SANDBOX',
+    message: `项目根必须是沙箱内、某个授权目录内、或授权目录的上级：${realTarget}`,
+  };
+}
+
 /** 同步：在 allowDirs 内逐个尝试解析 + 真实路径判定（防 symlink 逃逸）。返回首个落在某 allowDir 内的 verdict。 */
 function tryAllowedDirsSync(candidate: string, forWrite: boolean, allowedDirs: string[]): JailVerdict | null {
   for (const dir of allowedDirs) {

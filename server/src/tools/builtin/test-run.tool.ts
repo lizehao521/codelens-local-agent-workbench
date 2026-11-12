@@ -5,7 +5,7 @@ import { readFile, unlink, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
-import { resolveInSandboxAsync } from './path-jail.js';
+import { resolveInSandboxAsync, resolveProjectRoot } from './path-jail.js';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 
 const ALLOWED_ENV_KEYS = new Set([
@@ -65,11 +65,16 @@ export const testRunTool: ToolDefinition = {
   wireName: 'test_run',
   displayName: '跑测试',
   category: 'compute',
-  description: '跑指定的单个测试文件，返回通过/失败详情。',
+  description: '跑指定的单个测试文件，返回通过/失败详情。可用 root 指定项目根（仓库不在沙箱内时必须传）。',
   inputSchema: {
     type: 'object',
     properties: {
-      file: { type: 'string', description: '沙箱相对路径，tests/ 下且 .test.ts 结尾', maxLength: 512 },
+      file: { type: 'string', description: '相对项目根的测试路径，tests/ 下且 .test.ts 结尾', maxLength: 512 },
+      root: {
+        type: 'string',
+        description: '项目根（含 node_modules 与 vitest 配置的目录）。默认沙箱根；仓库不在沙箱内时必须传，且须是某个授权目录或它的上级。',
+        maxLength: 512,
+      },
       timeoutMs: { type: 'number', description: '超时毫秒，默认 60000，范围 1000..120000' },
     },
     required: ['file'],
@@ -86,8 +91,27 @@ export const testRunTool: ToolDefinition = {
     const file = String(args.file ?? '');
     const timeoutMs = Math.min(Math.max(Number(args.timeoutMs ?? 60000), 1000), 120000);
 
-    // ① path-jail
-    const jail = await resolveInSandboxAsync(ctx.sandboxRoot, file, false, undefined, ctx.allowedDirs);
+    // ⓪ 项目根：默认沙箱根；传了就必须是沙箱/授权目录/授权目录的上级。
+    //
+    // 这一条原来不存在，代价是：仓库在沙箱外时，vitest 只能从沙箱的
+    // node_modules 起、cwd 也是沙箱，于是「跑测试」永远在一个空项目里跑，
+    // 读不到报告就报 REPORT_READ_FAILED —— 被测对象从头到尾是错的。
+    let projectRoot = ctx.sandboxRoot;
+    const rootArg = String(args.root ?? '').trim();
+    if (rootArg) {
+      const rootJail = await resolveProjectRoot(ctx.sandboxRoot, rootArg, ctx.allowedDirs);
+      if (!rootJail.ok) {
+        return {
+          ok: false,
+          summary: rootJail.message,
+          error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: rootJail.message, retryable: false },
+        };
+      }
+      projectRoot = rootJail.absolutePath;
+    }
+
+    // ① path-jail（相对项目根解析：传了 root 就以 root 为基准）
+    const jail = await resolveInSandboxAsync(projectRoot, file, false, undefined, undefined);
     if (!jail.ok) {
       return {
         ok: false,
@@ -114,11 +138,21 @@ export const testRunTool: ToolDefinition = {
       };
     }
 
+    // ④ vitest 必须来自**项目根**的依赖树。缺失时说清是「根传错了」而不是「报告读不到」。
+    const vitestEntry = join(projectRoot, 'node_modules', 'vitest', 'vitest.mjs');
+    if (!existsSync(vitestEntry)) {
+      const msg = `项目根下没有 vitest：${vitestEntry}（若仓库不在沙箱内，请用 root 指定项目根，例如含 package.json 与 node_modules 的 server 目录）`;
+      return {
+        ok: false,
+        summary: '项目根缺少 vitest 依赖',
+        error: { code: 'VITEST_MISSING', kind: 'invalid_args', message: msg },
+      };
+    }
+
     // Prepare temp output file
     const tmpDir = await mkdtemp(join(tmpdir(), 'vitest-'));
     const outputFile = join(tmpDir, 'results.json');
 
-    const vitestEntry = join(ctx.sandboxRoot, 'node_modules', 'vitest', 'vitest.mjs');
     const child = spawn(process.execPath, [
       vitestEntry,
       'run',
@@ -126,7 +160,7 @@ export const testRunTool: ToolDefinition = {
       '--reporter=json',
       `--outputFile=${outputFile}`,
     ], {
-      cwd: ctx.sandboxRoot,
+      cwd: projectRoot,
       env: buildCleanEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,

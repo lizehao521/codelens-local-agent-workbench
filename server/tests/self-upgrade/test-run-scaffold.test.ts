@@ -56,7 +56,10 @@ describe('test.run 第一步 —— 骨架与安全边界', { timeout: 60_000 },
     expect(tool.source).toBe('builtin');
     expect(tool.enabled({ sandboxRoot: ROOT, mcpConnected: false })).toBe(true);
     const props = tool.inputSchema.properties ?? {};
-    expect(Object.keys(props).sort()).toEqual(['file', 'timeoutMs']);
+    // root 是 2026-11-13 加的：生产部署里沙箱根（server/workspace）不是项目根，
+    // vitest 与 cwd 都被钉在沙箱，导致「跑测试」实际在空目录里跑、永远读不到报告。
+    // 加参数必须同步改这张快照——这正是本条判据存在的意义（防偷偷加参数）。
+    expect(Object.keys(props).sort()).toEqual(['file', 'root', 'timeoutMs']);
     expect(tool.inputSchema.required).toEqual(['file']);
   });
 
