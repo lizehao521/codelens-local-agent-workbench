@@ -1,0 +1,13 @@
+{
+  "id": "fs-read-truncated-flag-false-positive",
+  "title": "fs.read 显式行窗口请求被误标 truncated=true",
+  "allowed": [
+    "src/tools/builtin/fs-read.tool.ts"
+  ],
+  "judge": "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
+  "probe": "fs-read-truncated-flag-false-positive.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "仅修正 truncated 标志位逻辑，不改变字节截断、行上限、keyword 过滤等核心行为"
+}

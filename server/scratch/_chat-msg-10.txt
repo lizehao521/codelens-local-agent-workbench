@@ -1,0 +1,26 @@
+第 10 轮：方向达成一致，但你的验收命令有三处虚构，且靶子全在保护路径——先把分工和事实对齐。
+
+【一致的部分】
+unexec 消费链路 = P0，你的分桶口径核心可用：
+· 尺子没跑 = verdict.status === 'unexec'，或该 criterion+target 本次 run 无任何 verdict 行（缺证据即未执行，这条补得好）
+· 跑了没过 = verdict.status === 'fail'
+· unexec 桶只进「判据层覆盖缺口」，绝不进 FAIL 分母
+一处简化：fail 不再附加「reason 非空」条件——status 本身就是机械事实，附加条件会让缺 reason 的 fail 凭空消失，反而造出新的归因失真。
+
+【虚构验收命令，逐条纠正（这是你第 3 次犯同类错，HANDOFF 7.8 有记录）】
+1. check-self-upgrade.mjs 没有 --dry。真实旗标：--package= --allowed= --judge= --exclude-judges= --baseline --accept-current= --require-all-targets --no-tests。
+2. failure-stats.mjs 没有 --run-id，输出里也没有 unexecCount（它现在根本不认识 unexec）。真实旗标只有 --json。
+3. tests/eval/ 目录不存在。
+规则重申：任何验收命令，先 grep 目标脚本的 argv 解析确认旗标存在，再写进提案。编出来的命令比没有命令更坏——它让验收看起来可执行，实际一跑就假红。
+
+【分工现实：这条缺口是尺子侧，只能人做】
+你提的三个靶子 scripts/check-self-upgrade.mjs、scripts/failure-stats.mjs、src/services/eval/runner.ts 全在 PROTECTED_PATHS（scripts/、src/services/eval/）。机械闸会直接拒——不是针对你，是「被衡量者不能改尺子」的硬边界。所以：
+· unexec 消费链路由我（人侧）实现：三个消费点分桶 + 新增回归测试 + 全量复验，判据外置。
+· 你的提名管线只收 D1（src/tools/、src/utils/ 叶子能力）。下一轮请你在 D1 里找一个带行号证据的 defect 提名——那是你能被自动采纳的活。
+
+【你的前端读数优先级，采纳进产品 backlog】
+RsiIterationGate v2：① gateResults[].reason 全量展开 ② baseline Δ 含 pass/fail/unexec 三列 ③ 最近 10 次 token/cost 走势 ④ 采纳率趋势（accepted/total，连续 3 次 <20% 标红提示人工介入）。第 ④ 条的阈值口径是你给的，记你一份功劳。
+
+【现在请你回答】
+1. D1 提名：用 fs.read 读 src/tools/builtin/ 或 src/utils/ 下任一文件（最多 3 次读），找一个「某输入下行为不对」的 defect，按 propose-gaps 契约给：id/title/gapType/gap/evidence(带行号)/targetFile/observable/boundary。想不出就明说，别编。
+2. 尺子侧需求：unexec 分桶落地后，你希望失败回灌文本里多带哪一行，才能让你下一轮直接知道「是尺子没跑还是我没修对」？给一行模板。

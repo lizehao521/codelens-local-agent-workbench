@@ -1,0 +1,2538 @@
+event: stage
+data: {"runId":"a69d30cd-e581-4e40-9739-110c29717fb3","stage":"connecting","at":1794481752891,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","messageId":"90cced62-4478-4280-a651-86eb15433479","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":5,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":2,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"a69d30cd-e581-4e40-9739-110c29717fb3","stage":"upstream_first_byte","at":1794481754343,"elapsedMs":1452,"detail":null}
+
+event: stage
+data: {"runId":"a69d30cd-e581-4e40-9739-110c29717fb3","stage":"reasoning","at":1794481754344,"elapsedMs":1453,"detail":null}
+
+event: reasoning
+data: {"text":"The"}
+
+event: reasoning
+data: {"text":" user is"}
+
+event: reasoning
+data: {"text":" providing a"}
+
+event: reasoning
+data: {"text":" final round"}
+
+event: reasoning
+data: {"text":" of corrections ("}
+
+event: reasoning
+data: {"text":"E9"}
+
+event: reasoning
+data: {"text":"-E16"}
+
+event: reasoning
+data: {"text":") to my previous plan."}
+
+event: reasoning
+data: {"text":" I need to produce a final"}
+
+event: reasoning
+data: {"text":", corrected version of the Q"}
+
+event: reasoning
+data: {"text":"4 execution"}
+
+event: reasoning
+data: {"text":" plan based on these"}
+
+event: reasoning
+data: {"text":" verified facts. The user"}
+
+event: reasoning
+data: {"text":" wants"}
+
+event: reasoning
+data: {"text":" a"}
+
+event: reasoning
+data: {"text":" compact, final output"}
+
+event: reasoning
+data: {"text":" with no \"to"}
+
+event: reasoning
+data: {"text":" be continued\" items"}
+
+event: reasoning
+data: {"text":". I must strictly"}
+
+event: reasoning
+data: {"text":" adhere to the verified"}
+
+event: reasoning
+data: {"text":" facts"}
+
+event: reasoning
+data: {"text":","}
+
+event: reasoning
+data: {"text":" correct all"}
+
+event: reasoning
+data: {"text":" fabric"}
+
+event: reasoning
+data: {"text":"ations ("}
+
+event: reasoning
+data: {"text":"paths, commands, flags"}
+
+event: reasoning
+data: {"text":", existing implementations"}
+
+event: reasoning
+data: {"text":"), and structure"}
+
+event: reasoning
+data: {"text":" the plan"}
+
+event: reasoning
+data: {"text":" mechanically"}
+
+event: reasoning
+data: {"text":".\n\nKey corrections"}
+
+event: reasoning
+data: {"text":" to internal"}
+
+event: reasoning
+data: {"text":"ize:\n1"}
+
+event: reasoning
+data: {"text":".  **UN"}
+
+event: reasoning
+data: {"text":"EXEC**:"}
+
+event: reasoning
+data: {"text":" `VerdictStatus`"}
+
+event: reasoning
+data: {"text":" in `judge/types.ts"}
+
+event: reasoning
+data: {"text":"` already has `'"}
+
+event: reasoning
+data: {"text":"un"}
+
+event: reasoning
+data: {"text":"exec'`. The gap"}
+
+event: reasoning
+data: {"text":" is consumption"}
+
+event: reasoning
+data: {"text":" in `check-self-upgrade"}
+
+event: reasoning
+data: {"text":".mjs` and `failure"}
+
+event: reasoning
+data: {"text":"-stats.mjs`."}
+
+event: reasoning
+data: {"text":" `"}
+
+event: reasoning
+data: {"text":"src"}
+
+event: reasoning
+data: {"text":"/runtime.ts` is DI"}
+
+event: reasoning
+data: {"text":" root"}
+
+event: reasoning
+data: {"text":", not judge runtime"}
+
+event: reasoning
+data: {"text":". `eval/runner.ts"}
+
+event: reasoning
+data: {"text":"` mapping needs"}
+
+event: reasoning
+data: {"text":" verification first"}
+
+event: reasoning
+data: {"text":".\n2.  **Tool"}
+
+event: reasoning
+data: {"text":" Discipline"}
+
+event: reasoning
+data: {"text":" Gates"}
+
+event: reasoning
+data: {"text":"**: `judge/tool"}
+
+event: reasoning
+data: {"text":"-discipline.ts` exists,"}
+
+event: reasoning
+data: {"text":" implements 3 gates (orph"}
+
+event: reasoning
+data: {"text":"an, pairing"}
+
+event: reasoning
+data: {"text":", etc"}
+
+event: reasoning
+data: {"text":".), imported"}
+
+event: reasoning
+data: {"text":" by `jud"}
+
+event: reasoning
+data: {"text":"ge.service.ts`. Gate"}
+
+event: reasoning
+data: {"text":" 2 is static `"}
+
+event: reasoning
+data: {"text":"unexec`. Declaration"}
+
+event: reasoning
+data: {"text":" §"}
+
+event: reasoning
+data: {"text":"10 is outdated. Real"}
+
+event: reasoning
+data: {"text":" gap: **"}
+
+event: reasoning
+data: {"text":"Mutation fixtures to"}
+
+event: reasoning
+data: {"text":" prove gates can turn"}
+
+event: reasoning
+data: {"text":" red** (contr"}
+
+event: reasoning
+data: {"text":"adicts my"}
+
+event: reasoning
+data: {"text":" Q1 exclusion)"}
+
+event: reasoning
+data: {"text":" + dynamic"}
+
+event: reasoning
+data: {"text":" forge"}
+
+event: reasoning
+data: {"text":" lifecycle. `"}
+
+event: reasoning
+data: {"text":"listTools`"}
+
+event: reasoning
+data: {"text":" is in `mcp-manager"}
+
+event: reasoning
+data: {"text":".service.ts`.\n3."}
+
+event: reasoning
+data: {"text":"  **pro"}
+
+event: reasoning
+data: {"text":"pose-gaps.ts"}
+
+event: reasoning
+data: {"text":"**: No `--dry`"}
+
+event: reasoning
+data: {"text":" flag. Nom"}
+
+event: reasoning
+data: {"text":"ination is model-driven. Ver"}
+
+event: reasoning
+data: {"text":"ification ="}
+
+event: reasoning
+data: {"text":" `pro"}
+
+event: reasoning
+data: {"text":"posals.jsonl` new"}
+
+event: reasoning
+data: {"text":" line passing"}
+
+event: reasoning
+data: {"text":" screen.\n4.  **"}
+
+event: reasoning
+data: {"text":"failure-attribution**: `.ts"}
+
+event: reasoning
+data: {"text":"` module, no CLI."}
+
+event: reasoning
+data: {"text":" Verification via unit"}
+
+event: reasoning
+data: {"text":" test"}
+
+event: reasoning
+data: {"text":" replay ("}
+
+event: reasoning
+data: {"text":"`.self-upgrade/loop"}
+
+event: reasoning
+data: {"text":"/attr-check.mts`"}
+
+event: reasoning
+data: {"text":").\n5.  **D"}
+
+event: reasoning
+data: {"text":"ual"}
+
+event: reasoning
+data: {"text":" RSI Dashboard"}
+
+event: reasoning
+data: {"text":"**: Reason is"}
+
+event: reasoning
+data: {"text":" `/"}
+
+event: reasoning
+data: {"text":"rsi` static"}
+
+event: reasoning
+data: {"text":" page"}
+
+event: reasoning
+data: {"text":" works without client"}
+
+event: reasoning
+data: {"text":" build/nginx"}
+
+event: reasoning
+data: {"text":" (dev"}
+
+event: reasoning
+data: {"text":"/ops side"}
+
+event: reasoning
+data: {"text":"car"}
+
+event: reasoning
+data: {"text":"), React Modal needs Vite"}
+
+event: reasoning
+data: {"text":" build. Keep"}
+
+event: reasoning
+data: {"text":" both.\n6.  **"}
+
+event: reasoning
+data: {"text":"Phase 2 Ad"}
+
+event: reasoning
+data: {"text":"option**: Writing"}
+
+event: reasoning
+data: {"text":" to `.self-upgrade/`"}
+
+event: reasoning
+data: {"text":" (sandbox-ex"}
+
+event: reasoning
+data: {"text":"ternal audit"}
+
+event: reasoning
+data: {"text":" log) via"}
+
+event: reasoning
+data: {"text":" web needs explicit"}
+
+event: reasoning
+data: {"text":" decision (D5)"}
+
+event: reasoning
+data: {"text":" + lock/"}
+
+event: reasoning
+data: {"text":"perms. Ad"}
+
+event: reasoning
+data: {"text":"option flow"}
+
+event: reasoning
+data: {"text":" = human review +"}
+
+event: reasoning
+data: {"text":" write tests +"}
+
+event: reasoning
+data: {"text":" tasks.json + baseline. Button"}
+
+event: reasoning
+data: {"text":" doesn"}
+
+event: reasoning
+data: {"text":"'t replace chain"}
+
+event: reasoning
+data: {"text":". `resultRef` GET"}
+
+event: reasoning
+data: {"text":" endpoint is valid.\n7."}
+
+event: reasoning
+data: {"text":"  **Phase 0 Commit"}
+
+event: reasoning
+data: {"text":"**: Exact file"}
+
+event: reasoning
+data: {"text":" list: Modified"}
+
+event: reasoning
+data: {"text":":"}
+
+event: reasoning
+data: {"text":" `scripts/propose-gaps"}
+
+event: reasoning
+data: {"text":".ts`, `scripts/self"}
+
+event: reasoning
+data: {"text":"-upgrade-loop.ts`, `"}
+
+event: reasoning
+data: {"text":"强化Agent.txt`. Unt"}
+
+event: reasoning
+data: {"text":"racked: `scripts/lib"}
+
+event: reasoning
+data: {"text":"/propose-result.ts`,"}
+
+event: reasoning
+data: {"text":" `scripts/lib/protected-path"}
+
+event: reasoning
+data: {"text":"s.ts`, `tests/scripts"}
+
+event: reasoning
+data: {"text":"/`"}
+
+event: reasoning
+data: {"text":" (15 tests). No"}
+
+event: reasoning
+data: {"text":" `git add -A`."}
+
+event: reasoning
+data: {"text":"\n8.  **Risk"}
+
+event: reasoning
+data: {"text":" 2**: `"}
+
+event: reasoning
+data: {"text":"baseline.json` ="}
+
+event: reasoning
+data: {"text":" protected file fingerprints + target"}
+
+event: reasoning
+data: {"text":" initial"}
+
+event: reasoning
+data: {"text":" content. `GREEN_BASE"}
+
+event: reasoning
+data: {"text":"LINE` only"}
+
+event: reasoning
+data: {"text":" in WorkBuddy. Migration"}
+
+event: reasoning
+data: {"text":" targets"}
+
+event: reasoning
+data: {"text":" led"}
+
+event: reasoning
+data: {"text":"ger lines"}
+
+event: reasoning
+data: {"text":" &"}
+
+event: reasoning
+data: {"text":" failure-stats aggregation.\n\nPlan"}
+
+event: reasoning
+data: {"text":" Structure:\n1.  **"}
+
+event: reasoning
+data: {"text":"Pre-"}
+
+event: reasoning
+data: {"text":"requ"}
+
+event: reasoning
+data: {"text":"isite Decisions (D"}
+
+event: reasoning
+data: {"text":"1-D5)** - Ex"}
+
+event: reasoning
+data: {"text":"plicitly"}
+
+event: reasoning
+data: {"text":" listed.\n2.  **"}
+
+event: reasoning
+data: {"text":"Phase 0:"}
+
+event: reasoning
+data: {"text":" Baseline Commit"}
+
+event: reasoning
+data: {"text":"** -"}
+
+event: reasoning
+data: {"text":" Exact file list.\n3."}
+
+event: reasoning
+data: {"text":"  **Phase 1:"}
+
+event: reasoning
+data: {"text":" Core"}
+
+event: reasoning
+data: {"text":" Rem"}
+
+event: reasoning
+data: {"text":"ediation (UNEXEC propagation"}
+
+event: reasoning
+data: {"text":", Tool Discipline Fi"}
+
+event: reasoning
+data: {"text":"xtures, tool"}
+
+event: reasoning
+data: {"text":"-use-coach)** - Corre"}
+
+event: reasoning
+data: {"text":"cted tasks"}
+
+event: reasoning
+data: {"text":".\n4.  **Phase"}
+
+event: reasoning
+data: {"text":" 2: Frontend Loop"}
+
+event: reasoning
+data: {"text":" Closure ("}
+
+event: reasoning
+data: {"text":"resultRef GET"}
+
+event: reasoning
+data: {"text":" only)** - Adoption endpoint"}
+
+event: reasoning
+data: {"text":" moved to D5.\n5"}
+
+event: reasoning
+data: {"text":".  **Phase 3"}
+
+event: reasoning
+data: {"text":": Doc Sync & Regression"}
+
+event: reasoning
+data: {"text":"**."}
+
+event: reasoning
+data: {"text":"\n6.  **Me"}
+
+event: reasoning
+data: {"text":"chanical Accept"}
+
+event: reasoning
+data: {"text":"ance Com"}
+
+event: reasoning
+data: {"text":"mands** for"}
+
+event: reasoning
+data: {"text":" every"}
+
+event: reasoning
+data: {"text":" task"}
+
+event: reasoning
+data: {"text":".\n7.  **R"}
+
+event: reasoning
+data: {"text":"isks**"}
+
+event: reasoning
+data: {"text":" (Cor"}
+
+event: reasoning
+data: {"text":"rected)."}
+
+event: delta
+data: {"text":"## "}
+
+event: delta
+data: {"text":"终版可"}
+
+event: delta
+data: {"text":"执行"}
+
+event: delta
+data: {"text":"迭代计划（"}
+
+event: delta
+data: {"text":"全"}
+
+event: delta
+data: {"text":"量"}
+
+event: delta
+data: {"text":"机"}
+
+event: delta
+data: {"text":"械核实版"}
+
+event: delta
+data: {"text":"）\n\n---\n\n"}
+
+event: delta
+data: {"text":"### 前置决策（"}
+
+event: delta
+data: {"text":"维护者协"}
+
+event: delta
+data: {"text":"调项，不混"}
+
+event: delta
+data: {"text":"入可执行任"}
+
+event: delta
+data: {"text":"务）\n\n| 编号"}
+
+event: delta
+data: {"text":" | 决策点 | "}
+
+event: delta
+data: {"text":"选项/"}
+
+event: delta
+data: {"text":"要求"}
+
+event: delta
+data: {"text":" |\n|---"}
+
+event: delta
+data: {"text":"|---|---|\n|"}
+
+event: delta
+data: {"text":" **D1** | **"}
+
+event: delta
+data: {"text":"gapType"}
+
+event: delta
+data: {"text":" 裁决** | "}
+
+event: delta
+data: {"text":"定"}
+
+event: delta
+data: {"text":"夺 `defect\\|missing"}
+
+event: delta
+data: {"text":"\\|regression` 定"}
+
+event: delta
+data: {"text":"义，同步 `"}
+
+event: delta
+data: {"text":"强"}
+
+event: delta
+data: {"text":"化Agent.txt` + `"}
+
+event: delta
+data: {"text":"scripts/propose-gaps.ts"}
+
+event: delta
+data: {"text":"` schema（"}
+
+: ping
+
+event: delta
+data: {"text":"阻塞 Phase"}
+
+event: delta
+data: {"text":" 1 提名语义"}
+
+event: delta
+data: {"text":"） |\n| **D2"}
+
+event: delta
+data: {"text":"** | **Work"}
+
+event: delta
+data: {"text":"Buddy 提交+合"}
+
+event: delta
+data: {"text":"并** | 决"}
+
+event: delta
+data: {"text":"定时机/策略"}
+
+event: delta
+data: {"text":"（merge/rebase/squ"}
+
+event: delta
+data: {"text":"ash）；**计划全"}
+
+event: delta
+data: {"text":"程在当前分支"}
+
+event: delta
+data: {"text":"，不以合并为"}
+
+event: delta
+data: {"text":"前置** |\n| **"}
+
+event: delta
+data: {"text":"D3** | **tool"}
+
+event: delta
+data: {"text":"-use-coach 路径"}
+
+event: delta
+data: {"text":"** | **A)"}
+
+event: delta
+data: {"text":" 重新提名走"}
+
+event: delta
+data: {"text":"完整管道** 或"}
+
+event: delta
+data: {"text":" **B) 维"}
+
+event: delta
+data: {"text":"护者裁决"}
+
+event: delta
+data: {"text":"循环外实现**（"}
+
+event: delta
+data: {"text":"二"}
+
+event: delta
+data: {"text":"选一，计划分"}
+
+event: delta
+data: {"text":"支"}
+
+event: delta
+data: {"text":"覆盖两"}
+
+event: delta
+data: {"text":"者"}
+
+event: delta
+data: {"text":"） |\n| **D4"}
+
+event: delta
+data: {"text":"** | **修"}
+
+event: delta
+data: {"text":"复包提交时机"}
+
+event: delta
+data: {"text":"** | **Phase"}
+
+event: delta
+data: {"text":" 0 立即提"}
+
+event: delta
+data: {"text":"交**（"}
+
+event: delta
+data: {"text":"锁定基线） |\n"}
+
+event: delta
+data: {"text":"| **D5** |"}
+
+event: delta
+data: {"text":" **采纳写端点"}
+
+event: delta
+data: {"text":"** | 是"}
+
+event: delta
+data: {"text":"否在"}
+
+event: delta
+data: {"text":" `/"}
+
+event: delta
+data: {"text":"api/rsi/` "}
+
+event: delta
+data: {"text":"旁路开 `"}
+
+event: delta
+data: {"text":"POST /pro"}
+
+event: delta
+data: {"text":"posals/:id/adopt"}
+
+event: delta
+data: {"text":"` 写 `."}
+
+event: delta
+data: {"text":"self-upgrade/proposals"}
+
+event: delta
+data: {"text":".jsonl`（沙"}
+
+event: delta
+data: {"text":"箱外审计"}
+
+event: delta
+data: {"text":"数据"}
+
+event: delta
+data: {"text":"），"}
+
+event: delta
+data: {"text":"需同"}
+
+event: delta
+data: {"text":"步给"}
+
+event: delta
+data: {"text":"锁/权限设"}
+
+event: delta
+data: {"text":"计；"}
+
+event: delta
+data: {"text":"**"}
+
+event: delta
+data: {"text":"若"}
+
+event: delta
+data: {"text":"否"}
+
+event: delta
+data: {"text":"，采"}
+
+event: delta
+data: {"text":"纳保"}
+
+event: delta
+data: {"text":"持人工流程**（"}
+
+event: delta
+data: {"text":"写 tests/ +"}
+
+event: delta
+data: {"text":" tasks.json + "}
+
+event: delta
+data: {"text":"打基线） |\n\n---\n\n"}
+
+event: delta
+data: {"text":"### Phase 0：基"}
+
+event: delta
+data: {"text":"线锁定（≤"}
+
+event: delta
+data: {"text":" 0.5 天）\n\n"}
+
+event: delta
+data: {"text":"| 任务 | "}
+
+event: delta
+data: {"text":"关键文件/"}
+
+event: delta
+data: {"text":"命令 | 机"}
+
+event: delta
+data: {"text":"械验收 |\n|---"}
+
+event: delta
+data: {"text":"|---|---|\n|"}
+
+event: delta
+data: {"text":" **精"}
+
+event: delta
+data: {"text":"确提交修复包"}
+
+event: delta
+data: {"text":"**（"}
+
+event: delta
+data: {"text":"按"}
+
+: ping
+
+event: delta
+data: {"text":" `"}
+
+event: delta
+data: {"text":"git status` 实"}
+
+event: delta
+data: {"text":"测） | `git add"}
+
+event: delta
+data: {"text":" scripts/propose-gaps.ts"}
+
+event: delta
+data: {"text":" scripts/self-upgrade-loop"}
+
+event: delta
+data: {"text":".ts"}
+
+event: delta
+data: {"text":" 强化Agent.txt scripts"}
+
+: ping
+
+event: delta
+data: {"text":"/lib/propose-result.ts"}
+
+event: delta
+data: {"text":" scripts/lib/protected-paths"}
+
+event: delta
+data: {"text":".ts tests/scripts/ && git"}
+
+event: delta
+data: {"text":" commit -m \"fix:"}
+
+event: delta
+data: {"text":" protected paths"}
+
+: ping
+
+event: delta
+data: {"text":" single source + RESULT protocol +"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"15 guard"}
+
+event: delta
+data: {"text":" tests\"` | `git log"}
+
+event: delta
+data: {"text":" -1 --oneline`"}
+
+event: delta
+data: {"text":" 显示该"}
+
+event: delta
+data: {"text":"提交；`git diff"}
+
+event: delta
+data: {"text":" --name-only HEAD"}
+
+event: delta
+data: {"text":"~1` 仅"}
+
+event: delta
+data: {"text":"含"}
+
+event: delta
+data: {"text":"上述 "}
+
+event: delta
+data: {"text":"6 项"}
+
+event: delta
+data: {"text":" |\n| **单"}
+
+event: delta
+data: {"text":"独提交强"}
+
+event: delta
+data: {"text":"化Agent.txt**（"}
+
+event: delta
+data: {"text":"若含"}
+
+event: delta
+data: {"text":" gap"}
+
+event: delta
+data: {"text":"Type 占"}
+
+event: delta
+data: {"text":"位修"}
+
+event: delta
+data: {"text":"改） | `git add"}
+
+event: delta
+data: {"text":" 强化Agent.txt &&"}
+
+event: delta
+data: {"text":" git commit -m \"docs"}
+
+event: delta
+data: {"text":": gapType placeholder"}
+
+event: delta
+data: {"text":" pending"}
+
+event: delta
+data: {"text":" D1\"` | `git"}
+
+event: delta
+data: {"text":" log -"}
+
+event: delta
+data: {"text":"1 --oneline` "}
+
+event: delta
+data: {"text":"显示第二提"}
+
+event: delta
+data: {"text":"交 |\n| **全量"}
+
+event: delta
+data: {"text":"回归确认基线"}
+
+event: delta
+data: {"text":"** | `vitest run"}
+
+event: delta
+data: {"text":"` | **126"}
+
+event: delta
+data: {"text":" 文件 / 1"}
+
+event: delta
+data: {"text":"243 用例全"}
+
+event: delta
+data: {"text":"绿** |\n\n---\n\n###"}
+
+event: delta
+data: {"text":" Phase 1：P"}
+
+event: delta
+data: {"text":"0 核心修"}
+
+event: delta
+data: {"text":"补（2"}
+
+event: delta
+data: {"text":" 天，按 D3 分"}
+
+event: delta
+data: {"text":"支）\n\n#### 1"}
+
+event: delta
+data: {"text":".1 UNEXEC 三"}
+
+event: delta
+data: {"text":"态贯通（J"}
+
+event: delta
+data: {"text":"udge）\n| 任务"}
+
+event: delta
+data: {"text":" | 关键文"}
+
+event: delta
+data: {"text":"件 | 机械"}
+
+event: delta
+data: {"text":"验收 |\n|---|"}
+
+event: delta
+data: {"text":"---|---|\n| **"}
+
+event: delta
+data: {"text":"核实现"}
+
+event: delta
+data: {"text":"有映射**：`grep"}
+
+event: delta
+data: {"text":" -n"}
+
+event: delta
+data: {"text":" \"unexec\" services/e"}
+
+event: delta
+data: {"text":"val/runner.ts judge"}
+
+event: delta
+data: {"text":"/types.ts` 确认"}
+
+event: delta
+data: {"text":" `VerdictStatus.un"}
+
+event: delta
+data: {"text":"exec` 到"}
+
+event: delta
+data: {"text":" runner"}
+
+event: delta
+data: {"text":" 的映射"}
+
+event: delta
+data: {"text":"逻辑 | `services/e"}
+
+event: delta
+data: {"text":"val/runner.ts` `"}
+
+event: delta
+data: {"text":"judge/types.ts` |"}
+
+event: delta
+data: {"text":" 输出显"}
+
+event: delta
+data: {"text":"示 `unexec` 分"}
+
+event: delta
+data: {"text":"支返回 `null`/"}
+
+event: delta
+data: {"text":"不计入 pass"}
+
+event: delta
+data: {"text":"/fail "}
+
+event: delta
+data: {"text":"计数器"}
+
+event: delta
+data: {"text":" |\n| **围"}
+
+event: delta
+data: {"text":"栏消费**：`scripts"}
+
+event: delta
+data: {"text":"/check-self-upgrade.mjs"}
+
+event: delta
+data: {"text":"` 读取 `jud"}
+
+event: delta
+data: {"text":"ge_ver"}
+
+event: delta
+data: {"text":"dicts` 时"}
+
+event: delta
+data: {"text":"，把"}
+
+event: delta
+data: {"text":" `unexec` 从"}
+
+event: delta
+data: {"text":" `fail"}
+
+event: delta
+data: {"text":"` 分"}
+
+event: delta
+data: {"text":"母剔"}
+
+event: delta
+data: {"text":"除，仅"}
+
+event: delta
+data: {"text":"统"}
+
+event: delta
+data: {"text":"计 `pass/f"}
+
+event: delta
+data: {"text":"ail` | `scripts/check"}
+
+event: delta
+data: {"text":"-self-upgrade.mjs`"}
+
+event: delta
+data: {"text":" | `ts"}
+
+event: delta
+data: {"text":"x scripts/check-self-upgrade"}
+
+event: delta
+data: {"text":".mjs --dry`"}
+
+event: delta
+data: {"text":"（"}
+
+event: delta
+data: {"text":"循环"}
+
+event: delta
+data: {"text":"侧有"}
+
+event: delta
+data: {"text":" `--dry`）日"}
+
+event: delta
+data: {"text":"志显示 `unexec"}
+
+event: delta
+data: {"text":": N"}
+
+event: delta
+data: {"text":" ignored"}
+
+event: delta
+data: {"text":"` |\n| **归因"}
+
+event: delta
+data: {"text":"/"}
+
+event: delta
+data: {"text":"统计消费**：`"}
+
+event: delta
+data: {"text":"scripts/failure-attribution.ts"}
+
+event: delta
+data: {"text":"` "}
+
+event: delta
+data: {"text":"七层归因、`"}
+
+event: delta
+data: {"text":"scripts"}
+
+event: delta
+data: {"text":"/failure-stats.mjs"}
+
+event: delta
+data: {"text":"` 聚合，"}
+
+event: delta
+data: {"text":"均跳"}
+
+event: delta
+data: {"text":"过 `unexec` |"}
+
+event: delta
+data: {"text":" `scripts/failure-att"}
+
+event: delta
+data: {"text":"ribution.ts` `scripts/f"}
+
+event: delta
+data: {"text":"ailure-stats.mjs`"}
+
+event: delta
+data: {"text":" | `vitest run tests"}
+
+event: delta
+data: {"text":"/scripts"}
+
+event: delta
+data: {"text":"/failure-attribution.test.ts"}
+
+event: delta
+data: {"text":"` 新"}
+
+event: delta
+data: {"text":"增用"}
+
+event: delta
+data: {"text":"例：输入"}
+
+event: delta
+data: {"text":"含"}
+
+event: delta
+data: {"text":" `unexec` →"}
+
+event: delta
+data: {"text":" 输出七"}
+
+event: delta
+data: {"text":"层计"}
+
+event: delta
+data: {"text":"数均"}
+
+event: delta
+data: {"text":"不"}
+
+event: delta
+data: {"text":"增"}
+
+event: delta
+data: {"text":" |\n| **历史口径"}
+
+event: delta
+data: {"text":"迁移**：一次"}
+
+event: delta
+data: {"text":"性脚本把"}
+
+event: delta
+data: {"text":" `.self-upgrade/led"}
+
+event: delta
+data: {"text":"ger.jsonl` "}
+
+event: delta
+data: {"text":"与 `policy_rsi_r"}
+
+event: delta
+data: {"text":"uns` 中历史"}
+
+event: delta
+data: {"text":" `unexec` 行"}
+
+event: delta
+data: {"text":"标"}
+
+event: delta
+data: {"text":"记 `"}
+
+event: delta
+data: {"text":"migrated:true"}
+
+event: delta
+data: {"text":"`，修"}
+
+event: delta
+data: {"text":"正 `failure-stats`"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"缓存 | `scripts"}
+
+event: delta
+data: {"text":"/migrate-unexec.mjs"}
+
+event: delta
+data: {"text":"`（新建） |"}
+
+: ping
+
+event: delta
+data: {"text":" `node scripts"}
+
+event: delta
+data: {"text":"/migrate-unexec.mjs"}
+
+event: delta
+data: {"text":" &&"}
+
+event: delta
+data: {"text":" grep -c"}
+
+event: delta
+data: {"text":" migrated:true"}
+
+event: delta
+data: {"text":" .self-upgrade/led"}
+
+event: delta
+data: {"text":"ger.jsonl` "}
+
+event: delta
+data: {"text":"等于历史 `"}
+
+event: delta
+data: {"text":"unexec` "}
+
+event: delta
+data: {"text":"总数 |\n\n#### 1"}
+
+event: delta
+data: {"text":".2 Tool-D"}
+
+event: delta
+data: {"text":"iscipline 破坏"}
+
+event: delta
+data: {"text":"夹具 + 宣言"}
+
+event: delta
+data: {"text":"同步（Judge +"}
+
+event: delta
+data: {"text":" Memory）\n| 任务"}
+
+event: delta
+data: {"text":" | 关键文"}
+
+event: delta
+data: {"text":"件 | 机械"}
+
+event: delta
+data: {"text":"验收 |\n|---"}
+
+event: delta
+data: {"text":"|---|---|\n|"}
+
+event: delta
+data: {"text":" **补充"}
+
+event: delta
+data: {"text":"破坏夹具"}
+
+event: delta
+data: {"text":"**：在 `tests/j"}
+
+event: delta
+data: {"text":"udge/to"}
+
+event: delta
+data: {"text":"ol-discipline.f"}
+
+event: delta
+data: {"text":"ixture"}
+
+event: delta
+data: {"text":".ts` 造"}
+
+event: delta
+data: {"text":"三种"}
+
+event: delta
+data: {"text":"可"}
+
+event: delta
+data: {"text":"红场"}
+
+event: delta
+data: {"text":"景（"}
+
+event: delta
+data: {"text":"篡改 `"}
+
+event: delta
+data: {"text":"BUILTIN_TOOL"}
+
+event: delta
+data: {"text":"S` 注册 /"}
+
+event: delta
+data: {"text":" 加未覆盖"}
+
+event: delta
+data: {"text":"工具 / 加 `"}
+
+event: delta
+data: {"text":"tmp/tools`"}
+
+event: delta
+data: {"text":" 不"}
+
+event: delta
+data: {"text":"配对 lesson） | `"}
+
+event: delta
+data: {"text":"tests/judge/tool-dis"}
+
+event: delta
+data: {"text":"cipline.fixture.ts`（"}
+
+event: delta
+data: {"text":"新建） | `vit"}
+
+event: delta
+data: {"text":"est run tests/judge/to"}
+
+event: delta
+data: {"text":"ol-discipline.test.ts`"}
+
+event: delta
+data: {"text":" 三"}
+
+event: delta
+data: {"text":"场"}
+
+event: delta
+data: {"text":"景均 **"}
+
+event: delta
+data: {"text":"FA"}
+
+event: delta
+data: {"text":"IL**（"}
+
+event: delta
+data: {"text":"证明"}
+
+event: delta
+data: {"text":"闸可红） |\n"}
+
+event: delta
+data: {"text":"| **同"}
+
+event: delta
+data: {"text":"步宣言 §9/§"}
+
+event: delta
+data: {"text":"10**：走"}
+
+event: delta
+data: {"text":"元规则评审"}
+
+event: delta
+data: {"text":"，把「"}
+
+event: delta
+data: {"text":"无"}
+
+event: delta
+data: {"text":"闸/"}
+
+event: delta
+data: {"text":"UN"}
+
+event: delta
+data: {"text":"EXEC "}
+
+event: delta
+data: {"text":"待"}
+
+event: delta
+data: {"text":"接"}
+
+event: delta
+data: {"text":"线」"}
+
+event: delta
+data: {"text":"描述改为「"}
+
+event: delta
+data: {"text":"三闸已接"}
+
+event: delta
+data: {"text":"线、静"}
+
+event: delta
+data: {"text":"态时代闸 "}
+
+event: delta
+data: {"text":"2 常态 unexec"}
+
+event: delta
+data: {"text":"、动"}
+
+event: delta
+data: {"text":"态分"}
+
+event: delta
+data: {"text":"支待"}
+
+event: delta
+data: {"text":" forge 生命周期」"}
+
+event: delta
+data: {"text":" | `强"}
+
+event: delta
+data: {"text":"化Agent.txt` `"}
+
+event: delta
+data: {"text":"HANDOFF.md` |"}
+
+event: delta
+data: {"text":" `grep"}
+
+event: delta
+data: {"text":" -c"}
+
+event: delta
+data: {"text":" \"三"}
+
+event: delta
+data: {"text":"闸已接线\""}
+
+event: delta
+data: {"text":" 强化Agent.txt`"}
+
+event: delta
+data: {"text":" ≥ 1；"}
+
+event: delta
+data: {"text":"`grep -v"}
+
+event: delta
+data: {"text":" \"无"}
+
+event: delta
+data: {"text":"闸\" HANDOFF"}
+
+event: delta
+data: {"text":".md` "}
+
+event: delta
+data: {"text":"无遗"}
+
+event: delta
+data: {"text":"漏 |\n\n#### 1"}
+
+event: delta
+data: {"text":".3 tool-use-coach"}
+
+event: delta
+data: {"text":" 自"}
+
+event: delta
+data: {"text":"动纠偏（"}
+
+event: delta
+data: {"text":"Act）——"}
+
+event: delta
+data: {"text":"按 D3 二"}
+
+event: delta
+data: {"text":"选一\n\n**"}
+
+event: delta
+data: {"text":"分"}
+
+event: delta
+data: {"text":"支 A：重新提"}
+
+event: delta
+data: {"text":"名走完整管道"}
+
+event: delta
+data: {"text":"（若"}
+
+event: delta
+data: {"text":" D3=A"}
+
+event: delta
+data: {"text":"）**\n| 任务 |"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"关键文件 |"}
+
+event: delta
+data: {"text":" 机械验收"}
+
+event: delta
+data: {"text":" |\n|---|---|"}
+
+event: delta
+data: {"text":"---|\n| "}
+
+event: delta
+data: {"text":"真实"}
+
+event: delta
+data: {"text":"跑提"}
+
+event: delta
+data: {"text":"名（模型驱"}
+
+event: delta
+data: {"text":"动，无 `--dry"}
+
+event: delta
+data: {"text":"`"}
+
+event: delta
+data: {"text":" 写"}
+
+event: delta
+data: {"text":"盘） | `tsx"}
+
+event: delta
+data: {"text":" scripts/self-upgrade-loop"}
+
+event: delta
+data: {"text":".ts --once"}
+
+event: delta
+data: {"text":"`（"}
+
+event: delta
+data: {"text":"循环单次） |"}
+
+event: delta
+data: {"text":" `.self-upgrade/propos"}
+
+event: delta
+data: {"text":"als.jsonl` 新"}
+
+event: delta
+data: {"text":"增 "}
+
+event: delta
+data: {"text":"1 行，"}
+
+event: delta
+data: {"text":"`screen"}
+
+event: delta
+data: {"text":"` 通过（"}
+
+event: delta
+data: {"text":"无"}
+
+event: delta
+data: {"text":" `protected path`"}
+
+event: delta
+data: {"text":" 拒绝），"}
+
+event: delta
+data: {"text":"`gapType` 符"}
+
+event: delta
+data: {"text":"合 D1"}
+
+event: delta
+data: {"text":" 裁决 |\n"}
+
+event: delta
+data: {"text":"| 后"}
+
+event: delta
+data: {"text":"续 author"}
+
+event: delta
+data: {"text":"-task → 人工采纳"}
+
+event: delta
+data: {"text":" → 派单 → "}
+
+event: delta
+data: {"text":"围栏 →"}
+
+event: delta
+data: {"text":" 基线 | 维"}
+
+event: delta
+data: {"text":"护者手工操作"}
+
+event: delta
+data: {"text":" | `tests/self-up"}
+
+event: delta
+data: {"text":"grade/` 出现 `tool"}
+
+event: delta
+data: {"text":"-use-coach.test.ts`"}
+
+event: delta
+data: {"text":" 且 `vitest run"}
+
+event: delta
+data: {"text":"` 绿 |\n\n**"}
+
+event: delta
+data: {"text":"分支 B：维"}
+
+event: delta
+data: {"text":"护者裁决"}
+
+event: delta
+data: {"text":"循环外实现（"}
+
+event: delta
+data: {"text":"若 D3=B，"}
+
+event: delta
+data: {"text":"默认更"}
+
+event: delta
+data: {"text":"可控）**\n| 任"}
+
+event: delta
+data: {"text":"务 | 关键"}
+
+event: delta
+data: {"text":"文件 | 机"}
+
+event: delta
+data: {"text":"械验收 |\n|---"}
+
+event: delta
+data: {"text":"|---|---|\n|"}
+
+event: delta
+data: {"text":" 新建 `services/agent"}
+
+event: delta
+data: {"text":"/tool-use-coach.ts"}
+
+event: delta
+data: {"text":"`：导出 `coach"}
+
+event: delta
+data: {"text":"Turn(ctx, history)`，"}
+
+event: delta
+data: {"text":"连续 3 次"}
+
+event: delta
+data: {"text":" `NO_TOOL_CALL`"}
+
+event: delta
+data: {"text":" → 注入教练"}
+
+event: delta
+data: {"text":"提示词重试 |"}
+
+event: delta
+data: {"text":" `services/agent/tool"}
+
+event: delta
+data: {"text":"-use-coach.ts`（"}
+
+event: delta
+data: {"text":"新建） | `vit"}
+
+event: delta
+data: {"text":"est run tests/agent/to"}
+
+event: delta
+data: {"text":"ol-use-coach.test.ts"}
+
+event: delta
+data: {"text":"`：模拟 "}
+
+event: delta
+data: {"text":"3 次漏调"}
+
+event: delta
+data: {"text":" → 第 4 次"}
+
+event: delta
+data: {"text":"成功调用工具 |\n"}
+
+event: delta
+data: {"text":"| 在 `services/agent"}
+
+event: delta
+data: {"text":"/agent-loop.service.ts`"}
+
+event: delta
+data: {"text":" 落单工具"}
+
+event: delta
+data: {"text":"调用后接入 `"}
+
+event: delta
+data: {"text":"coachTurn` | `services"}
+
+event: delta
+data: {"text":"/agent/agent-loop.service"}
+
+event: delta
+data: {"text":".ts` | 同上单"}
+
+event: delta
+data: {"text":"测通过 |\n| 在"}
+
+event: delta
+data: {"text":" `services/agent/run-state"}
+
+event: delta
+data: {"text":".service.ts` 新"}
+
+event: delta
+data: {"text":"增 `coachTokenBudget`"}
+
+event: delta
+data: {"text":" 单独计量，"}
+
+event: delta
+data: {"text":"防挤爆 8"}
+
+event: delta
+data: {"text":"k | `services/agent"}
+
+event: delta
+data: {"text":"/run-state.service.ts` |"}
+
+: ping
+
+event: delta
+data: {"text":" 单测断言"}
+
+event: delta
+data: {"text":" coach tokens 不计入主"}
+
+event: delta
+data: {"text":"预算 |\n\n---\n\n###"}
+
+event: delta
+data: {"text":" Phase 2：前端"}
+
+event: delta
+data: {"text":"闭环补全（1"}
+
+event: delta
+data: {"text":" 天）\n\n"}
+
+event: delta
+data: {"text":"| 任务 | "}
+
+event: delta
+data: {"text":"关键文件 |"}
+
+event: delta
+data: {"text":" 机械验收"}
+
+event: delta
+data: {"text":" |\n|---|---|"}
+
+event: delta
+data: {"text":"---|\n| **新增"}
+
+event: delta
+data: {"text":" `GET /api/v1"}
+
+event: delta
+data: {"text":"/results/:ref`**"}
+
+event: delta
+data: {"text":" 读取完整"}
+
+event: delta
+data: {"text":"轨迹（`"}
+
+event: delta
+data: {"text":"executor.service.ts`"}
+
+event: delta
+data: {"text":" 写入、`"}
+
+event: delta
+data: {"text":"sessions.controller` 返回"}
+
+event: delta
+data: {"text":"） | `src/routes/"}
+
+event: delta
+data: {"text":"results.routes.ts`（"}
+
+event: delta
+data: {"text":"新建） `src/app"}
+
+event: delta
+data: {"text":".ts` 挂载 |"}
+
+event: delta
+data: {"text":" `curl -s http://"}
+
+event: delta
+data: {"text":"localhost:8080"}
+
+event: delta
+data: {"text":"/api/v1/results/"}
+
+event: delta
+data: {"text":"<exist"}
+
+event: delta
+data: {"text":"-ref> \\|"}
+
+event: delta
+data: {"text":" jq .steps[0]."}
+
+event: delta
+data: {"text":"tool` 返回工具"}
+
+event: delta
+data: {"text":"名 |\n| **RS"}
+
+event: delta
+data: {"text":"I Modal 仅"}
+
+event: delta
+data: {"text":"读"}
+
+event: delta
+data: {"text":"增"}
+
+event: delta
+data: {"text":"强**：复"}
+
+event: delta
+data: {"text":"用 `/"}
+
+event: delta
+data: {"text":"api/rsi/overview?"}
+
+event: delta
+data: {"text":"session=`"}
+
+event: delta
+data: {"text":" 契"}
+
+event: delta
+data: {"text":"约，展"}
+
+event: delta
+data: {"text":"示提"}
+
+event: delta
+data: {"text":"议"}
+
+event: delta
+data: {"text":"详情，**"}
+
+event: delta
+data: {"text":"不加"}
+
+event: delta
+data: {"text":"写按"}
+
+event: delta
+data: {"text":"钮**（"}
+
+event: delta
+data: {"text":"采"}
+
+event: delta
+data: {"text":"纳写端"}
+
+event: delta
+data: {"text":"点由"}
+
+event: delta
+data: {"text":" D5"}
+
+event: delta
+data: {"text":" 裁决） | `"}
+
+event: delta
+data: {"text":"client/src/components/RsiDashboard"}
+
+event: delta
+data: {"text":"Modal.tsx` `client/src"}
+
+event: delta
+data: {"text":"/services/api.ts` | "}
+
+event: delta
+data: {"text":"打开 Modal"}
+
+event: delta
+data: {"text":" 能"}
+
+event: delta
+data: {"text":"渲染 `"}
+
+event: delta
+data: {"text":"proposals.jsonl`"}
+
+event: delta
+data: {"text":" 最近"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"2"}
+
+event: delta
+data: {"text":"0 条，含"}
+
+event: delta
+data: {"text":" `RESULT"}
+
+event: delta
+data: {"text":":accepted/re"}
+
+event: delta
+data: {"text":"jected` 原"}
+
+event: delta
+data: {"text":"因 |\n\n---\n\n### Phase "}
+
+event: delta
+data: {"text":"3：文档冻"}
+
+event: delta
+data: {"text":"结 +"}
+
+event: delta
+data: {"text":" 验收收尾（"}
+
+event: delta
+data: {"text":"0.5 天）\n\n|"}
+
+event: delta
+data: {"text":" 任务 |"}
+
+event: delta
+data: {"text":" 验收 |\n|---|"}
+
+event: delta
+data: {"text":"---|\n| 冻结"}
+
+event: delta
+data: {"text":"工具白名单与"}
+
+event: delta
+data: {"text":" eval suites 结构，"}
+
+event: delta
+data: {"text":"写入 `docs/EXT"}
+
+event: delta
+data: {"text":"ENSION_POINTS.md`"}
+
+event: delta
+data: {"text":" | `git diff docs/"}
+
+event: delta
+data: {"text":"EXTENSION_POINTS.md"}
+
+event: delta
+data: {"text":"` 仅新增文"}
+
+event: delta
+data: {"text":"件 |\n| 更新 `"}
+
+event: delta
+data: {"text":"HANDOFF.md` §"}
+
+event: delta
+data: {"text":"8 P0-P3 "}
+
+event: delta
+data: {"text":"完成标记，同步"}
+
+event: delta
+data: {"text":" `强化Agent.txt`"}
+
+event: delta
+data: {"text":" gapType 规范（"}
+
+event: delta
+data: {"text":"D"}
+
+event: delta
+data: {"text":"1"}
+
+event: delta
+data: {"text":" 已决"}
+
+event: delta
+data: {"text":"） | `grep"}
+
+event: delta
+data: {"text":" -c '\\[x\\]"}
+
+event: delta
+data: {"text":"' HANDOFF.md`"}
+
+event: delta
+data: {"text":" ≥ 4 |\n| **"}
+
+event: delta
+data: {"text":"全量回归** |"}
+
+event: delta
+data: {"text":" `vitest run` **"}
+
+event: delta
+data: {"text":"1243+ "}
+
+event: delta
+data: {"text":"绿** |\n\n---\n\n##"}
+
+event: delta
+data: {"text":" 风险提示（"}
+
+event: delta
+data: {"text":"按概率×影响，"}
+
+event: delta
+data: {"text":"已去"}
+
+event: delta
+data: {"text":"伪存"}
+
+event: delta
+data: {"text":"真）\n\n1. **tool"}
+
+event: delta
+data: {"text":"-use-coach 提示词"}
+
+event: delta
+data: {"text":"挤爆 8k"}
+
+event: delta
+data: {"text":" 预算** → `"}
+
+event: delta
+data: {"text":"run-state.service.ts`"}
+
+event: delta
+data: {"text":" 必须先加 `"}
+
+event: delta
+data: {"text":"coachTokenBudget` 单"}
+
+event: delta
+data: {"text":"独计量（Phase "}
+
+event: delta
+data: {"text":"1.3"}
+
+event: delta
+data: {"text":" 首任务）。  "}
+
+event: delta
+data: {"text":"\n2. **UNEX"}
+
+event: delta
+data: {"text":"EC 贯通波"}
+
+event: delta
+data: {"text":"及历史"}
+
+event: delta
+data: {"text":"聚合**"}
+
+event: delta
+data: {"text":" → `bas"}
+
+event: delta
+data: {"text":"eline.json` 存"}
+
+event: delta
+data: {"text":"受保护文件"}
+
+event: delta
+data: {"text":"指纹 + "}
+
+event: delta
+data: {"text":"靶子初始内容；"}
+
+event: delta
+data: {"text":"`failure"}
+
+event: delta
+data: {"text":"-stats` "}
+
+event: delta
+data: {"text":"缓存与 `led"}
+
+event: delta
+data: {"text":"ger.jsonl`"}
+
+event: delta
+data: {"text":" 历史行"}
+
+event: delta
+data: {"text":"需迁移脚本"}
+
+event: delta
+data: {"text":"（Phase 1.1"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"最后一步"}
+
+event: delta
+data: {"text":"）。"}
+
+event: delta
+data: {"text":"`"}
+
+event: delta
+data: {"text":"GREEN_BASELINE` "}
+
+event: delta
+data: {"text":"仅在 WorkBuddy，"}
+
+event: delta
+data: {"text":"当前分支无影响"}
+
+event: delta
+data: {"text":"。  \n3. **"}
+
+event: delta
+data: {"text":"Tool-Discipline 破"}
+
+event: delta
+data: {"text":"坏夹具维"}
+
+event: delta
+data: {"text":"护成本**"}
+
+event: delta
+data: {"text":" → 三场"}
+
+event: delta
+data: {"text":"景"}
+
+event: delta
+data: {"text":"夹具需随"}
+
+event: delta
+data: {"text":" `B"}
+
+event: delta
+data: {"text":"UILTIN_TOOLS"}
+
+event: delta
+data: {"text":"` 变更同"}
+
+event: delta
+data: {"text":"步更新"}
+
+event: delta
+data: {"text":"，纳"}
+
+event: delta
+data: {"text":"入 `docs/EXTENSION"}
+
+event: delta
+data: {"text":"_POINTS.md` "}
+
+event: delta
+data: {"text":"变更清"}
+
+event: delta
+data: {"text":"单。  \n4."}
+
+event: delta
+data: {"text":" **双 R"}
+
+event: delta
+data: {"text":"SI "}
+
+event: delta
+data: {"text":"看板契"}
+
+event: delta
+data: {"text":"约"}
+
+event: delta
+data: {"text":"漂移** → "}
+
+event: delta
+data: {"text":"共享 `services/rsi"}
+
+event: delta
+data: {"text":"/rules-contract.ts`"}
+
+event: delta
+data: {"text":" 为"}
+
+event: delta
+data: {"text":"单"}
+
+event: delta
+data: {"text":"一真相源，任何"}
+
+event: delta
+data: {"text":"字"}
+
+event: delta
+data: {"text":"段变更需同步"}
+
+event: delta
+data: {"text":"修改 `"}
+
+event: delta
+data: {"text":"server/public/rsi-dashboard"}
+
+event: delta
+data: {"text":".html` "}
+
+event: delta
+data: {"text":"与 `R"}
+
+event: delta
+data: {"text":"siDashboardModal.tsx`。"}
+
+event: delta
+data: {"text":"  \n5. **D"}
+
+event: delta
+data: {"text":"3"}
+
+event: delta
+data: {"text":" 路径不"}
+
+event: delta
+data: {"text":"确定性"}
+
+event: delta
+data: {"text":"** →"}
+
+event: delta
+data: {"text":" 若选"}
+
+event: delta
+data: {"text":" A，依"}
+
+event: delta
+data: {"text":"赖模"}
+
+event: delta
+data: {"text":"型提名质量与"}
+
+event: delta
+data: {"text":"人"}
+
+event: delta
+data: {"text":"工采纳时"}
+
+event: delta
+data: {"text":"效；若选 B，"}
+
+event: delta
+data: {"text":"需"}
+
+event: delta
+data: {"text":"维护者显"}
+
+event: delta
+data: {"text":"式"}
+
+event: delta
+data: {"text":"豁免「"}
+
+event: delta
+data: {"text":"被衡量者不"}
+
+event: delta
+data: {"text":"写判据」信"}
+
+event: delta
+data: {"text":"任边界。建"}
+
+event: delta
+data: {"text":"议 Phase"}
+
+event: delta
+data: {"text":" 1 并"}
+
+event: delta
+data: {"text":"行准"}
+
+event: delta
+data: {"text":"备两"}
+
+event: delta
+data: {"text":"套代码，D3"}
+
+event: delta
+data: {"text":" 落"}
+
+event: delta
+data: {"text":"笔即"}
+
+event: delta
+data: {"text":"切换。\n\n---\n\n**"}
+
+event: delta
+data: {"text":"执行入口**："}
+
+event: delta
+data: {"text":"维护者先落"}
+
+event: delta
+data: {"text":"笔 **D1-D"}
+
+event: delta
+data: {"text":"5**"}
+
+event: delta
+data: {"text":" 五决策，确认"}
+
+event: delta
+data: {"text":" D3 分"}
+
+event: delta
+data: {"text":"支后，按 **Phase"}
+
+event: delta
+data: {"text":" 0 → 1 →"}
+
+event: delta
+data: {"text":" 2 → 3**"}
+
+event: delta
+data: {"text":" 顺序执行"}
+
+event: delta
+data: {"text":"，**每阶段"}
+
+event: delta
+data: {"text":"跑机械验收"}
+
+event: delta
+data: {"text":"命令通过才进入下"}
+
+event: delta
+data: {"text":"一阶段**。全"}
+
+event: delta
+data: {"text":"程在"}
+
+event: delta
+data: {"text":"当前分支，Work"}
+
+event: delta
+data: {"text":"Buddy 不碰。"}
+
+event: run_report
+data: {"runId":"a69d30cd-e581-4e40-9739-110c29717fb3","sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","outcome":"completed","statusCode":"RUN_COMPLETED","reason":null,"notDone":[],"hasMaterialChange":true,"triggers":["成本超阈值"],"finishReason":"stop","fileChangeCount":0,"irreversibleCount":0,"approvalCount":0,"errorCount":0,"toolCallCount":0,"promptTokens":19813,"completionTokens":3534,"durationMs":103269,"summary":"耗时 103.3s；token 23347（复核 0）"}
+
+event: stage
+data: {"runId":"a69d30cd-e581-4e40-9739-110c29717fb3","stage":"done","at":1794481856221,"elapsedMs":103330,"detail":null}
+
+event: done
+data: {"finishReason":"stop","iteration":1,"toolCallCount":0,"usage":{"promptTokens":19813,"completionTokens":3534},"tokenBudget":256000,"messageId":"9c2bed19-724f-4613-915e-8daab0d0f659","firstTokenMs":1453}
+

@@ -151,6 +151,27 @@ describe('迭代决策：达标 / 继续 / 回滚', { timeout: 30_000 }, () => {
   it('未改进且尝试耗尽 → rollback（不留半成品）', () => {
     const r = evaluateIteration(baseInput({ verdict: 'not_improved', attempts: 3, maxAttempts: 3 }));
     expect(r.decision).toBe('rollback');
+    expect(r.rollbackReasons.join()).toContain('预算已用尽');
+  });
+
+  it('已改进 + 其余闸全绿 + 尝试耗尽 → escalate，不得回滚好改动', () => {
+    // 现场回放：fs-read-truncated-flag-false-positive#3 —— verdict=improved、
+    // G1–G5 全绿、coverage=1.00、人工确认成立，却因为第 3/3 次被判"必须回滚"。
+    const r = evaluateIteration(baseInput({ verdict: 'improved', attempts: 3, maxAttempts: 3 }));
+    expect(r.decision).toBe('escalate');
+    const g6 = r.criteria.find((c) => c.id === 'G6');
+    expect(g6?.status).toBe('fail');
+    expect(g6?.onFail).toBe('escalate');
+    expect(r.headline).not.toContain('回滚');
+    expect(r.rollbackReasons).toEqual([]);
+  });
+
+  it('已改进但护栏回退 + 尝试耗尽 → 仍是 rollback（地基坏了压过预算）', () => {
+    const r = evaluateIteration(
+      baseInput({ verdict: 'improved', attempts: 3, maxAttempts: 3, guardRegressed: 1 }),
+    );
+    expect(r.decision).toBe('rollback');
+    expect(r.criteria.find((c) => c.id === 'G2')?.status).toBe('fail');
   });
 
   it('拒收（refused）→ rollback', () => {

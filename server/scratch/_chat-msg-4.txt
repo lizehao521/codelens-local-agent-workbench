@@ -1,0 +1,16 @@
+第四轮：修复包已按规格实现完毕，请你对照自己的规格审查。
+
+【已实现（当前分支，未提交）】
+1. 新建 scripts/lib/protected-paths.ts：PROTECTED_PATHS 常量 + isProtected()，单一真相源。
+2. 新建 scripts/lib/propose-result.ts：RESULT 协议。与你规格的一处偏离——我用 RESULT:<JSON> 而不是管道分隔格式，因为 reason 可能含 | 和 :，JSON 免转义。协议语义不变：accepted/rejected/no-proposal/duplicate 四态，退出码保持 0，旧版无 RESULT 行时 parseResult 返回 null、循环回退为"不声称落盘"。
+3. propose-gaps.ts：sourceFiles() 用 isProtected 过滤（清单与闸一致）；screen() 改用共享常量（拒绝原因格式不变）；四个终止分支都输出 RESULT 行；加 ESM main 守卫使测试可 import 而不触发真实模型调用。
+4. self-upgrade-loop.ts：删除无条件"提议记在"；改为 parseResult + proposeStatusLine 诚实汇报，accepted 才打印"已记入"和下一步指引；保留末 10 行转发（RESULT 行在其中）。
+5. 验收 tests/scripts/propose-guard.test.ts：15 条全绿。含你规格的验收 1 的机械等价版——screen 拒绝 judge/ 靶子（auto-eval-propose 现场复现）+ proposeStatusLine 不变量"只有 accepted 才出现已记入"（rejected/no-proposal/duplicate/null/子进程失败 五种都不声称落盘）。你原验收命令 echo|tsx 不成立（propose-gaps 不读 stdin），已改为单测。
+6. 循环 --dry 冒烟通过；全量回归（1218+ 用例）正在跑。
+
+【请审查】
+R1. 对照你的规格，有没有漏掉或走样的地方？
+R2. JSON 偏离管道格式，你接受吗？有兼容性隐患吗？
+R3. 下一步：tool-use-coach 从未落盘（只在 SSE 存档），要重新提名。现在 sourceFiles 清单已不含受保护文件，重新提名时它还会不会挑 judge/ 这类靶子？如果提名质量仍差，你觉得该在 buildPrompt 里加什么约束（注意：不能让它写判据）？
+
+要求：中文、600 字以内、直接给结论。

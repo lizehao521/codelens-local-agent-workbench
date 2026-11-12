@@ -1,0 +1,25 @@
+第八轮（最后一轮纠正，收敛终版）：修订版仍有六处与事实不符，维护者侧已核实。本轮之后请出终版，不再「待续」。
+
+E9. UNEXEC 第三态已存在，不是待引入：judge/types.ts 的 VerdictStatus = 'pass'|'fail'|'unexec' 是一等状态，注释明文「unexec 不计入通过也不计入失败」、映射数值返回 null。你 Phase 1「在 eval/runner.ts 与 src/runtime.ts 引入 NotRun」是重复造轮子，且 runtime.ts 是 DI 组合根，不是 judge 运行时。真实缺口：围栏 check-self-upgrade.mjs 与 failure-stats.mjs 对 unexec 零消费（grep 零命中）——任务应改为「把已有三态贯通到围栏/归因/统计」，先核实 eval runner 对 unexec 的现有映射再动手。
+
+E10. 孤儿工具闸/沉淀配对闸已存在：judge/tool-discipline.ts 已提交且被 judge.service.ts import（runToolDisciplineGates），实现 §6 三闸；静态时代闸 2 常态 unexec，文件头自述 C3 可红路径（改坏 BUILTIN_TOOLS 注册 / 加未覆盖工具 / 加 tmp/tools 不配对 lesson，都必须 fail）。宣言 §10「没有闸」是过时描述。所以 orphan-tool-gate-v2 重新提名 largely 是伪任务；真实缺口是 (a) 破坏夹具证明闸可红——这正是你 Q1 排除的「变异测试夹具」项，自相矛盾，必须裁决；(b) 动态分支缺真实 forge 生命周期可跑。另 listTools() 只存在于 mcp-manager.service.ts，你的判据靶子错了。
+
+E11. propose-gaps.ts 没有 --dry（grep 零命中）——又一次编造，与第五轮 --target 同类。--dry 在 self-upgrade-loop.ts 上。且提名是模型驱动：不能「手工触发提名 tool-use-coach」，--dry 也不写 proposals.jsonl。路径 A 的验收整条不可能。现实表述：跑真实提名，验收 = proposals.jsonl 新增一行且过 screen（id 不可预设）。
+
+E12. failure-attribution 是 .ts 纯函数模块，无 CLI（无 process.argv/main）。`tsx scripts/failure-attribution.mjs --dry` 双重编造。归因的验收只能走单测回放（.self-upgrade/loop/attr-check.mts 模式）。
+
+E13. Q3c 新理由仍编造：deploy/ 无 Docker——是 nginx + systemd + pack-local.sh，且部署包显式包含 server/dist-client（前端构建产物随部署）。保留双实现的真实理由：/rsi 是 server 直出的零构建静态页，client 未构建/nginx 未配置时仍可用（开发/运维旁路）；React Modal 依赖 Vite 构建。结论可保留，理由必须诚实。
+
+E14. Phase 2 采纳按钮给 .self-upgrade/（沙箱外、循环所有的审计数据）开了新的 Web 写路径，需要维护者显式裁决 + 锁/权限设计，不能默认做；「adoptedAt 字段（手工追加验证）」不是机械验收。采纳 = 人审判据 + 写 tests/ + tasks.json + 打基线，按钮替代不了这条链。resultRef 本身真实（executor.service.ts 写入、sessions.controller 返回），GET /api/v1/results/:ref 是合法新端点——保留；采纳写端点移入决策项 D5。
+
+E15. Phase 0 提交集不准确：git status 实测 = 已修改 scripts/propose-gaps.ts、scripts/self-upgrade-loop.ts、强化Agent.txt；未跟踪 scripts/lib/propose-result.ts、scripts/lib/protected-paths.ts、tests/scripts/（15 条验收测试在这里）。你的 git add 漏了 tests/scripts/，也没说 强化Agent.txt 怎么办（建议单独提交）。工作区还有大量 scratch/.self-upgrade/eval-state 未跟踪内容——必须精确文件清单提交，禁止 git add -A。
+
+E16. 风险 2 部分编造：baseline.json 存受保护文件指纹 + 靶子初始内容，不存「旧 FAIL 计数」；GREEN_BASELINE 在当前分支不存在（grep 零命中，是 WorkBuddy 活线的闸）。UNEXEC 贯通的真实影响面是历史账本行与 failure-stats 聚合口径，迁移针对它们。
+
+【终版要求】
+1. Phase 1 UNEXEC 任务改写为「三态贯通」（eval runner 现状核实 → 围栏/stats 消费 → 历史口径迁移）；
+2. 孤儿闸任务改为「tool-discipline 破坏夹具 + 宣言 §9/§10 过时描述同步（走元规则评审）」，并解决与 Q1 排除项的矛盾：变异夹具回范围，或给理由；
+3. 删除全部 --dry 编造；路径 A 按 E11 现实化；
+4. Phase 2 保留 resultRef 读端点；采纳写端点移入 D5；
+5. Phase 0 提交集按 E15 实测；
+6. 每条验收命令真实可跑。前置决策 D1-D5 单列。紧凑输出终版。

@@ -1,0 +1,15 @@
+第三轮。你的第二轮设计大部分成立，但有四处必须纠正（我已核实）：
+
+C1. tool-use-coach 不在 WorkBuddy 的 proposals.jsonl / tasks.json / candidates 里——只在一个 SSE 存档（sse-iteration-view-2.txt）里出现过。它从未落盘成提议。你 Q4 说"落地即可闭环验证"的前提不成立：得先重新提名或人工出题。
+C2. 你说"主线独有文件仅 1 个"不准确：那是 scripts/lib 的口径。src/ 有 21 处差异，WorkBuddy 独有 rsi.controller.ts、rsi.routes.ts、iteration-gate.ts、iteration-store.ts、change-domain.ts、providers/rate-limit.ts 等——这是一次真实的功能合并。`git checkout -B main` 覆盖会毁掉当前分支的合并提交与独有文件，我拒绝这个操作。安全路径是 git merge workbuddy/main-24d832f5 进当前分支，逐文件解冲突 + 全量 tsc/vitest。
+C3. orphan-tool-gate 被 GREEN_BASELINE 拒，只证明那份判据写错了（断言了现状已成立的行为），不证明"无回收机制"这个缺口不存在。降序可以，删除不行；要重新出题，判据应断言"任务结束后宏工具仍可调用"这种现状违反预期回收的行为。
+C4. Q2 你说 gapType:defect 是"有意演化"——这是推测，你读不到 WorkBuddy 的决策记录。这个问题留给维护者裁决，不能当已决事实写进宣言。
+
+【请输出最终实施规格】
+针对 Q1 的公共 bug 修复包（两个 worktree 都存在的两处 bug），给出最小实施规格：
+1. 逐文件改动点：新建 scripts/lib/protected-paths.ts 的导出形状；propose-gaps.ts 哪几处改（sourceFiles 过滤 + RESULT 行）；self-upgrade-loop.ts 哪几处改（解析 RESULT、诚实转发）。给关键签名/协议格式，不用写全量代码。
+2. RESULT 协议要兼容现状：循环现在 slice(-10) 转发 stdout；propose-gaps 被拒时退出码 0。你的协议怎么保证旧消费方不坏？
+3. 机械验收判据：怎么证明修好了？至少含一条——故意提名受保护路径的提议，被拒且循环日志诚实显示原因（不再出现"提议记在"）。
+4. 修复顺序裁决：我倾向先 git merge WorkBuddy 进当前分支、再在统一线上修 bug（避免修完又合并冲突，且 WorkBuddy 循环今天 16:56 还活跃，直接改它的文件可能干扰运行）。你同意吗？若不同意给理由。
+
+要求：中文、1000 字以内、可执行优先，别再重复已确认的事实。

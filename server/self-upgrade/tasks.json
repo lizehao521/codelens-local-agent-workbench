@@ -186,6 +186,27 @@
         "BEHAVIOR_WRONG×3 中含 replace 误用",
         "模型需自行 fs.read 找行号才能再试"
       ]
+    },
+    {
+      "id": "fs-read-truncated-flag-false-positive",
+      "title": "fs.read 显式行窗口请求被误标 truncated=true",
+      "allowed": [
+        "src/tools/builtin/fs-read.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
+      "probe": "fs-read-truncated-flag-false-positive.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "pending",
+      "boundary": "仅修正 truncated 标志位逻辑，不改变字节截断、行上限、keyword 过滤等核心行为",
+      "adoptedAt": "2026-11-12T13:26:10.947Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "用户显式指定 lineStart/lineEnd 读取窗口时，只要文件总行数超出窗口，truncated 标志位即为 true，导致调用方误判为数据丢失",
+      "observable": "对 100 行文件调用 fs.read({path:'x', lineStart:1, lineEnd:10}) → 当前返回 10 行且 truncated:true → 期望 truncated:false（用户明确只要前 10 行）",
+      "evidence": [
+        "fs-read.tool.ts:153 lineInfo.total 取 allLines.length（原始全量行数），而 returned 仅为窗口内行数",
+        "fs-read.tool.ts:171 truncated 判定用 returned < total，未排除「用户主动请求窗口」的情况"
+      ]
     }
   ]
 }

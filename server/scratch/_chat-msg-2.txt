@@ -1,0 +1,16 @@
+第二轮。我已对照源码核实你的 Q2 假设（全部带文件:行号），真相比假设更有意思，还有一个改变全局的发现。
+
+【已核实的事实】
+1. auto-eval-propose 不是"丢了"，是被 screen() 正确拒绝：propose-gaps.ts:125 的受保护路径含 src/services/judge/，而它的 targetFile=src/services/judge/judge.service.ts 正好命中。尺子够不到——信任边界这次是成功的。
+2. 但提示词与闸不一致：sourceFiles()（propose-gaps.ts:149-171）遍历 src/ 生成"可以改的源码文件"清单时**不排除受保护路径**，judge 文件赫然在列。模型是按清单挑的靶子，被闸拒绝是"被设局"。此 bug 在两个 worktree 都存在。
+3. 误导性日志：self-upgrade-loop.ts:359-366 只转发子脚本输出末 10 行（✗ 拒绝原因被截掉），然后无条件打印"提议记在 proposals.jsonl"。且 propose-gaps 被筛掉时退出码仍是 0，循环无法靠退出码分辨。另一 worktree 的 :562-568 同样如此。
+4. 成本阈值不是误报：run-state.service.ts:102 默认 costTokenThreshold=8000，9478≥8000 按设计触发。问题只是 8k 阈值对 128k 上下文模型是否合理（调参，不是 bug）。
+5. 全局发现：WorkBuddy worktree（main-24d832f5）是**活着的、更先进的那条线**——今天（11-12）产出 8 条提议（全部 gapType:defect），已实现 auto-adopt.ts、judge-audit.mjs、author-baseline 的 GREEN_BASELINE 闸、rejections.jsonl（带 fix 指引）。orphan-tool-gate 提议被 GREEN_BASELINE 拒绝：判据在现状上就绿，不构成缺陷。当前分支是 11-11 18:34 的过期合并快照。
+
+【请你裁决/设计】
+Q1 修复设计：针对事实 2/3，我提议 (a) 抽单一 PROTECTED_PATHS 常量，sourceFiles() 与 screen() 共用；(b) propose-gaps 输出机器可读结果行（如 RESULT:accepted / RESULT:rejected:<reason>），循环据此转发，accepted 才打印"已记入"。同意吗？最小改法是什么？
+Q2 规则一致性：宣言说提名必须是"能力缺口，不是修 bug"，但活循环的 8 条提议全是 gapType:defect，schema 也多了 gapType 字段。这是有意的规则演化还是偏离宣言？若有意，是否应按元规则同步修订强化Agent.txt？
+Q3 合并策略：当前分支是过期快照，WorkBuddy 是活线。应该把 WorkBuddy 增量合并进本分支再修公共 bug，还是直接在 WorkBuddy 线上修？两边已分叉（本边独有 lib/eval-state.ts，那边独有 lib/agent-feedback.ts、rationale-guard.mjs），风险在哪？
+Q4 优先级更新：既然 baseline-red 闸与 auto-adopt 已存在，你上一轮"UNEXEC 第三态 + 孤儿工具闸优先"的排序还成立吗？注意 orphan-tool-gate 提名本身刚被 GREEN_BASELINE 拒掉。
+
+要求：中文、结构化、1200 字以内；区分「设计决定」与「开放问题」；不要调用工具。

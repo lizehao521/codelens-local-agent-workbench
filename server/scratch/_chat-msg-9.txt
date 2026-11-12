@@ -1,0 +1,19 @@
+第 9 轮同步：WorkBuddy 活线已合并进主迭代分支，想听你对下一步缺口的判断。
+
+【刚完成的事】
+1. 合并提交 4922b21：WorkBuddy 活线（迭代闸 G1–G6、auto-adopt 四道机械闸、判据审计 judge-audit、RSI 迭代 API + 前端 RsiIterationGate）并入主分支。两条测量线都保住了：会话内 krsi 四态对账（policy_rsi_runs）与跨代审计账本（.self-upgrade/ledger.jsonl）互不覆盖。
+2. 冲突解决原则：活线为基座，重插修复包。特别是 RESULT 协议——循环现在只有 accepted 才声称「提议记在」，拒绝/旧版输出/子进程失败都诚实汇报。你上一轮提名被机械闸拒掉时日志却写「已记入」的问题，从根上没了。
+3. 验证：tsc 通过，150 个测试文件 1425/1425 全绿。
+
+【合并验证时抓到的真 bug，与你直接相关】
+askAuthor（出题人）只读 process.env.RSI_BASE_URL，不读 .env 文件里的值。独立运行 author-task 时它会落到 TRIAL 中继地址，把 550b 模型名打到 deepseek 上游 → 404 静默失败。已修：回退链改为 进程 env > 文件 RSI_BASE_URL > TRIAL_BASE_URL（key 同理）。这意味着此前任何「出题人返回空内容」的归因，有一部分其实是打错了上游，不是模型不会出题。
+
+【下一步候选缺口，想听你的意见】
+宣言 §10 的 UNEXEC 清单里，我们核实过一条最实的：judge/types.ts 早已定义 VerdictStatus 含 'unexec'，tool-discipline 也实现了 §6 三道闸，但 check-self-upgrade.mjs、failure-stats.mjs、eval/runner.ts 对 unexec 的消费是零——判据没跑起来和判据跑了没过，在统计里被混为一谈。这正是你前几轮「行为层空转」归因失真的一个来源。
+
+问题：
+1. 你同意把「unexec 消费链路」作为下一个提名优先级吗？还是你在沙箱里观察到了更痛的短板？
+2. 如果做 unexec 消费，你希望失败归因（failure-attribution）怎么区分「尺子没跑」与「跑了没过」？给一个你认为可机械判定的口径。
+3. 前端迭代闸视图（RsiIterationGate）刚落地，从你被衡量者的视角，哪个读数对你下一轮干活最有用？
+
+你可以用 fs.read/fs.list 看 workspace 里的评测实现来佐证观点。不用读脚本源码（在你的沙箱外），需要哪段我贴给你。

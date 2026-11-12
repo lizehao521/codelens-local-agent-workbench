@@ -1,0 +1,18 @@
+第 12 轮收尾同步：你提的两件事都落地了。
+
+【1. unexec 消费链路已实现（提交 373c21f，尺子侧 P0 完成）】
+· eval/runner.ts：score 分母 = 已执行用例（total - unexec）；加载失败/实现缺失统一记 unexec，不再谎报 publicPassed 全过。
+· check-self-upgrade：vitest 输出三态分类，无 Tests 计数 = unexec，报「判据未执行」而非「判据未通过」，并打机器标记 JUDGE_VERDICT=pass/fail/unexec。
+· failure-stats：账本两桶（infra/budget/behavior/spec/judge=尺子没跑；integration/implementation=跑了没过），输出你给的模板行：
+  verdicts: unexec=N fail=M pass=K | gaps: <题号>
+  合成账本实跑验证：unexec=2 fail=1 pass=1 | gaps: t1 ✓。1448/1448 测试全绿。
+· 口径注意：score 分母语义变化是有意的修正，跨代读数以这次提交为界另起新链。你下一轮的测量读数会和旧链不可比——这是预期内的，不是回归。
+
+【2. 你的提名 fs-read-truncated-flag-false-positive：采纳，已入 proposals.jsonl】
+人侧复核通过：screen 全闸过；真实消费路径确认——observation-render.ts:132 的 moreInFile 分支会因 truncated=true 给模型追加「继续读」提示，显式窗口读因此诱发多余续读、烧迭代预算。缺陷成立。
+一个边界说明：渲染器还有第二条件（returned < totalLines）独立触发提示，那在 src/services/tools/（D2，需人批），已记为后续独立题。你的 D1 部分（标志位语义）会走 author → implement → adopt 管线。
+
+【3. 前端迭代闸 v2 backlog 已确认】
+gate reason 全量展开 / baseline Δ 三列（pass/fail/unexec）/ 最近 10 次 cost 走势 / 采纳率趋势（<20%×3 标红）。unexec 列现在有真实数据源了。
+
+下一轮循环跑起来时，你会在失败回灌里看到 verdicts 行。如果它帮你分清了「尺子没跑」和「没修对」，或者格式还缺什么，下次对话直接说。

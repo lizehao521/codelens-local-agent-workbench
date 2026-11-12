@@ -1,7 +1,6 @@
 /** fs.read — sandboxed file reading with line windows, keyword filter and glob. */
 
 import { readFile, stat } from 'node:fs/promises';
-import path from 'node:path';
 import type { ToolDefinition } from '../../types/tool.js';
 import { resolveInSandboxAsync } from './path-jail.js';
 
@@ -130,11 +129,14 @@ export const fsReadTool: ToolDefinition = {
 
     let content = raw;
     let lineInfo: { returned: number; total: number | null } | null = null;
+    let overLimit = false;
+    const userRequestedLineStart = args.lineStart !== undefined;
+    const userRequestedLineEnd = args.lineEnd !== undefined;
     if (encoding === 'utf8') {
       const allLines = raw.split('\n');
       let lines = allLines;
-      const lineStart = args.lineStart === undefined ? 1 : Number(args.lineStart);
-      const lineEnd = args.lineEnd === undefined ? allLines.length : Number(args.lineEnd);
+      const lineStart = userRequestedLineStart ? Number(args.lineStart) : 1;
+      const lineEnd = userRequestedLineEnd ? Number(args.lineEnd) : allLines.length;
       if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 1 || lineEnd < lineStart) {
         return {
           ok: false,
@@ -147,7 +149,7 @@ export const fsReadTool: ToolDefinition = {
       if (keyword) {
         lines = lines.filter((line) => line.includes(keyword));
       }
-      const overLimit = lines.length > MAX_LINES_RETURNED;
+      overLimit = lines.length > MAX_LINES_RETURNED;
       if (overLimit) lines = lines.slice(0, MAX_LINES_RETURNED);
       content = lines.join('\n');
       lineInfo = { returned: lines.length, total: allLines.length };
@@ -168,7 +170,8 @@ export const fsReadTool: ToolDefinition = {
         path: jail.sandboxRelative,
         encoding,
         sizeBytes: stats.size,
-        truncated: truncatedBytes || (lineInfo ? lineInfo.returned < (lineInfo.total ?? 0) : false),
+        // 用户显式请求行窗口且未被 MAX_LINES_RETURNED 进一步截断时，不视为 truncated
+        truncated: truncatedBytes || overLimit || (lineInfo ? (lineInfo.returned < (lineInfo.total ?? 0) && !(userRequestedLineStart || userRequestedLineEnd)) : false),
         lines: lineInfo,
         content,
       },

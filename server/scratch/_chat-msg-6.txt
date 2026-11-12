@@ -1,0 +1,25 @@
+第六轮（新阶段）：核心架构 × RSI 迭代 × 全栈产品设计。
+
+修复包已定版（126 文件 / 1243 用例全绿，未提交）。本轮按维护者要求换话题：围绕你的核心架构展开对话，协助你的 RSI 迭代与全栈产品开发/设计，最终收敛一份可执行迭代计划（阶段/关键任务/优先级/风险）。你的意见是计划的输入，采纳由维护者裁决。
+
+【A. 已核实的架构事实清单】（维护者侧读源码核实；你在沙箱里读不到自身源码，需要摘录就指明文件+位置，我贴给你。）
+1. API 面：/api/health + /api/v1/{agent,sessions,tools,mcp,providers,sandbox-permissions,judge,capabilities,traces,skills,checkpoints,sandbox-grants,runs}；app.ts 另直挂开发态旁路：/api/rsi/rules（只读规则契约，与 overview 共用 buildRsiRulesContract 同源）、/api/rsi/overview?session=（直查 db：sessions/judge_runs/judge_verdicts/policy_rsi_runs/policy_injections + eval 汇总）、静态 /rsi。
+2. Agent 内核 services/agent：agent-loop + native/react 双通道（channel-router）+ context-manager + run-state + loop/fallback/lesson 预算 + circuit-breaker + convergence/loop-detector + fidelity-checker + review + sse-writer + run-resume/cancel + approval。
+3. Judge services/judge：judge.service + criteria + semantic.ts(384行) + red-team.ts(189行) + canary.ts(312行) + deep-assessor/replay/tool-discipline 等；semantic/red-team 已被 runtime.ts 与 judge.service.ts import。宣言 §10 标 L2/L3 UNEXEC——我理解为「已接线但未在真实运行中验证」，请确认或纠正。
+4. Eval services/eval：propose/runner/suites/task-picker。RSI services/rsi：ledger-verify/ledger-migrate/manifest-builder/rsi-attributor/rsi-bridge/rules-contract。
+5. 自升级循环 scripts：self-upgrade-loop → loop-service(专用8099) → task-self-upgrade 派单 → check-self-upgrade 围栏 → failure-attribution 七层 → failure-stats → propose-gaps 提名 → author-task 出题 → 人工采纳；数据在 .self-upgrade/{ledger.jsonl,proposals.jsonl,baseline.json}（沙箱外）。
+6. 前端三个面：client/ = React19+Vite+Zustand（agent/session/settings/result 组件，api.ts+stream.ts，6 个 store，含 RsiDashboardModal.tsx + lib/rsi-rules.ts/rsi-series.ts，也消费 /api/rsi/*）；desktop/ = Electron 壳；server/public/rsi-dashboard.html = 625 行原生 JS 独立看板（/rsi）。RSI 看板存在双实现。
+7. krsi.exe 原生内核 + conformance 脚本。
+8. 现状：当前分支 = 11-11 合并快照 + 未提交修复包；WorkBuddy worktree 是活线（auto-adopt/judge-audit/GREEN_BASELINE/rejections.jsonl/RSI 迭代 API，全部未提交）。上轮三决策点未决：WorkBuddy 提交+合并协调、gapType 裁决、tool-use-coach 重新提名。
+
+【B. 四问，按序回答】
+Q1 目标与范围：基于宣言 §10 UNEXEC（破坏夹具/L2 语义/L3 红队/孤儿工具闸/沉淀配对闸/strengthens 字段/跨模型一致性/UNEXEC 第三态）+ HANDOFF §8 P0-P3 + 上述三决策点，你认为本轮迭代的目标与范围应该是什么？明确不做什么？每项附 C1 结算（强化 Act/Judge/Update/Memory 哪一维）。
+Q2 架构：对 A 的纠正/补充，尤其依赖方向：services/rsi 与 scripts 谁消费谁？db 的 policy_rsi_runs 与 .self-upgrade/ledger.jsonl 是两条独立测量线还是同源双写？最大的结构性风险在哪？
+Q3 全栈四个决策点，各给「选择 + 一句理由 + 代价」：
+ a. 数据流：propose→author→adopt 链在哪一段自动化（HANDOFF P1「基线红自动候选池」）？两条账本的读侧如何统一？
+ b. 接口设计：/api/rsi/* 该从开发态旁路升格为正式 v1 端点吗？与活线的 RSI 迭代 API 对齐吗？SSE(agent/stream) 与 RESULT:<JSON> 协议的边界？
+ c. 前后端协作：RSI 看板双实现（原生 HTML + React Modal）收敛还是保留？维护者「提名-批准-观察」工作流的最小可用面是什么？
+ d. 可扩展性：eval suites / judge 判据 / 工具白名单 / 多模型四个扩展点，哪些冻结哪些开放？
+Q4 可执行计划：阶段划分 + 每阶段关键任务 + 优先级 + 机械验收（每阶段可用命令/测试验证，不许「应该没问题」）+ 风险提示。约束：WorkBuddy 未提交，任何阶段不得以跨 worktree 改动为前提；maxTokens 8192 与任务粒度教训（HANDOFF 7.6/4.6）；UNEXEC 不许当绿。
+
+【C. 纪律与格式】你对代码的断言同样要过机械核实（HANDOFF 7.8；上轮你编过 --target）。不确定就写「待核实」并指明要我贴的文件。全文紧凑：Q2/Q3 直接给结论，Q4 是重点且必须可执行；输出预算不够时优先保 Q1/Q4 完整，Q2/Q3 可标「待续」。

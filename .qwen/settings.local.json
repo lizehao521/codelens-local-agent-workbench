@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find . -type f -not -path \"*/node_modules/*\" -not -path \"./.git/*\" -newermt \"2026-11-12 00:00\" -printf \"%TY-%Tm-%Td %TH:%TM %s %p\\\\n\" 2>/dev/null | sort -r | head -40)"
+    ]
+  }
+}

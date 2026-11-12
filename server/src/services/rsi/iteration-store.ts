@@ -61,6 +61,8 @@ export interface IterationRecord {
 /** 账本层 → 六态。逐条注明依据，别改口径而不改注释。 */
 function layerToVerdict(row: LedgerRow): RsiVerdict {
   if (row.verdict === 'upgraded') return 'improved';
+  // 人工确认的升级（围栏手动全绿后记 verified）：与 upgraded 同口径，免得真实升级被投影成 undecidable
+  if (row.verdict === 'verified') return 'improved';
   if (row.verdict === 'halted') return 'refused';
   switch (row.layer) {
     case 'infra':
@@ -92,7 +94,7 @@ function layerToVerdict(row: LedgerRow): RsiVerdict {
  */
 function gatesFromRow(row: LedgerRow): GateResult[] {
   const ids = ['protected', 'judge-fingerprint', 'target-changed', 'typecheck', 'judge-selftest', 'judge', 'full-suite'];
-  const ok = row.verdict === 'upgraded';
+  const ok = row.verdict === 'upgraded' || row.verdict === 'verified';
   return ids.map((id) => ({ id, status: ok ? ('pass' as const) : ('fail' as const) }));
 }
 
@@ -112,7 +114,7 @@ function rowToRecord(row: LedgerRow, idx: number): IterationRecord {
     verdict,
     gates: gatesFromRow(row),
     guardRegressed: 0,
-    coverage: row.verdict === 'upgraded' ? 1 : 0.6,
+    coverage: row.verdict === 'upgraded' || row.verdict === 'verified' ? 1 : 0.6,
     outOfScopeChanges: 0,
     humanApproved: true,
   });

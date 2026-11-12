@@ -1,0 +1,27 @@
+第七轮（机械核实后的纠正 + 修订要求）：你 Q4 计划的方向可用，但多处事实编造，维护者侧已逐一核实。按 7.8 纪律，先纠正再谈执行。
+
+E1. 「双账本同源双写」错误。实为两条独立测量线：
+ (1) 会话内 RSI 测量：rsi-bridge.service.ts 重建 prev/next manifest → spawn krsi → 写 db 的 policy_rsi_runs + server/data/rsi/ 下每 session 的 JSONL（文件头注释自述「双轨并存的旁路对账件」）；
+ (2) 跨代自升级：scripts/self-upgrade-loop.ts 写仓库根 .self-upgrade/ledger.jsonl。
+ rsi-bridge 从不写 .self-upgrade/ledger.jsonl。两线口径、消费者、信任边界都不同，「读侧以 DB 为主、文件为审计兜底」不成立。
+
+E2. 依赖方向不准确：self-upgrade-loop.ts 只 import 兄弟脚本（failure-attribution / loop-service / version-bump / lib/propose-result），不 import services/rsi。只有离线脚本消费 services/rsi：verify-rsi-ledger.ts→ledger-verify、migrate-rsi-hash-version.ts→ledger-migrate、seed-rsi-demo.ts→manifest-builder。
+
+E3. 编造路径/命令（全部不存在）：services/agent/agent-loop.ts（实为 agent-loop.service.ts）、services/judge/runtime.ts（实为 src/runtime.ts）、scripts/check-self-upgrade.ts（实为 .mjs）、server/routes/results.ts（约定 src/routes/*.routes.ts）、client/src/api.ts（实为 services/api.ts）、.self-upgrade/ledger.db（db 实为 server/data/codelens.db；.self-upgrade/ledger.jsonl 是 JSONL 不是 sqlite）。端口 8080（主）/8099（循环），不是 3000。
+
+E4. Phase 2 采纳机制整套编造：POST /api/rsi/proposals/:id/adopt 不存在；proposals.jsonl 无 status:adopted 字段（RESULT 协议的 accepted 指「过 screen 记入提议」，不是人工采纳）；无 SSE adopted 事件。真实采纳是人工流程：author-task 产 candidates → 人审 → 拷入 tests/self-upgrade/ + 并入 tasks.json → 打基线 → 派单。且这与你 Q3b「维持旁路不建正式 API」自相矛盾——你自己加了写端点。
+
+E5. Phase 3 验收不可能：--dry 只打印计划（loop 文件头明文），产生不了 verdict；sqlite3 .self-upgrade/ledger.db 是编造路径。且 Q1 说「明确不做 L2/L3 实战验证」，Phase 3 又做——自相矛盾，二选一。
+
+E6. Phase 0 两个问题：(a) 修复包（scripts/lib/protected-paths.ts、lib/propose-result.ts、propose-gaps/loop 接线 + 15 条新测试）在当前分支仍未提交，你的计划只字未提提交它；(b) 把 WorkBuddy 合并列为 Phase 0 前置，违反你自己「全程在当前分支、不跨 worktree」的约束与第五轮共识（合并另行协调，不作为任何阶段前提）。合并是维护者协调项，不是计划内可执行任务。
+
+E7. orphan-tool-gate-v2 判据语义反了：「任务结束后宏工具仍可调用」——孤儿闸应在「任务结束后工具仍残留」时打红；「宏工具」也不是本代码库术语。原提议被 GREEN_BASELINE 拒的原因是判据断言了已为真的行为；重新出题必须构造真实可红路径（先造残留，再断言闸打红）。
+
+E8. tool-use-coach 从未持久化（当前分支 src/scripts 全文无此词，只存在于 WorkBuddy SSE 存档）。你 Phase 1 绕过 提名→author-task→采纳 管道直接新建 services/agent/tool-use-coach.ts，违反信任边界（被衡量者不写自己的判据）。两条合法路径：重新提名走完整出题流程，或维护者显式裁决在循环外实现——计划必须写明走哪条，不能默认绕过。
+
+【修订要求】基于以上纠正事实重出 Q4 计划：
+1. Q1 范围基本可用，但解决 E5 的 L2/L3 矛盾；
+2. Q3c「原生 HTML 无法接入 RESULT:<JSON>」理由不成立（那是 propose-gaps 输出协议，与看板无关），给真实理由或改结论；
+3. 所有路径/命令必须真实可查，每阶段验收机械可执行；
+4. 维护者协调项（gapType 裁决、WorkBuddy 提交+合并、tool-use-coach 路径选择、修复包提交时机）单列「前置决策」，不混入可执行任务；
+5. 紧凑输出，Q4 优先。

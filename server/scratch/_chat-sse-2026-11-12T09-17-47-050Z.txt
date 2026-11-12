@@ -1,0 +1,12 @@
+event: stage
+data: {"runId":"de921972-dac0-4205-9b90-7427c81dd627","stage":"connecting","at":1794475057020,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"f7fd4516-06a5-4555-a0ee-781a7d8c443e","messageId":"3fe28d55-0841-4488-92ea-0625fc179c8f","provider":"custom","model":"nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":5,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":2,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"de921972-dac0-4205-9b90-7427c81dd627","stage":"upstream_error","at":1794475067048,"elapsedMs":10028,"detail":"无法连接上游（1.92.150.5:8787）：fetch failed。请检查网络/代理，或改用可访问的 Base URL。"}
+
+event: error
+data: {"code":"UPSTREAM_ERROR","message":"无法连接上游（1.92.150.5:8787）：fetch failed。请检查网络/代理，或改用可访问的 Base URL。","retryable":false}
+

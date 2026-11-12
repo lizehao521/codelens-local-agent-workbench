@@ -1,0 +1,120 @@
+第 10 轮重发（上一轮你预算耗尽，责任在我：给你的 src/tools/builtin 路径在你沙箱外，你白跑了 5 次 fs.list）。这轮源码直接贴给你，不需要任何工具调用，读完直接回答。
+
+【背景一句话】unexec 消费链路由我人侧实现（尺子侧，保护路径）；你负责 D1 提名。分桶口径已定：status==='unexec' 或无 verdict 行 → 判据层覆盖缺口，不进 FAIL 分母。
+
+【D1 靶子源码：src/utils/errors.ts（完整 107 行，行号即真实行号）】
+1| /** Application error type and canonical error codes (architecture detail section 3.2). */
+2| 
+3| export const ErrorCode = {
+4|   VALIDATION_ERROR: 'VALIDATION_ERROR',
+5|   MISSING_API_KEY: 'MISSING_API_KEY',
+6|   BUDGET_EXCEEDED: 'BUDGET_EXCEEDED',
+7|   RATE_LIMITED: 'RATE_LIMITED',
+8|   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+9|   UPSTREAM_ERROR: 'UPSTREAM_ERROR',
+10|   UPSTREAM_TIMEOUT: 'UPSTREAM_TIMEOUT',
+11|   /**
+12|    * 上游返回了「空轮」：首字节到了、流正常结束，但没有正文、没有推理、没有工具调用，
+13|    * completionTokens 为 0。实测某网关上的 claude-3-5-sonnet 就是这样（firstTokenMs=null）。
+14|    *
+15|    * 单独一个错误码，因为它和「模型选择不做事」长得几乎一样：都会在 run_report 里
+16|    * 表现为 toolCallCount=0 / finishReason=stop。前者该重试或切通道，后者该换模型——
+17|    * 不分开就会把接口故障记成模型能力缺口（失败归因的 behavior 层）。
+18|    */
+19|   UPSTREAM_EMPTY: 'UPSTREAM_EMPTY',
+20|   NOT_FOUND: 'NOT_FOUND',
+21|   INTERNAL_ERROR: 'INTERNAL_ERROR',
+22|   // ---- Agent platform additions (spec section 5 / architecture detail 3.2) ----
+23|   AGENT_BUSY: 'AGENT_BUSY',
+24|   SESSION_NOT_FOUND: 'SESSION_NOT_FOUND',
+25|   RECOVERY_CODE_INVALID: 'RECOVERY_CODE_INVALID',
+26|   RECOVERY_LOCKED: 'RECOVERY_LOCKED',
+27|   APPROVAL_NOT_FOUND: 'APPROVAL_NOT_FOUND',
+28|   APPROVAL_EXPIRED: 'APPROVAL_EXPIRED',
+29|   APPROVAL_ALREADY_DECIDED: 'APPROVAL_ALREADY_DECIDED',
+30|   APPROVAL_TOKEN_MISMATCH: 'APPROVAL_TOKEN_MISMATCH',
+31|   APPROVAL_ARGS_MISMATCH: 'APPROVAL_ARGS_MISMATCH',
+32|   APPROVAL_REVISE_LIMIT: 'APPROVAL_REVISE_LIMIT',
+33|   APPROVAL_NOT_REVISABLE: 'APPROVAL_NOT_REVISABLE',
+34|   APPROVAL_ABORTED: 'APPROVAL_ABORTED',
+35|   TOOL_NOT_FOUND: 'TOOL_NOT_FOUND',
+36|   TOOL_DISABLED: 'TOOL_DISABLED',
+37|   TOOL_TIMEOUT: 'TOOL_TIMEOUT',
+38|   MCP_SERVER_NOT_FOUND: 'MCP_SERVER_NOT_FOUND',
+39|   MCP_COMMAND_INVALID: 'MCP_COMMAND_INVALID',
+40|   MCP_CONNECT_FAILED: 'MCP_CONNECT_FAILED',
+41|   // ---- 可观测面（能力洞察）：工作区快照 / 技能库 ----
+42|   CHECKPOINT_DISABLED: 'CHECKPOINT_DISABLED',
+43|   CHECKPOINT_NOT_FOUND: 'CHECKPOINT_NOT_FOUND',
+44|   CHECKPOINT_PATH_ESCAPE: 'CHECKPOINT_PATH_ESCAPE',
+45|   CHECKPOINT_MANIFEST_INVALID: 'CHECKPOINT_MANIFEST_INVALID',
+46|   SKILL_ALREADY_EXISTS: 'SKILL_ALREADY_EXISTS',
+47|   SKILL_NOT_FOUND: 'SKILL_NOT_FOUND',
+48| } as const;
+49| 
+50| export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
+51| 
+52| const STATUS_BY_CODE: Record<string, number> = {
+53|   VALIDATION_ERROR: 400,
+54|   MISSING_API_KEY: 401,
+55|   BUDGET_EXCEEDED: 429,
+56|   RATE_LIMITED: 429,
+57|   PAYLOAD_TOO_LARGE: 413,
+58|   NOT_FOUND: 404,
+59|   UPSTREAM_ERROR: 502,
+60|   UPSTREAM_TIMEOUT: 504,
+61|   UPSTREAM_EMPTY: 502,
+62|   INTERNAL_ERROR: 500,
+63|   AGENT_BUSY: 429,
+64|   SESSION_NOT_FOUND: 404,
+65|   RECOVERY_CODE_INVALID: 404,
+66|   RECOVERY_LOCKED: 423,
+67|   APPROVAL_NOT_FOUND: 404,
+68|   APPROVAL_EXPIRED: 410,
+69|   APPROVAL_ALREADY_DECIDED: 409,
+70|   APPROVAL_TOKEN_MISMATCH: 409,
+71|   APPROVAL_ARGS_MISMATCH: 409,
+72|   APPROVAL_REVISE_LIMIT: 409,
+73|   APPROVAL_NOT_REVISABLE: 409,
+74|   APPROVAL_ABORTED: 409,
+75|   TOOL_NOT_FOUND: 404,
+76|   TOOL_DISABLED: 409,
+77|   TOOL_TIMEOUT: 504,
+78|   MCP_SERVER_NOT_FOUND: 404,
+79|   MCP_COMMAND_INVALID: 400,
+80|   MCP_CONNECT_FAILED: 502,
+81|   // 可观测面：能力未开启 / 对象不存在 / 路径越界 / 清单损坏
+82|   CHECKPOINT_DISABLED: 409,
+83|   CHECKPOINT_NOT_FOUND: 404,
+84|   CHECKPOINT_PATH_ESCAPE: 400,
+85|   CHECKPOINT_MANIFEST_INVALID: 400,
+86|   SKILL_ALREADY_EXISTS: 409,
+87|   SKILL_NOT_FOUND: 404,
+88| };
+89| 
+90| /** Error with a stable machine-readable code and mapped HTTP status. */
+91| export class AppError extends Error {
+92|   readonly code: string;
+93|   readonly status: number;
+94|   readonly details?: Record<string, unknown>;
+95| 
+96|   constructor(code: string, message: string, status?: number, details?: Record<string, unknown>) {
+97|     super(message);
+98|     this.name = 'AppError';
+99|     this.code = code;
+100|     this.status = status ?? STATUS_BY_CODE[code] ?? 500;
+101|     this.details = details;
+102|   }
+103| }
+104| 
+105| export function isAppError(err: unknown): err is AppError {
+106|   return err instanceof AppError;
+107| }
+
+【问题 1：D1 defect 提名】
+从上面这份代码里找一个「某输入下行为不对」的 defect（不是新增功能）。提示方向（不限于）：错误分型、跨 realm/序列化后的 instanceof、构造器对任意 code 的处理、状态码映射的边界。按契约输出一个 JSON：
+{"id":"kebab-case","title":"≤30字","gapType":"defect","gap":"≥10字≤80字","evidence":["第1条必须带行号，如 errors.ts:105，写清什么输入/当前行为/为什么不对"],"targetFile":"src/utils/errors.ts","observable":"哪个输入期望什么结果≤60字","boundary":"≤40字"}
+找不到真 defect 就输出 {"id":"none"} 并一句话说明——别编。注意：要新增字段/导出才算 capability，这轮只要 defect。
+
+【问题 2：尺子侧回灌模板】
+unexec 分桶落地后，失败回灌文本里多带哪一行，能让你下一轮直接分清「尺子没跑」和「我没修对」？给一行模板，含占位符即可。

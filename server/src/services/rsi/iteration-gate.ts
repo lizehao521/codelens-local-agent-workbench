@@ -188,15 +188,39 @@ export function evaluateIteration(input: IterationInput): IterationResult {
     'retry',
   );
 
-  // ── G6 尝试次数未耗尽 ────────────────────────────────────
+  // ── G6 尝试次数：耗尽后的动作要按"本轮有没有做对"分叉 ──────
+  //
+  // 原来这里一律 onFail='rollback'，于是「第 3/3 次把题做对了、其余闸全绿」
+  // 也会被判定为"必须回滚"——把一个已验证的改进撤掉，是比留着它更大的损失。
+  // 预算耗尽只说明"这题花光了重试次数"，它和"地基被弄坏"（G2 护栏回退 /
+  // G4 越域 / verdict=refused）不是一回事，后者才配 rollback。
+  const priorFail = criteria.some((c) => c.status === 'fail');
+  const priorUnexec = criteria.some((c) => c.status === 'unexec');
+  const exhaustedButClean =
+    input.attempts >= input.maxAttempts &&
+    input.verdict === 'improved' &&
+    !priorFail &&
+    !priorUnexec &&
+    input.outOfScopeChanges === 0 &&
+    input.guardRegressed === 0;
+
   add(
     'G6',
     '尝试次数未耗尽',
     `attempts < ${input.maxAttempts}`,
     `attempts = ${input.attempts}`,
     input.attempts < input.maxAttempts,
-    input.attempts >= input.maxAttempts ? 'rollback' : null,
+    input.attempts >= input.maxAttempts ? (exhaustedButClean ? 'escalate' : 'rollback') : null,
+    false,
+    exhaustedButClean
+      ? `预算已用尽但本轮已改进、其余闸全绿 ${input.attempts}/${input.maxAttempts}`
+      : undefined,
   );
+  if (input.attempts >= input.maxAttempts && !exhaustedButClean) {
+    rollbackReasons.push(
+      `重试预算已用尽（${input.attempts}/${input.maxAttempts}）且本轮未达标 —— 不保留半成品`,
+    );
+  }
 
   // ── 决策：按"从硬到软"的顺序取第一个命中的动作 ─────────────
   //
@@ -219,9 +243,16 @@ export function evaluateIteration(input: IterationInput): IterationResult {
     decision = 'rollback';
     headline = `必须回滚：${rollbackReasons[0] ?? hardRollback.name}`;
   } else if (anyFail) {
-    // 剩下的 fail 都是可重试类（G1 not_improved / G3 fail / G5 覆盖率）
-    decision = 'retry';
-    headline = `未达标但可重试：${anyFail.name}`;
+    // 剩下的 fail 有各自的动作，不能一律当"可重试"：
+    // 例如 G6 在"本轮已改进、只是预算用尽"时给的是 escalate，
+    // 当作 retry 派下去只会在预算已满的情况下继续重派。
+    if (anyFail.onFail === 'escalate') {
+      decision = 'escalate';
+      headline = `需人确认：${anyFail.name}（${anyFail.actual}）`;
+    } else {
+      decision = 'retry';
+      headline = `未达标但可重试：${anyFail.name}`;
+    }
   } else if (unexecs.length > 0) {
     // 没有 fail，但有闸没跑：不能判 continue（宣言 C4）
     decision = 'escalate';

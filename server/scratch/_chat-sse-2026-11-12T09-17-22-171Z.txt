@@ -1,0 +1,15 @@
+event: stage
+data: {"runId":"f513cab6-dacf-4dba-9736-6c0c44a4bf85","stage":"connecting","at":1794475032085,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"f7fd4516-06a5-4555-a0ee-781a7d8c443e","messageId":"9b9a6a2f-2ed3-4dcb-a4a3-50b4e2962953","provider":"custom","model":"nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":5,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":2,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"f513cab6-dacf-4dba-9736-6c0c44a4bf85","stage":"upstream_first_byte","at":1794475042164,"elapsedMs":10079,"detail":null}
+
+event: stage
+data: {"runId":"f513cab6-dacf-4dba-9736-6c0c44a4bf85","stage":"upstream_error","at":1794475042168,"elapsedMs":10083,"detail":"上游服务返回错误 (HTTP 502): upstream connect failed: connection timed out\n；上游节点 1.92.150.5:8787"}
+
+event: error
+data: {"code":"UPSTREAM_ERROR","message":"上游服务返回错误 (HTTP 502): upstream connect failed: connection timed out\n；上游节点 1.92.150.5:8787","retryable":false}
+

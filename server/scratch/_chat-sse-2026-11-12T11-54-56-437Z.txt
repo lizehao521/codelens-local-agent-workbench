@@ -1,0 +1,1420 @@
+event: stage
+data: {"runId":"095f3379-eff9-4487-87fd-6559b85ae978","stage":"connecting","at":1794484458753,"elapsedMs":1,"detail":null}
+
+event: meta
+data: {"sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","messageId":"96721576-e8ac-4aca-9e38-19195f8ce848","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":5,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":2,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"095f3379-eff9-4487-87fd-6559b85ae978","stage":"upstream_first_byte","at":1794484460646,"elapsedMs":1894,"detail":null}
+
+event: stage
+data: {"runId":"095f3379-eff9-4487-87fd-6559b85ae978","stage":"reasoning","at":1794484460647,"elapsedMs":1895,"detail":null}
+
+event: reasoning
+data: {"text":"The"}
+
+event: reasoning
+data: {"text":" user is asking for"}
+
+event: reasoning
+data: {"text":" my judgment on the next iteration"}
+
+event: reasoning
+data: {"text":" gap after a"}
+
+event: reasoning
+data: {"text":" successful merge of the"}
+
+event: reasoning
+data: {"text":" WorkBuddy branch"}
+
+event: reasoning
+data: {"text":". They've"}
+
+event: reasoning
+data: {"text":" provided detailed"}
+
+event: reasoning
+data: {"text":" context about what was merged"}
+
+event: reasoning
+data: {"text":", a"}
+
+event: reasoning
+data: {"text":" bug found"}
+
+event: reasoning
+data: {"text":" in askAuthor, and the"}
+
+event: reasoning
+data: {"text":" current state of UNEXEC"}
+
+event: reasoning
+data: {"text":" handling."}
+
+event: reasoning
+data: {"text":"\n\nLet"}
+
+event: reasoning
+data: {"text":" me analyze the key"}
+
+event: reasoning
+data: {"text":" points:"}
+
+event: reasoning
+data: {"text":"\n1. WorkBud"}
+
+event: reasoning
+data: {"text":"dy merged"}
+
+event: reasoning
+data: {"text":" successfully with iteration gates"}
+
+event: reasoning
+data: {"text":" G1-G6, auto"}
+
+event: reasoning
+data: {"text":"-adopt, judge-audit"}
+
+event: reasoning
+data: {"text":", RSI iteration API"}
+
+event: reasoning
+data: {"text":"\n2. Two"}
+
+event: reasoning
+data: {"text":" measurement lines preserved"}
+
+event: reasoning
+data: {"text":": session-level"}
+
+event: reasoning
+data: {"text":" krsi (policy_rsi"}
+
+event: reasoning
+data: {"text":"_runs) and cross-generation"}
+
+event: reasoning
+data: {"text":" audit ledger (."}
+
+event: reasoning
+data: {"text":"self-upgrade/ledger"}
+
+event: reasoning
+data: {"text":".jsonl)\n3. RESULT"}
+
+event: reasoning
+data: {"text":" protocol fixed - only"}
+
+event: reasoning
+data: {"text":" accepted claims \""}
+
+event: reasoning
+data: {"text":"recorded\","}
+
+event: reasoning
+data: {"text":" re"}
+
+event: reasoning
+data: {"text":"jections honestly"}
+
+event: reasoning
+data: {"text":" reported\n4. Bug"}
+
+event: reasoning
+data: {"text":" found:"}
+
+event: reasoning
+data: {"text":" askAuthor only"}
+
+event: reasoning
+data: {"text":" reads process.env.RSI_BASE"}
+
+event: reasoning
+data: {"text":"_URL, not .env file"}
+
+event: reasoning
+data: {"text":" values - fixed with"}
+
+event: reasoning
+data: {"text":" fallback chain\n5. UN"}
+
+event: reasoning
+data: {"text":"EXEC gap confirmed"}
+
+event: reasoning
+data: {"text":": VerdictStatus has '"}
+
+event: reasoning
+data: {"text":"unexec' but check"}
+
+event: reasoning
+data: {"text":"-self-upgrade.m"}
+
+event: reasoning
+data: {"text":"js, failure-stats.m"}
+
+event: reasoning
+data: {"text":"js, eval/runner.ts"}
+
+event: reasoning
+data: {"text":" don't consume it"}
+
+event: reasoning
+data: {"text":"\n\nThe user asks"}
+
+event: reasoning
+data: {"text":" three specific questions:\n1."}
+
+event: reasoning
+data: {"text":" Should \""}
+
+event: reasoning
+data: {"text":"unexec consumption chain"}
+
+event: reasoning
+data: {"text":"\" be next"}
+
+event: reasoning
+data: {"text":" nomination"}
+
+event: reasoning
+data: {"text":" priority?\n2. How"}
+
+event: reasoning
+data: {"text":" should failure-att"}
+
+event: reasoning
+data: {"text":"ribution distinguish \"r"}
+
+event: reasoning
+data: {"text":"uler didn't run\" vs"}
+
+event: reasoning
+data: {"text":" \"ran"}
+
+event: reasoning
+data: {"text":" but failed\"?\n3."}
+
+event: reasoning
+data: {"text":" From"}
+
+event: reasoning
+data: {"text":" my"}
+
+event: reasoning
+data: {"text":" perspective as measured"}
+
+event: reasoning
+data: {"text":" agent, which reading"}
+
+event: reasoning
+data: {"text":" from"}
+
+event: reasoning
+data: {"text":" RsiIterationGate is"}
+
+event: reasoning
+data: {"text":" most useful?\n\nI should"}
+
+event: reasoning
+data: {"text":" answer"}
+
+event: reasoning
+data: {"text":" based on the"}
+
+event: reasoning
+data: {"text":" context provided, without"}
+
+event: reasoning
+data: {"text":" needing to read files"}
+
+event: reasoning
+data: {"text":" (though"}
+
+event: reasoning
+data: {"text":" I can if"}
+
+event: reasoning
+data: {"text":" needed). The user says"}
+
+event: reasoning
+data: {"text":" I can use fs.read/"}
+
+event: reasoning
+data: {"text":"fs.list to look at"}
+
+event: reasoning
+data: {"text":" eval"}
+
+event: reasoning
+data: {"text":" implementations in workspace."}
+
+event: reasoning
+data: {"text":"\n\nLet me think"}
+
+event: reasoning
+data: {"text":" about this"}
+
+event: reasoning
+data: {"text":" strateg"}
+
+event: reasoning
+data: {"text":"ically:\n\n1. UN"}
+
+event: reasoning
+data: {"text":"EXEC consumption is"}
+
+event: reasoning
+data: {"text":" indeed"}
+
+event: reasoning
+data: {"text":" a critical gap -"}
+
+event: reasoning
+data: {"text":" it's causing"}
+
+event: reasoning
+data: {"text":" attribution"}
+
+event: reasoning
+data: {"text":" distortion"}
+
+event: reasoning
+data: {"text":". If \""}
+
+event: reasoning
+data: {"text":"ruler didn't run\""}
+
+event: reasoning
+data: {"text":" and \"ran but failed\""}
+
+event: reasoning
+data: {"text":" are conflated, then"}
+
+event: reasoning
+data: {"text":" failure"}
+
+event: reasoning
+data: {"text":" attribution"}
+
+event: reasoning
+data: {"text":" is fundamentally broken. This"}
+
+event: reasoning
+data: {"text":" should be high"}
+
+event: reasoning
+data: {"text":" priority.\n\n2. For"}
+
+event: reasoning
+data: {"text":" mechanical"}
+
+event: reasoning
+data: {"text":" distinction:"}
+
+event: reasoning
+data: {"text":" \n-"}
+
+event: reasoning
+data: {"text":" \"R"}
+
+event: reasoning
+data: {"text":"uler didn't run\" ="}
+
+event: reasoning
+data: {"text":" verdict"}
+
+event: reasoning
+data: {"text":" status"}
+
+event: reasoning
+data: {"text":" is 'unexec' ("}
+
+event: reasoning
+data: {"text":"or"}
+
+event: reasoning
+data: {"text":" verdict"}
+
+event: reasoning
+data: {"text":" record"}
+
+event: reasoning
+data: {"text":" doesn"}
+
+event: reasoning
+data: {"text":"'t exist for that criterion)"}
+
+event: reasoning
+data: {"text":"\n- \"Ran"}
+
+event: reasoning
+data: {"text":" but failed\" = verdict status"}
+
+event: reasoning
+data: {"text":" is 'fail' with"}
+
+event: reasoning
+data: {"text":" a"}
+
+event: reasoning
+data: {"text":" verdict"}
+
+event: reasoning
+data: {"text":" record\nThis"}
+
+event: reasoning
+data: {"text":" is mechanically"}
+
+event: reasoning
+data: {"text":" determin"}
+
+event: reasoning
+data: {"text":"able from the judge"}
+
+event: reasoning
+data: {"text":"_verdicts table and"}
+
+event: reasoning
+data: {"text":" Verd"}
+
+event: reasoning
+data: {"text":"ictStatus enum.\n\n3."}
+
+event: reasoning
+data: {"text":" From RsiIterationGate"}
+
+event: reasoning
+data: {"text":" perspective"}
+
+event: reasoning
+data: {"text":" as measured"}
+
+event: reasoning
+data: {"text":" agent: I"}
+
+event: reasoning
+data: {"text":"'d want to see"}
+
+event: reasoning
+data: {"text":" the"}
+
+event: reasoning
+data: {"text":" gate results"}
+
+event: reasoning
+data: {"text":" that directly affect whether"}
+
+event: reasoning
+data: {"text":" my proposals"}
+
+event: reasoning
+data: {"text":" get adopted. The"}
+
+event: reasoning
+data: {"text":" most useful readings"}
+
+event: reasoning
+data: {"text":" would be:\n-"}
+
+event: reasoning
+data: {"text":" Gate pass/fail status per"}
+
+event: reasoning
+data: {"text":" criterion"}
+
+event: reasoning
+data: {"text":"\n- Specific"}
+
+event: reasoning
+data: {"text":" failure"}
+
+event: reasoning
+data: {"text":" reasons when"}
+
+event: reasoning
+data: {"text":" gates"}
+
+event: reasoning
+data: {"text":" fail\n- Baseline"}
+
+event: reasoning
+data: {"text":" comparison (am"}
+
+event: reasoning
+data: {"text":" I improving"}
+
+event: reasoning
+data: {"text":" or"}
+
+event: reasoning
+data: {"text":" regressing?)\n- Cost"}
+
+event: reasoning
+data: {"text":"/token metrics"}
+
+event: reasoning
+data: {"text":" to"}
+
+: ping
+
+event: reasoning
+data: {"text":" understand"}
+
+event: reasoning
+data: {"text":" budget pressure"}
+
+event: reasoning
+data: {"text":"\n\nI should give"}
+
+event: reasoning
+data: {"text":" a structured, concise answer in"}
+
+event: reasoning
+data: {"text":" Chinese as requested."}
+
+event: delta
+data: {"text":"##"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"判断与建"}
+
+event: delta
+data: {"text":"议\n\n### 1."}
+
+event: delta
+data: {"text":" 下"}
+
+event: delta
+data: {"text":"一提"}
+
+event: delta
+data: {"text":"名优先级：**"}
+
+event: delta
+data: {"text":"同意"}
+
+event: delta
+data: {"text":"把"}
+
+event: delta
+data: {"text":"「unexec 消"}
+
+event: delta
+data: {"text":"费链路」排"}
+
+event: delta
+data: {"text":" P"}
+
+event: delta
+data: {"text":"0**\n\n"}
+
+event: delta
+data: {"text":"**理由**：  "}
+
+event: delta
+data: {"text":"\n- 这是**"}
+
+event: delta
+data: {"text":"归"}
+
+event: delta
+data: {"text":"因失"}
+
+event: delta
+data: {"text":"真的"}
+
+event: delta
+data: {"text":"源"}
+
+event: delta
+data: {"text":"头**"}
+
+event: delta
+data: {"text":"——failure"}
+
+event: delta
+data: {"text":"-att"}
+
+event: delta
+data: {"text":"ribution 七层、"}
+
+event: delta
+data: {"text":"failure-stats"}
+
+event: delta
+data: {"text":" 聚合、check-self-up"}
+
+event: delta
+data: {"text":"grade "}
+
+event: delta
+data: {"text":"围栏，全"}
+
+event: delta
+data: {"text":"把「尺子没"}
+
+event: delta
+data: {"text":"跑」算"}
+
+event: delta
+data: {"text":"进"}
+
+event: delta
+data: {"text":"「"}
+
+event: delta
+data: {"text":"跑了没过"}
+
+event: delta
+data: {"text":"」，导致 NO"}
+
+event: delta
+data: {"text":"_TOOL_CALL 等"}
+
+event: delta
+data: {"text":"真根"}
+
+event: delta
+data: {"text":"因被"}
+
+event: delta
+data: {"text":"稀释。  \n-"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"修补"}
+
+event: delta
+data: {"text":"成本极低："}
+
+event: delta
+data: {"text":"`judge/types.ts`"}
+
+event: delta
+data: {"text":" 已有 `Verd"}
+
+event: delta
+data: {"text":"ictStatus.unexec`，"}
+
+event: delta
+data: {"text":"`tool-discipline` 三"}
+
+event: delta
+data: {"text":"闸已接线，只"}
+
+event: delta
+data: {"text":"需在三"}
+
+event: delta
+data: {"text":"个"}
+
+event: delta
+data: {"text":"消费点"}
+
+event: delta
+data: {"text":"（`check-self-upgrade"}
+
+event: delta
+data: {"text":".mjs`、`failure-st"}
+
+event: delta
+data: {"text":"ats.mjs`、`eval"}
+
+event: delta
+data: {"text":"/runner.ts`）把"}
+
+event: delta
+data: {"text":" `unexec` 从"}
+
+event: delta
+data: {"text":" `fail` 分母"}
+
+event: delta
+data: {"text":"剔除、单"}
+
+event: delta
+data: {"text":"独计数。  \n"}
+
+event: delta
+data: {"text":"- **ROI 最高"}
+
+event: delta
+data: {"text":"**：一"}
+
+event: delta
+data: {"text":"处"}
+
+event: delta
+data: {"text":"改动修"}
+
+event: delta
+data: {"text":"正"}
+
+event: delta
+data: {"text":"全链路信"}
+
+event: delta
+data: {"text":"号，后续所有提"}
+
+event: delta
+data: {"text":"名质"}
+
+event: delta
+data: {"text":"量立"}
+
+event: delta
+data: {"text":"竿见影提"}
+
+event: delta
+data: {"text":"升。\n\n**沙箱"}
+
+event: delta
+data: {"text":"观察到的"}
+
+event: delta
+data: {"text":"更痛短板**：无"}
+
+event: delta
+data: {"text":"。当"}
+
+event: delta
+data: {"text":"前最大"}
+
+event: delta
+data: {"text":"噪声源"}
+
+event: delta
+data: {"text":"就是这条"}
+
+event: delta
+data: {"text":"。\n\n"}
+
+event: delta
+data: {"text":"---\n\n### 2. failure"}
+
+event: delta
+data: {"text":"-attribution 机械"}
+
+event: delta
+data: {"text":"区"}
+
+event: delta
+data: {"text":"分口径\n\n"}
+
+event: delta
+data: {"text":"| 语"}
+
+event: delta
+data: {"text":"义 | 机"}
+
+event: delta
+data: {"text":"械判定规"}
+
+event: delta
+data: {"text":"则（仅读"}
+
+event: delta
+data: {"text":" `judge_verdicts"}
+
+event: delta
+data: {"text":"` 表） |\n"}
+
+event: delta
+data: {"text":"|---"}
+
+event: delta
+data: {"text":"|---|\n| **尺"}
+
+event: delta
+data: {"text":"子没跑** |"}
+
+event: delta
+data: {"text":" `verdict.status ==="}
+
+event: delta
+data: {"text":" 'unexec'` **"}
+
+event: delta
+data: {"text":"或"}
+
+event: delta
+data: {"text":"** 对"}
+
+event: delta
+data: {"text":"应"}
+
+event: delta
+data: {"text":" `criterion` +"}
+
+event: delta
+data: {"text":" `target"}
+
+event: delta
+data: {"text":"` 在"}
+
+event: delta
+data: {"text":"本"}
+
+event: delta
+data: {"text":"次"}
+
+event: delta
+data: {"text":" run"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"无"}
+
+event: delta
+data: {"text":"任何"}
+
+event: delta
+data: {"text":" verdict"}
+
+event: delta
+data: {"text":" 行"}
+
+event: delta
+data: {"text":" |\n| **"}
+
+event: delta
+data: {"text":"跑了没过** | `"}
+
+event: delta
+data: {"text":"verdict.status === 'fail"}
+
+event: delta
+data: {"text":"'` "}
+
+event: delta
+data: {"text":"且 `verdict.reason"}
+
+event: delta
+data: {"text":"` 非"}
+
+event: delta
+data: {"text":"空 |\n\n**实"}
+
+event: delta
+data: {"text":"现建议**：在"}
+
+event: delta
+data: {"text":" `failure-attribution.ts`"}
+
+event: delta
+data: {"text":" 入"}
+
+event: delta
+data: {"text":"口先"}
+
+event: delta
+data: {"text":"按"}
+
+event: delta
+data: {"text":" `run"}
+
+event: delta
+data: {"text":"_id`"}
+
+event: delta
+data: {"text":" 拉取全部"}
+
+event: delta
+data: {"text":" verdict，按"}
+
+event: delta
+data: {"text":"上"}
+
+event: delta
+data: {"text":"表"}
+
+event: delta
+data: {"text":"分"}
+
+event: delta
+data: {"text":"桶，再分"}
+
+event: delta
+data: {"text":"别喂"}
+
+event: delta
+data: {"text":"给七"}
+
+event: delta
+data: {"text":"层归因的"}
+
+event: delta
+data: {"text":"「判"}
+
+event: delta
+data: {"text":"据"}
+
+event: delta
+data: {"text":"层」与「执"}
+
+event: delta
+data: {"text":"行层」。`"}
+
+event: delta
+data: {"text":"unexec`"}
+
+event: delta
+data: {"text":" 桶只进「"}
+
+event: delta
+data: {"text":"判据层："}
+
+event: delta
+data: {"text":"覆盖"}
+
+event: delta
+data: {"text":"缺口"}
+
+event: delta
+data: {"text":"」计"}
+
+event: delta
+data: {"text":"数器"}
+
+event: delta
+data: {"text":"，**不进入"}
+
+event: delta
+data: {"text":"**任何 FA"}
+
+event: delta
+data: {"text":"IL 计数器。\n\n"}
+
+event: delta
+data: {"text":"---\n\n### 3. R"}
+
+event: delta
+data: {"text":"siIterationGate 对"}
+
+event: delta
+data: {"text":"我最有用的读"}
+
+event: delta
+data: {"text":"数\n\n**按"}
+
+event: delta
+data: {"text":"价值"}
+
+event: delta
+data: {"text":"排序**"}
+
+event: delta
+data: {"text":"：\n\n1. **Gate "}
+
+event: delta
+data: {"text":"逐条"}
+
+event: delta
+data: {"text":"通过/"}
+
+event: delta
+data: {"text":"失败 + 失败"}
+
+event: delta
+data: {"text":"理由"}
+
+event: delta
+data: {"text":"原"}
+
+event: delta
+data: {"text":"文**  \n   "}
+
+event: delta
+data: {"text":"直接告诉提"}
+
+event: delta
+data: {"text":"案"}
+
+event: delta
+data: {"text":"「哪道"}
+
+event: delta
+data: {"text":"闸"}
+
+event: delta
+data: {"text":"挂"}
+
+event: delta
+data: {"text":"了、为什么"}
+
+event: delta
+data: {"text":"挂」，"}
+
+event: delta
+data: {"text":"避免"}
+
+event: delta
+data: {"text":"盲目改代"}
+
+event: delta
+data: {"text":"码。"}
+
+event: delta
+data: {"text":"  \n  "}
+
+event: delta
+data: {"text":" *需求*"}
+
+event: delta
+data: {"text":"：Modal"}
+
+event: delta
+data: {"text":" 里"}
+
+event: delta
+data: {"text":"把 `gate"}
+
+event: delta
+data: {"text":"Results"}
+
+event: delta
+data: {"text":"[]."}
+
+event: delta
+data: {"text":"reason` 全"}
+
+event: delta
+data: {"text":"量"}
+
+event: delta
+data: {"text":"展开，别"}
+
+event: delta
+data: {"text":"只显示图"}
+
+event: delta
+data: {"text":"标。\n\n2. **Bas"}
+
+event: delta
+data: {"text":"eline Δ"}
+
+event: delta
+data: {"text":"（本"}
+
+event: delta
+data: {"text":"次 run"}
+
+event: delta
+data: {"text":" 与 G"}
+
+event: delta
+data: {"text":"REEN_BASELINE 的 pass"}
+
+event: delta
+data: {"text":"/fail/un"}
+
+event: delta
+data: {"text":"exec 差值"}
+
+event: delta
+data: {"text":"）**  \n   让"}
+
+event: delta
+data: {"text":"我一"}
+
+event: delta
+data: {"text":"眼看出"}
+
+event: delta
+data: {"text":"「这次"}
+
+event: delta
+data: {"text":"改"}
+
+event: delta
+data: {"text":"动是进"}
+
+event: delta
+data: {"text":"步"}
+
+: ping
+
+event: delta
+data: {"text":"、"}
+
+event: delta
+data: {"text":"退步、还是只是"}
+
+event: delta
+data: {"text":"把"}
+
+event: delta
+data: {"text":" un"}
+
+event: delta
+data: {"text":"exec 变"}
+
+event: delta
+data: {"text":"绿了」。\n\n"}
+
+event: delta
+data: {"text":"3. **Token"}
+
+event: delta
+data: {"text":"/C"}
+
+event: delta
+data: {"text":"ost 走"}
+
+event: delta
+data: {"text":"势（最近"}
+
+event: delta
+data: {"text":" 10"}
+
+event: delta
+data: {"text":" 次迭代）**  "}
+
+event: delta
+data: {"text":"\n  "}
+
+event: delta
+data: {"text":" 防止「"}
+
+event: delta
+data: {"text":"为"}
+
+event: delta
+data: {"text":"过"}
+
+event: delta
+data: {"text":"闸而过"}
+
+event: delta
+data: {"text":"闸」把"}
+
+event: delta
+data: {"text":"上"}
+
+event: delta
+data: {"text":"下文塞"}
+
+event: delta
+data: {"text":"爆"}
+
+event: delta
+data: {"text":"，"}
+
+event: delta
+data: {"text":"触发成"}
+
+event: delta
+data: {"text":"本阈值误报"}
+
+event: delta
+data: {"text":"。\n\n4"}
+
+event: delta
+data: {"text":". **采"}
+
+event: delta
+data: {"text":"纳率"}
+
+event: delta
+data: {"text":"趋势（pro"}
+
+event: delta
+data: {"text":"posals.json"}
+
+event: delta
+data: {"text":"l accepted"}
+
+event: delta
+data: {"text":" / total"}
+
+event: delta
+data: {"text":"）**  \n   宏"}
+
+event: delta
+data: {"text":"观校"}
+
+event: delta
+data: {"text":"准：若"}
+
+event: delta
+data: {"text":"连"}
+
+event: delta
+data: {"text":"续 3"}
+
+event: delta
+data: {"text":" 次 < 20%，"}
+
+event: delta
+data: {"text":"说明提名"}
+
+event: delta
+data: {"text":"策"}
+
+event: delta
+data: {"text":"略或模"}
+
+event: delta
+data: {"text":"型能力有系"}
+
+event: delta
+data: {"text":"统性"}
+
+event: delta
+data: {"text":"偏差，"}
+
+event: delta
+data: {"text":"需人工介"}
+
+event: delta
+data: {"text":"入。\n\n---\n\n### 可"}
+
+event: delta
+data: {"text":"执行下"}
+
+event: delta
+data: {"text":"一步（"}
+
+event: delta
+data: {"text":"若"}
+
+event: delta
+data: {"text":"维"}
+
+event: delta
+data: {"text":"护者采"}
+
+event: delta
+data: {"text":"纳）\n\n**"}
+
+event: delta
+data: {"text":"提名标"}
+
+event: delta
+data: {"text":"题**：`unexec-consum"}
+
+event: delta
+data: {"text":"ption-chain`  \n**"}
+
+event: delta
+data: {"text":"gap"}
+
+event: delta
+data: {"text":"Type**：`defect`"}
+
+event: delta
+data: {"text":"（已"}
+
+event: delta
+data: {"text":"有能力"}
+
+event: delta
+data: {"text":"未生"}
+
+event: delta
+data: {"text":"效）  \n**"}
+
+event: delta
+data: {"text":"靶子文"}
+
+event: delta
+data: {"text":"件**：  \n- `"}
+
+event: delta
+data: {"text":"scripts/check-self-upgrade.m"}
+
+event: delta
+data: {"text":"js`  \n- `"}
+
+event: delta
+data: {"text":"scripts/failure-stats.m"}
+
+event: delta
+data: {"text":"js`  \n- `"}
+
+event: delta
+data: {"text":"services/eval/runner.ts"}
+
+event: delta
+data: {"text":"`  \n**验"}
+
+event: delta
+data: {"text":"收判据**（"}
+
+event: delta
+data: {"text":"机械）：  \n"}
+
+event: delta
+data: {"text":"```"}
+
+event: delta
+data: {"text":"bash\n# 1."}
+
+event: delta
+data: {"text":" 围栏不"}
+
+event: delta
+data: {"text":"再把 unexec 算"}
+
+event: delta
+data: {"text":"进 fail\nts"}
+
+event: delta
+data: {"text":"x scripts/check-self-upgrade"}
+
+event: delta
+data: {"text":".mjs --dry "}
+
+event: delta
+data: {"text":"2>&1 | grep -"}
+
+event: delta
+data: {"text":"c \"unexec.*"}
+
+event: delta
+data: {"text":"ignored\"  # ≥"}
+
+event: delta
+data: {"text":"1"}
+
+event: delta
+data: {"text":"\n\n# 2. "}
+
+event: delta
+data: {"text":"统"}
+
+event: delta
+data: {"text":"计聚合分"}
+
+event: delta
+data: {"text":"桶正确"}
+
+event: delta
+data: {"text":"\nnode"}
+
+event: delta
+data: {"text":" scripts/failure-stats.m"}
+
+event: delta
+data: {"text":"js --run-id"}
+
+event: delta
+data: {"text":"=<latest"}
+
+event: delta
+data: {"text":"> |"}
+
+event: delta
+data: {"text":" jq"}
+
+event: delta
+data: {"text":" '.unexecCount"}
+
+event: delta
+data: {"text":"'  # 等"}
+
+event: delta
+data: {"text":"于数据"}
+
+event: delta
+data: {"text":"库 unexec 行"}
+
+event: delta
+data: {"text":"数\n\n# 3."}
+
+event: delta
+data: {"text":" runner 不"}
+
+event: delta
+data: {"text":"再把 unexec 计"}
+
+event: delta
+data: {"text":"入 fail"}
+
+event: delta
+data: {"text":"\nvit"}
+
+event: delta
+data: {"text":"est run tests/eval/un"}
+
+event: delta
+data: {"text":"exec-consum"}
+
+event: delta
+data: {"text":"ption.test.ts  # 新"}
+
+event: delta
+data: {"text":"增 "}
+
+event: delta
+data: {"text":"3 条用例全"}
+
+event: delta
+data: {"text":"绿\n```\n\n"}
+
+event: delta
+data: {"text":"**风"}
+
+event: delta
+data: {"text":"险提"}
+
+event: delta
+data: {"text":"示**：`eval"}
+
+event: delta
+data: {"text":"/runner.ts` 可能"}
+
+event: delta
+data: {"text":"被"}
+
+event: delta
+data: {"text":"其"}
+
+event: delta
+data: {"text":"它评"}
+
+event: delta
+data: {"text":"测"}
+
+event: delta
+data: {"text":"套件复用，改"}
+
+event: delta
+data: {"text":"动前"}
+
+event: delta
+data: {"text":"跑全"}
+
+event: delta
+data: {"text":"量 `vitest run`"}
+
+event: delta
+data: {"text":" 确认"}
+
+event: delta
+data: {"text":"无"}
+
+event: delta
+data: {"text":"侧向"}
+
+event: delta
+data: {"text":"回归。"}
+
+event: run_report
+data: {"runId":"095f3379-eff9-4487-87fd-6559b85ae978","sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","outcome":"completed","statusCode":"RUN_COMPLETED","reason":null,"notDone":[],"hasMaterialChange":true,"triggers":["成本超阈值"],"finishReason":"stop","fileChangeCount":0,"irreversibleCount":0,"approvalCount":0,"errorCount":0,"toolCallCount":0,"promptTokens":23458,"completionTokens":1591,"durationMs":37597,"summary":"耗时 37.6s；token 25049（复核 0）"}
+
+event: stage
+data: {"runId":"095f3379-eff9-4487-87fd-6559b85ae978","stage":"done","at":1794484496434,"elapsedMs":37682,"detail":null}
+
+event: done
+data: {"finishReason":"stop","iteration":1,"toolCallCount":0,"usage":{"promptTokens":23458,"completionTokens":1591},"tokenBudget":256000,"messageId":"492d0f15-29ce-4105-927a-eb8cba9625b5","firstTokenMs":1893}
+

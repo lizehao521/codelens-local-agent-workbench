@@ -1,0 +1,1806 @@
+event: stage
+data: {"runId":"5c926753-1fc9-4887-acd1-5010850bd353","stage":"connecting","at":1794487092427,"elapsedMs":0,"detail":null}
+
+event: meta
+data: {"sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","messageId":"984d67c3-fa89-41fd-af6a-da006a160183","provider":"custom","model":"nvidia/nemotron-3-ultra-550b-a55b","channel":"native","degraded":false,"degradedReason":null,"iteration":1,"maxIterations":8,"contextWindow":128000,"tokenBudget":256000,"estimatedPromptTokens":0,"toolCount":2,"switchedFrom":null,"switchReason":null}
+
+event: stage
+data: {"runId":"5c926753-1fc9-4887-acd1-5010850bd353","stage":"upstream_first_byte","at":1794487094088,"elapsedMs":1661,"detail":null}
+
+event: stage
+data: {"runId":"5c926753-1fc9-4887-acd1-5010850bd353","stage":"reasoning","at":1794487094089,"elapsedMs":1662,"detail":null}
+
+event: reasoning
+data: {"text":"The"}
+
+event: reasoning
+data: {"text":" user wants a"}
+
+event: reasoning
+data: {"text":" structured"}
+
+event: reasoning
+data: {"text":" architectural discussion and"}
+
+event: reasoning
+data: {"text":" iteration"}
+
+event: reasoning
+data: {"text":" plan based on the provided"}
+
+event: reasoning
+data: {"text":" context. I need to answer"}
+
+event: reasoning
+data: {"text":" four specific decision points (1"}
+
+event: reasoning
+data: {"text":"-4) with"}
+
+event: reasoning
+data: {"text":" clear stance"}
+
+event: reasoning
+data: {"text":", reasoning, and risks"}
+
+event: reasoning
+data: {"text":", then"}
+
+event: reasoning
+data: {"text":" confirm/ad"}
+
+event: reasoning
+data: {"text":"just the Phase A/B/C"}
+
+event: reasoning
+data: {"text":" order."}
+
+event: reasoning
+data: {"text":" No tool calls"}
+
+event: reasoning
+data: {"text":" allowed."}
+
+event: delta
+data: {"text":"###"}
+
+event: delta
+data: {"text":" 1. 数据"}
+
+event: delta
+data: {"text":"流：两条测"}
+
+event: delta
+data: {"text":"量线**"}
+
+event: delta
+data: {"text":"保持独立**，"}
+
+event: delta
+data: {"text":"前端 Gate"}
+
+event: delta
+data: {"text":" 读 A "}
+
+event: delta
+data: {"text":"线（在"}
+
+event: delta
+data: {"text":"线），"}
+
+event: delta
+data: {"text":"B"}
+
+event: delta
+data: {"text":" 线仅"}
+
+event: delta
+data: {"text":"作"}
+
+event: delta
+data: {"text":"离线审计"}
+
+event: delta
+data: {"text":"兜底\n\n**立场"}
+
+event: delta
+data: {"text":"**：不"}
+
+event: delta
+data: {"text":"统一。"}
+
+event: delta
+data: {"text":"A 线（`"}
+
+event: delta
+data: {"text":"policy_rsi_runs`"}
+
+event: delta
+data: {"text":" + `server/data/rsi"}
+
+event: delta
+data: {"text":"/*.jsonl`）是"}
+
+event: delta
+data: {"text":"**在"}
+
+event: delta
+data: {"text":"线判"}
+
+event: delta
+data: {"text":"决流"}
+
+event: delta
+data: {"text":"**，面"}
+
+event: delta
+data: {"text":"向实时 Gate"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"与人"}
+
+event: delta
+data: {"text":"工"}
+
+event: delta
+data: {"text":"观"}
+
+event: delta
+data: {"text":"测；B 线（"}
+
+event: delta
+data: {"text":"`.self-upgrade/led"}
+
+event: delta
+data: {"text":"ger.jsonl` +"}
+
+event: delta
+data: {"text":" `baseline.json`）"}
+
+event: delta
+data: {"text":"是**离线围"}
+
+event: delta
+data: {"text":"栏账本**，"}
+
+event: delta
+data: {"text":"面向跨代回"}
+
+event: delta
+data: {"text":"归与自"}
+
+event: delta
+data: {"text":"动采"}
+
+event: delta
+data: {"text":"纳门禁。两者"}
+
+event: delta
+data: {"text":"信"}
+
+event: delta
+data: {"text":"任边界、写"}
+
+event: delta
+data: {"text":"入时"}
+
+event: delta
+data: {"text":"机、消"}
+
+event: delta
+data: {"text":"费者完全不同，"}
+
+event: delta
+data: {"text":"强行合并会把"}
+
+event: delta
+data: {"text":"「"}
+
+event: delta
+data: {"text":"在线可"}
+
+event: delta
+data: {"text":"观测」与「"}
+
+event: delta
+data: {"text":"离线不可"}
+
+event: delta
+data: {"text":"变"}
+
+event: delta
+data: {"text":"」"}
+
+event: delta
+data: {"text":"耦合在"}
+
+event: delta
+data: {"text":"一起，反"}
+
+event: delta
+data: {"text":"而引"}
+
+event: delta
+data: {"text":"入单"}
+
+event: delta
+data: {"text":"点"}
+
+event: delta
+data: {"text":"故障。\n\n**理由"}
+
+event: delta
+data: {"text":"**"}
+
+event: delta
+data: {"text":"  \n- A 线"}
+
+event: delta
+data: {"text":"由 `rsi-bridge"}
+
+event: delta
+data: {"text":".service` 在"}
+
+event: delta
+data: {"text":"每次 agent"}
+
+event: delta
+data: {"text":" run"}
+
+event: delta
+data: {"text":" 结束时"}
+
+event: delta
+data: {"text":"写入，延"}
+
+event: delta
+data: {"text":"迟秒"}
+
+event: delta
+data: {"text":"级，供"}
+
+event: delta
+data: {"text":" `/"}
+
+event: delta
+data: {"text":"api/v1/rsi/"}
+
+event: delta
+data: {"text":"overview` 与"}
+
+event: delta
+data: {"text":" Gate 实时读取"}
+
+event: delta
+data: {"text":"。  \n- B "}
+
+event: delta
+data: {"text":"线由 `self-upgrade"}
+
+event: delta
+data: {"text":"-loop` 在"}
+
+event: delta
+data: {"text":"围栏通过"}
+
+event: delta
+data: {"text":"后追"}
+
+event: delta
+data: {"text":"加，"}
+
+event: delta
+data: {"text":"仅供"}
+
+event: delta
+data: {"text":" `check-self-upgrade.m"}
+
+event: delta
+data: {"text":"js`、`failure-st"}
+
+event: delta
+data: {"text":"ats.m"}
+
+event: delta
+data: {"text":"js`、"}
+
+event: delta
+data: {"text":"人"}
+
+event: delta
+data: {"text":"工"}
+
+event: delta
+data: {"text":"审计读"}
+
+event: delta
+data: {"text":"取。  \n- "}
+
+event: delta
+data: {"text":"统"}
+
+event: delta
+data: {"text":"一"}
+
+event: delta
+data: {"text":"迁移代"}
+
+event: delta
+data: {"text":"价：需"}
+
+event: delta
+data: {"text":"重写 `rsi-b"}
+
+event: delta
+data: {"text":"ridge`"}
+
+event: delta
+data: {"text":"、`iteration-store"}
+
+event: delta
+data: {"text":"`、"}
+
+event: delta
+data: {"text":"前"}
+
+event: delta
+data: {"text":"端 Gate"}
+
+event: delta
+data: {"text":" 全"}
+
+event: delta
+data: {"text":"部"}
+
+event: delta
+data: {"text":"读路"}
+
+event: delta
+data: {"text":"径，且 B"}
+
+event: delta
+data: {"text":" 线的"}
+
+event: delta
+data: {"text":"「不可"}
+
+event: delta
+data: {"text":"变追"}
+
+event: delta
+data: {"text":"加」语"}
+
+event: delta
+data: {"text":"义在 DB"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"侧难以原"}
+
+event: delta
+data: {"text":"子保"}
+
+event: delta
+data: {"text":"证。\n\n"}
+
+event: delta
+data: {"text":"**风"}
+
+event: delta
+data: {"text":"险**："}
+
+event: delta
+data: {"text":"前端若"}
+
+event: delta
+data: {"text":"误"}
+
+event: delta
+data: {"text":"读 B 线会"}
+
+event: delta
+data: {"text":"看到「延"}
+
+event: delta
+data: {"text":"迟几"}
+
+event: delta
+data: {"text":"小时」"}
+
+event: delta
+data: {"text":"的旧"}
+
+event: delta
+data: {"text":"数据；**"}
+
+event: delta
+data: {"text":"缓解"}
+
+event: delta
+data: {"text":"**：Gate"}
+
+event: delta
+data: {"text":" 组"}
+
+event: delta
+data: {"text":"件显"}
+
+event: delta
+data: {"text":"式标"}
+
+event: delta
+data: {"text":"注数据"}
+
+event: delta
+data: {"text":"源（"}
+
+event: delta
+data: {"text":"`source"}
+
+event: delta
+data: {"text":": '"}
+
+event: delta
+data: {"text":"online' | 'off"}
+
+event: delta
+data: {"text":"line'`），且"}
+
+event: delta
+data: {"text":"默"}
+
+event: delta
+data: {"text":"认只读 A 线"}
+
+event: delta
+data: {"text":"。\n\n---\n\n### 2."}
+
+event: delta
+data: {"text":" 接口设计："}
+
+event: delta
+data: {"text":"在 `/api/v1/r"}
+
+event: delta
+data: {"text":"si` 下新增三"}
+
+event: delta
+data: {"text":"个只"}
+
+event: delta
+data: {"text":"读端点，复"}
+
+event: delta
+data: {"text":"用现有 SSE"}
+
+event: delta
+data: {"text":" 推送实时更新"}
+
+event: delta
+data: {"text":"\n\n|"}
+
+event: delta
+data: {"text":" 端点 | 方法"}
+
+event: delta
+data: {"text":" | 关键 payload"}
+
+event: delta
+data: {"text":" 形状（"}
+
+event: delta
+data: {"text":"Type"}
+
+event: delta
+data: {"text":"Script"}
+
+event: delta
+data: {"text":" 接口） |\n|---"}
+
+event: delta
+data: {"text":"|---|---|\n"}
+
+event: delta
+data: {"text":"| `/"}
+
+event: delta
+data: {"text":"api/v1/rsi/g"}
+
+event: delta
+data: {"text":"ate/:session"}
+
+event: delta
+data: {"text":"Id` | GET | `{"}
+
+event: delta
+data: {"text":" session"}
+
+event: delta
+data: {"text":"Id, gates"}
+
+event: delta
+data: {"text":": Gate"}
+
+event: delta
+data: {"text":"Result[], baseline"}
+
+event: delta
+data: {"text":"Delta"}
+
+event: delta
+data: {"text":": { pass,"}
+
+event: delta
+data: {"text":" fail, unexec },"}
+
+event: delta
+data: {"text":" trends: { tokens"}
+
+event: delta
+data: {"text":": number[], cost: number"}
+
+event: delta
+data: {"text":"[], adopt"}
+
+event: delta
+data: {"text":"Rate: number[]"}
+
+event: delta
+data: {"text":" } }` |\n"}
+
+event: delta
+data: {"text":"| `/api/v1/r"}
+
+event: delta
+data: {"text":"si/gate/h"}
+
+event: delta
+data: {"text":"istory` | GET | `{"}
+
+event: delta
+data: {"text":" runs"}
+
+event: delta
+data: {"text":": {"}
+
+: ping
+
+event: delta
+data: {"text":" id"}
+
+event: delta
+data: {"text":", ts"}
+
+event: delta
+data: {"text":", verdicts:"}
+
+event: delta
+data: {"text":" { pass"}
+
+event: delta
+data: {"text":", fail, unexec },"}
+
+event: delta
+data: {"text":" gaps: string[] }[]"}
+
+event: delta
+data: {"text":" }` |\n| `/api"}
+
+event: delta
+data: {"text":"/v1/rsi/g"}
+
+event: delta
+data: {"text":"ate/stream` | GET"}
+
+event: delta
+data: {"text":" (SSE) | "}
+
+event: delta
+data: {"text":"事件 `"}
+
+event: delta
+data: {"text":"gate:update"}
+
+event: delta
+data: {"text":"` → "}
+
+event: delta
+data: {"text":"同 `gate/:"}
+
+event: delta
+data: {"text":"sessionId` 形"}
+
+event: delta
+data: {"text":"状；`gate"}
+
+event: delta
+data: {"text":":ad"}
+
+event: delta
+data: {"text":"opt` → `{"}
+
+event: delta
+data: {"text":" proposalId, status"}
+
+event: delta
+data: {"text":":"}
+
+event: delta
+data: {"text":" 'adopted'|"}
+
+event: delta
+data: {"text":"'rejected' }`"}
+
+event: delta
+data: {"text":" |\n\n**三"}
+
+event: delta
+data: {"text":"态表"}
+
+event: delta
+data: {"text":"达**：`ver"}
+
+event: delta
+data: {"text":"dicts` 直接"}
+
+event: delta
+data: {"text":"用"}
+
+event: delta
+data: {"text":"三"}
+
+event: delta
+data: {"text":"字"}
+
+event: delta
+data: {"text":"段整"}
+
+event: delta
+data: {"text":"数，"}
+
+event: delta
+data: {"text":"前"}
+
+event: delta
+data: {"text":"端不"}
+
+event: delta
+data: {"text":"再推"}
+
+event: delta
+data: {"text":"导。"}
+
+event: delta
+data: {"text":"  \n**"}
+
+event: delta
+data: {"text":"趋势数据"}
+
+event: delta
+data: {"text":"**：`trends`"}
+
+event: delta
+data: {"text":" 数组"}
+
+event: delta
+data: {"text":"固定长"}
+
+event: delta
+data: {"text":"度 10，按"}
+
+event: delta
+data: {"text":" `"}
+
+event: delta
+data: {"text":"run_id`"}
+
+event: delta
+data: {"text":" 倒序取"}
+
+event: delta
+data: {"text":"最近"}
+
+event: delta
+data: {"text":" 10 次；"}
+
+event: delta
+data: {"text":"`adoptRate` ="}
+
+event: delta
+data: {"text":" `accepted /"}
+
+event: delta
+data: {"text":" total`。"}
+
+event: delta
+data: {"text":"  \n**实时更新"}
+
+event: delta
+data: {"text":"**：复用现有 `"}
+
+event: delta
+data: {"text":"services"}
+
+event: delta
+data: {"text":"/agent/sse-writer"}
+
+event: delta
+data: {"text":".ts` 的 `r"}
+
+event: delta
+data: {"text":"si:gate"}
+
+event: delta
+data: {"text":"`"}
+
+event: delta
+data: {"text":" 频道，**"}
+
+event: delta
+data: {"text":"不新增轮"}
+
+event: delta
+data: {"text":"询**，"}
+
+event: delta
+data: {"text":"避免双"}
+
+event: delta
+data: {"text":"维"}
+
+event: delta
+data: {"text":"护。\n\n**"}
+
+event: delta
+data: {"text":"风险**：S"}
+
+event: delta
+data: {"text":"SE 连"}
+
+event: delta
+data: {"text":"接在 nginx"}
+
+event: delta
+data: {"text":" 代"}
+
+event: delta
+data: {"text":"理下可能被"}
+
+event: delta
+data: {"text":"缓冲；需在"}
+
+event: delta
+data: {"text":" `nginx.conf` 里"}
+
+event: delta
+data: {"text":"对"}
+
+event: delta
+data: {"text":" `/"}
+
+event: delta
+data: {"text":"api/v1/rsi/g"}
+
+event: delta
+data: {"text":"ate/stream` 关"}
+
+event: delta
+data: {"text":"闭 `proxy_buffering`"}
+
+event: delta
+data: {"text":"。\n\n---\n\n### 3."}
+
+event: delta
+data: {"text":" 前后端协作"}
+
+event: delta
+data: {"text":"：**RsiIterationGate"}
+
+event: delta
+data: {"text":" v2 仅"}
+
+event: delta
+data: {"text":"落在 React client"}
+
+event: delta
+data: {"text":"（`client/src/components"}
+
+event: delta
+data: {"text":"/RsiIterationGate.tsx"}
+
+event: delta
+data: {"text":"`）"}
+
+event: delta
+data: {"text":"**，独立 `/"}
+
+event: delta
+data: {"text":"rsi` HTML"}
+
+event: delta
+data: {"text":" 与 Electron 复"}
+
+event: delta
+data: {"text":"用同一 API"}
+
+event: delta
+data: {"text":"、"}
+
+event: delta
+data: {"text":"同"}
+
+event: delta
+data: {"text":"一 Type"}
+
+event: delta
+data: {"text":"Script 类"}
+
+event: delta
+data: {"text":"型定义\n\n**策"}
+
+event: delta
+data: {"text":"略**  \n- **"}
+
+event: delta
+data: {"text":"共享类"}
+
+event: delta
+data: {"text":"型**：在"}
+
+event: delta
+data: {"text":" `shared"}
+
+event: delta
+data: {"text":"/types/r"}
+
+event: delta
+data: {"text":"si-gate.ts`（"}
+
+event: delta
+data: {"text":"新建，"}
+
+event: delta
+data: {"text":"放"}
+
+event: delta
+data: {"text":" `"}
+
+event: delta
+data: {"text":"server/src/types"}
+
+event: delta
+data: {"text":"/`"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"并通过"}
+
+event: delta
+data: {"text":" `tsc --"}
+
+event: delta
+data: {"text":"declaration` 产"}
+
+event: delta
+data: {"text":"出 `.d.ts` "}
+
+event: delta
+data: {"text":"供前端 `npm"}
+
+event: delta
+data: {"text":" link"}
+
+event: delta
+data: {"text":"`）"}
+
+event: delta
+data: {"text":"定义上"}
+
+event: delta
+data: {"text":"述三"}
+
+event: delta
+data: {"text":"个端"}
+
+event: delta
+data: {"text":"点的响"}
+
+event: delta
+data: {"text":"应接"}
+
+event: delta
+data: {"text":"口。  \n- **"}
+
+event: delta
+data: {"text":"共享 API client**：`"}
+
+event: delta
+data: {"text":"client/src/services/r"}
+
+event: delta
+data: {"text":"si-g"}
+
+event: delta
+data: {"text":"ate.api"}
+
+event: delta
+data: {"text":".ts` 封"}
+
+event: delta
+data: {"text":"装 `fetchGate"}
+
+event: delta
+data: {"text":"()`"}
+
+event: delta
+data: {"text":"、`fetchHistory"}
+
+event: delta
+data: {"text":"()`、`open"}
+
+event: delta
+data: {"text":"Stream()`，"}
+
+event: delta
+data: {"text":"Elect"}
+
+event: delta
+data: {"text":"ron"}
+
+event: delta
+data: {"text":" 预加载脚本"}
+
+event: delta
+data: {"text":"同引"}
+
+event: delta
+data: {"text":"用此文件。  "}
+
+event: delta
+data: {"text":"\n- **独立 `/"}
+
+event: delta
+data: {"text":"rsi` HTML**：保"}
+
+event: delta
+data: {"text":"留作为"}
+
+event: delta
+data: {"text":"**"}
+
+event: delta
+data: {"text":"零构建运"}
+
+event: delta
+data: {"text":"维旁路**，"}
+
+event: delta
+data: {"text":"仅做"}
+
+event: delta
+data: {"text":" `"}
+
+event: delta
+data: {"text":"fetch"}
+
+event: delta
+data: {"text":"('/"}
+
+event: delta
+data: {"text":"api/v1/rsi/g"}
+
+event: delta
+data: {"text":"ate/h"}
+
+event: delta
+data: {"text":"istory')` 简单"}
+
+event: delta
+data: {"text":"渲染，**"}
+
+event: delta
+data: {"text":"不实"}
+
+event: delta
+data: {"text":"现实"}
+
+event: delta
+data: {"text":"时 Gate"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"细节**"}
+
+event: delta
+data: {"text":"；若"}
+
+event: delta
+data: {"text":"需完"}
+
+event: delta
+data: {"text":"整交"}
+
+event: delta
+data: {"text":"互，文"}
+
+event: delta
+data: {"text":"档引"}
+
+event: delta
+data: {"text":"导用"}
+
+event: delta
+data: {"text":"户"}
+
+event: delta
+data: {"text":"打开 React 客户"}
+
+event: delta
+data: {"text":"端。  \n-"}
+
+event: delta
+data: {"text":" **Electron**：主"}
+
+event: delta
+data: {"text":"进"}
+
+event: delta
+data: {"text":"程不"}
+
+event: delta
+data: {"text":"渲染 Gate"}
+
+event: delta
+data: {"text":"，"}
+
+event: delta
+data: {"text":"渲染进"}
+
+event: delta
+data: {"text":"程直接加载 React "}
+
+event: delta
+data: {"text":"打"}
+
+event: delta
+data: {"text":"包产"}
+
+event: delta
+data: {"text":"物，零"}
+
+event: delta
+data: {"text":"额外代码。\n\n**"}
+
+event: delta
+data: {"text":"风险**：类"}
+
+event: delta
+data: {"text":"型定义若"}
+
+event: delta
+data: {"text":"变更需同步发"}
+
+event: delta
+data: {"text":"布；"}
+
+: ping
+
+event: delta
+data: {"text":"**"}
+
+event: delta
+data: {"text":"缓解**：在"}
+
+event: delta
+data: {"text":" `pack"}
+
+event: delta
+data: {"text":"-local.sh` 里把"}
+
+event: delta
+data: {"text":" `shared"}
+
+event: delta
+data: {"text":"/types/*."}
+
+event: delta
+data: {"text":"d.ts` 复"}
+
+event: delta
+data: {"text":"制进"}
+
+event: delta
+data: {"text":" `client/src/types"}
+
+event: delta
+data: {"text":"/g"}
+
+event: delta
+data: {"text":"enerated/`，构"}
+
+event: delta
+data: {"text":"建时强"}
+
+event: delta
+data: {"text":"制同"}
+
+event: delta
+data: {"text":"步。\n\n---\n\n### 4"}
+
+event: delta
+data: {"text":". 可扩展"}
+
+event: delta
+data: {"text":"性：L2/L3"}
+
+event: delta
+data: {"text":" 判据做"}
+
+event: delta
+data: {"text":"**"}
+
+event: delta
+data: {"text":"显"}
+
+event: delta
+data: {"text":"式注"}
+
+event: delta
+data: {"text":"册表 +"}
+
+event: delta
+data: {"text":" 受保护路"}
+
+event: delta
+data: {"text":"径白名单**，"}
+
+event: delta
+data: {"text":"eval"}
+
+event: delta
+data: {"text":" 套件晋升"}
+
+event: delta
+data: {"text":"路径「"}
+
+event: delta
+data: {"text":"人工审判"}
+
+event: delta
+data: {"text":"据 → 机械"}
+
+event: delta
+data: {"text":"围"}
+
+event: delta
+data: {"text":"栏 →"}
+
+event: delta
+data: {"text":" 自"}
+
+event: delta
+data: {"text":"动"}
+
+event: delta
+data: {"text":"固化"}
+
+event: delta
+data: {"text":"」\n\n**L"}
+
+event: delta
+data: {"text":"2/L3"}
+
+event: delta
+data: {"text":" 插件"}
+
+event: delta
+data: {"text":"化**  \n- 在"}
+
+event: delta
+data: {"text":" `judge/criteria/"}
+
+event: delta
+data: {"text":"registry.ts` "}
+
+event: delta
+data: {"text":"导出 `register"}
+
+event: delta
+data: {"text":"Criterion"}
+
+event: delta
+data: {"text":"(name"}
+
+event: delta
+data: {"text":", fn, {"}
+
+event: delta
+data: {"text":" level:"}
+
+event: delta
+data: {"text":" 'L2'|'"}
+
+event: delta
+data: {"text":"L3', protected: boolean"}
+
+event: delta
+data: {"text":" })`。  \n-"}
+
+event: delta
+data: {"text":" `protected:"}
+
+event: delta
+data: {"text":" true` 的"}
+
+event: delta
+data: {"text":"判据文"}
+
+event: delta
+data: {"text":"件**"}
+
+event: delta
+data: {"text":"必须**位"}
+
+event: delta
+data: {"text":"于 `src"}
+
+event: delta
+data: {"text":"/services/judge/`（受"}
+
+event: delta
+data: {"text":"保"}
+
+event: delta
+data: {"text":"护路径），`"}
+
+event: delta
+data: {"text":"check"}
+
+event: delta
+data: {"text":"-self-upgrade.mjs`"}
+
+event: delta
+data: {"text":" 启"}
+
+event: delta
+data: {"text":"动时"}
+
+event: delta
+data: {"text":"扫描注"}
+
+event: delta
+data: {"text":"册表，"}
+
+event: delta
+data: {"text":"拒绝加"}
+
+event: delta
+data: {"text":"载非"}
+
+event: delta
+data: {"text":"受保护路径"}
+
+event: delta
+data: {"text":"下的 `protected` "}
+
+event: delta
+data: {"text":"判据。  \n-"}
+
+event: delta
+data: {"text":" 非受保护"}
+
+event: delta
+data: {"text":"判据（实"}
+
+event: delta
+data: {"text":"验性）"}
+
+event: delta
+data: {"text":"可放"}
+
+event: delta
+data: {"text":"在 `src/tools"}
+
+event: delta
+data: {"text":"/` 或 `src"}
+
+event: delta
+data: {"text":"/utils/`，仅"}
+
+event: delta
+data: {"text":"在 `--"}
+
+event: delta
+data: {"text":"allow"}
+
+event: delta
+data: {"text":"-experimental` 下"}
+
+event: delta
+data: {"text":"被"}
+
+event: delta
+data: {"text":" `"}
+
+event: delta
+data: {"text":"runner.ts"}
+
+event: delta
+data: {"text":"` 加载，**"}
+
+event: delta
+data: {"text":"不进入围栏"}
+
+event: delta
+data: {"text":"分"}
+
+event: delta
+data: {"text":"母**。\n\n**eval "}
+
+event: delta
+data: {"text":"套件晋升路径"}
+
+event: delta
+data: {"text":"**  \n| 阶"}
+
+event: delta
+data: {"text":"段 |"}
+
+event: delta
+data: {"text":" 动作 |"}
+
+event: delta
+data: {"text":" 谁做"}
+
+event: delta
+data: {"text":" | 机"}
+
+event: delta
+data: {"text":"械验"}
+
+event: delta
+data: {"text":"收 |\n|---"}
+
+event: delta
+data: {"text":"|---|---|---"}
+
+event: delta
+data: {"text":"|\n| "}
+
+event: delta
+data: {"text":"1. 提名 | `"}
+
+event: delta
+data: {"text":"propose-gaps` "}
+
+event: delta
+data: {"text":"产出 `gapType:"}
+
+event: delta
+data: {"text":" missing"}
+
+event: delta
+data: {"text":"` + `criterionName"}
+
+event: delta
+data: {"text":"` |"}
+
+event: delta
+data: {"text":" 模型/"}
+
+event: delta
+data: {"text":"人 |"}
+
+event: delta
+data: {"text":" `propos"}
+
+event: delta
+data: {"text":"als.jsonl` 新"}
+
+event: delta
+data: {"text":"增行"}
+
+event: delta
+data: {"text":" |\n| 2. "}
+
+event: delta
+data: {"text":"审判据 | 人"}
+
+event: delta
+data: {"text":"工"}
+
+event: delta
+data: {"text":"阅读 `judge/c"}
+
+event: delta
+data: {"text":"riteria/<name>.ts"}
+
+event: delta
+data: {"text":"`，确认 `protected"}
+
+event: delta
+data: {"text":": true` 与"}
+
+event: delta
+data: {"text":"测试向"}
+
+event: delta
+data: {"text":"量 | "}
+
+event: delta
+data: {"text":"维护者 | `"}
+
+event: delta
+data: {"text":"jud"}
+
+event: delta
+data: {"text":"ge-audit.m"}
+
+event: delta
+data: {"text":"js --"}
+
+event: delta
+data: {"text":"name"}
+
+event: delta
+data: {"text":"="}
+
+event: delta
+data: {"text":"<name>` 通过 |\n"}
+
+event: delta
+data: {"text":"| 3. "}
+
+event: delta
+data: {"text":"围栏 | `check"}
+
+event: delta
+data: {"text":"-self-upgrade.mjs`"}
+
+event: delta
+data: {"text":" 把新判据纳"}
+
+event: delta
+data: {"text":"入 `"}
+
+event: delta
+data: {"text":"required"}
+
+event: delta
+data: {"text":"Jud"}
+
+event: delta
+data: {"text":"ges`，"}
+
+event: delta
+data: {"text":"跑全"}
+
+event: delta
+data: {"text":"量回归 | "}
+
+event: delta
+data: {"text":"循环自"}
+
+event: delta
+data: {"text":"动 | "}
+
+event: delta
+data: {"text":"1448/1"}
+
+event: delta
+data: {"text":"448 绿"}
+
+event: delta
+data: {"text":" |\n| 4. "}
+
+event: delta
+data: {"text":"固化 | `"}
+
+event: delta
+data: {"text":"baseline.json` 更新"}
+
+event: delta
+data: {"text":"指纹，`"}
+
+event: delta
+data: {"text":"G"}
+
+event: delta
+data: {"text":"REEN_BASELINE` "}
+
+event: delta
+data: {"text":"闸生"}
+
+event: delta
+data: {"text":"效 | "}
+
+event: delta
+data: {"text":"循环自动 | `"}
+
+event: delta
+data: {"text":"led"}
+
+event: delta
+data: {"text":"ger.json"}
+
+event: delta
+data: {"text":"l` 新"}
+
+event: delta
+data: {"text":"增 `baseline-up"}
+
+event: delta
+data: {"text":"dated` "}
+
+event: delta
+data: {"text":"事件 |\n\n**风险**："}
+
+event: delta
+data: {"text":"注册表若"}
+
+event: delta
+data: {"text":"被恶"}
+
+event: delta
+data: {"text":"意注入非"}
+
+event: delta
+data: {"text":"受保护判据"}
+
+event: delta
+data: {"text":"会"}
+
+event: delta
+data: {"text":"绕过围栏"}
+
+event: delta
+data: {"text":"；**缓解**："}
+
+: ping
+
+event: delta
+data: {"text":"`registry"}
+
+event: delta
+data: {"text":".ts` 本"}
+
+event: delta
+data: {"text":"身放"}
+
+event: delta
+data: {"text":"在受"}
+
+event: delta
+data: {"text":"保护路径，"}
+
+event: delta
+data: {"text":"且 `check-self-upgrade"}
+
+event: delta
+data: {"text":"` 启动时校"}
+
+event: delta
+data: {"text":"验 `Object"}
+
+event: delta
+data: {"text":".keys(registry)."}
+
+event: delta
+data: {"text":"every(is"}
+
+event: delta
+data: {"text":"ProtectedPath)`。\n\n---\n\n"}
+
+event: delta
+data: {"text":"### Phase "}
+
+event: delta
+data: {"text":"顺序确认：**"}
+
+event: delta
+data: {"text":"A"}
+
+event: delta
+data: {"text":" → B → C**，"}
+
+event: delta
+data: {"text":"但"}
+
+event: delta
+data: {"text":" **C"}
+
+event: delta
+data: {"text":" 的"}
+
+event: delta
+data: {"text":"「"}
+
+event: delta
+data: {"text":"tool"}
+
+event: delta
+data: {"text":"-use-coach 重提"}
+
+event: delta
+data: {"text":"名」可"}
+
+event: delta
+data: {"text":"并行进"}
+
+event: delta
+data: {"text":" A"}
+
+event: delta
+data: {"text":"（D"}
+
+event: delta
+data: {"text":"1 管"}
+
+event: delta
+data: {"text":"线"}
+
+event: delta
+data: {"text":"）**\n\n-"}
+
+event: delta
+data: {"text":" **"}
+
+event: delta
+data: {"text":"Phase A**（"}
+
+event: delta
+data: {"text":"破坏夹具"}
+
+event: delta
+data: {"text":" + fs"}
+
+event: delta
+data: {"text":"-read D"}
+
+event: delta
+data: {"text":"1 全"}
+
+event: delta
+data: {"text":"链）先"}
+
+event: delta
+data: {"text":"跑通"}
+
+event: delta
+data: {"text":"，证明"}
+
+event: delta
+data: {"text":"「门禁能"}
+
+event: delta
+data: {"text":"被"}
+
+event: delta
+data: {"text":"打红、能"}
+
+event: delta
+data: {"text":"被自动修"}
+
+event: delta
+data: {"text":"好」。  \n- **"}
+
+event: delta
+data: {"text":"Phase B**（Gate"}
+
+event: delta
+data: {"text":" v2 四"}
+
+event: delta
+data: {"text":"读数）紧"}
+
+event: delta
+data: {"text":"随其"}
+
+event: delta
+data: {"text":"后"}
+
+event: delta
+data: {"text":"，把"}
+
+event: delta
+data: {"text":" A"}
+
+event: delta
+data: {"text":" 的"}
+
+event: delta
+data: {"text":"成"}
+
+event: delta
+data: {"text":"果直接可"}
+
+event: delta
+data: {"text":"视化。  \n-"}
+
+event: delta
+data: {"text":" **Phase C**（L2"}
+
+event: delta
+data: {"text":"/L3"}
+
+event: delta
+data: {"text":" 插件化 + tool-use"}
+
+event: delta
+data: {"text":"-coach）在"}
+
+event: delta
+data: {"text":" B"}
+
+event: delta
+data: {"text":" "}
+
+event: delta
+data: {"text":"稳定后展"}
+
+event: delta
+data: {"text":"开；"}
+
+event: delta
+data: {"text":"其中"}
+
+event: delta
+data: {"text":" `tool-use-coach`"}
+
+event: delta
+data: {"text":" 属 D"}
+
+event: delta
+data: {"text":"1"}
+
+event: delta
+data: {"text":" 能力"}
+
+event: delta
+data: {"text":"缺口，**可"}
+
+event: delta
+data: {"text":"在 A 完成"}
+
+event: delta
+data: {"text":"后立即重"}
+
+event: delta
+data: {"text":"提名走"}
+
+event: delta
+data: {"text":" author"}
+
+event: delta
+data: {"text":"→implement→adopt"}
+
+event: delta
+data: {"text":"**，不必等 C"}
+
+event: delta
+data: {"text":" 全"}
+
+event: delta
+data: {"text":"部做"}
+
+event: delta
+data: {"text":"完。"}
+
+event: run_report
+data: {"runId":"5c926753-1fc9-4887-acd1-5010850bd353","sessionId":"fdcd259d-2038-4b45-9293-a6c3458eed84","outcome":"completed","statusCode":"RUN_COMPLETED","reason":null,"notDone":[],"hasMaterialChange":true,"triggers":["成本超阈值"],"finishReason":"stop","fileChangeCount":0,"irreversibleCount":0,"approvalCount":0,"errorCount":0,"toolCallCount":0,"promptTokens":34817,"completionTokens":2040,"durationMs":50609,"summary":"耗时 50.6s；token 36857（复核 0）"}
+
+event: stage
+data: {"runId":"5c926753-1fc9-4887-acd1-5010850bd353","stage":"done","at":1794487143083,"elapsedMs":50656,"detail":null}
+
+event: done
+data: {"finishReason":"stop","iteration":1,"toolCallCount":5,"usage":{"promptTokens":34817,"completionTokens":2040},"tokenBudget":256000,"messageId":"55906211-041e-4691-83da-8e9d94e17086","firstTokenMs":1662}
+

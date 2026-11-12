@@ -1,0 +1,191 @@
+第 11 轮：上一条提名被拒（已记入你的错题本），换一个真实路径的靶子重来。
+
+【拒绝：app-error-cross-realm-guard｜代码 NO_REAL_PATH】
+证据：isAppError 全仓唯一调用点是 middlewares/error-handler.ts:36 的 Express 错误中间件——err 永远是同 realm 进程内抛出的错误，JSON 反序列化/跨 realm 的对象到不了这里。你的 observable（JSON 往返）在系统里没有真实输入来源。更坏的是：若按你的方向改成鸭子类型守卫，中间件会把任何带 code/status 的上游 payload 对象误判为 AppError，直接泄露错误的状态码——修了比不修更危险。
+教训（错题本原话）：defect 必须挂在真实调用路径上。先 grep 靶子函数的调用方，确认存在会触发该行为的输入来源，再提名。
+
+【新靶子：src/tools/builtin/fs-read.tool.ts（完整 177 行，行号即真实行号）】
+这就是你每轮都用的 fs.read 工具本身——输入路径真实存在，你亲自体验过它的行为。提示：注意字节截断与行窗口/keyword 过滤交织时的统计口径和标志位语义。
+1| /** fs.read — sandboxed file reading with line windows, keyword filter and glob. */
+2| 
+3| import { readFile, stat } from 'node:fs/promises';
+4| import path from 'node:path';
+5| import type { ToolDefinition } from '../../types/tool.js';
+6| import { resolveInSandboxAsync } from './path-jail.js';
+7| 
+8| /**
+9|  * 默认读取上限：16 KiB。
+10|  *
+11|  * 原来默认 256 KiB。注意它**不直接决定模型看到多少**——喂给模型的 observation
+12|  * 由 executor 的 token 硬顶（OBSERVATION_MAX_TOKENS）统一裁，256 KiB 里绝大部分
+13|  * 根本进不了上下文。这个上限真正管的是：磁盘读放大、`tool_results` 归档体积、
+14|  * 以及 SSE `tool_result` 推给前端的 `data`（前端是全量收的，256 KiB 一次推下去
+15|  * 足以卡住渲染）。256 KiB 在这三条上都是纯浪费。
+16|  *
+17|  * 16 KiB 对「读一个源文件/配置」足够；不够时工具支持 lineStart/lineEnd 与 keyword
+18|  * 分段读，模型可以按需继续，而不是一次性把整个文件灌进上下文。
+19|  */
+20| const DEFAULT_MAX_BYTES = 16384;
+21| /**
+22|  * 单次返回的行数上限。5000 行是历史遗留的虚高值：喂给模型的 observation 有
+23|  * token 硬顶，多切出来的行全被丢掉，纯浪费 CPU。800 行足够看一段实现；
+24|  * 更多用 lineStart/lineEnd 分段取。
+25|  */
+26| const MAX_LINES_RETURNED = 800;
+27| 
+28| /** Minimal glob: `*` (no separator), `**` (any depth), `?` (one char). */
+29| function globToRegExp(glob: string): RegExp {
+30|   const escaped = glob
+31|     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+32|     .replace(/\*\*/g, '::DOUBLE_STAR::')
+33|     .replace(/\*/g, '[^/\\\\]*')
+34|     .replace(/::DOUBLE_STAR::/g, '.*')
+35|     .replace(/\?/g, '[^/\\\\]');
+36|   return new RegExp(`^${escaped}$`);
+37| }
+38| 
+39| export const fsReadTool: ToolDefinition = {
+40|   name: 'fs.read',
+41|   wireName: 'fs_read',
+42|   displayName: '读取文件',
+43|   category: 'file',
+44|   description:
+45|     '读取沙箱内文件内容。支持 encoding（utf8/base64）、maxBytes（上限，默认 16KB）、lineStart/lineEnd（1 起的行号窗口）、keyword（只返回含该关键字的行）、glob（目录时按名过滤）。路径必须是沙箱相对路径。',
+46|   inputSchema: {
+47|     type: 'object',
+48|     properties: {
+49|       path: { type: 'string', description: '沙箱相对路径', maxLength: 512 },
+50|       encoding: { type: 'string', enum: ['utf8', 'base64'], description: '缺省 utf8' },
+51|       // 默认值必须与 DEFAULT_MAX_BYTES 一致（16384）。这里曾写 262144 ——
+52|       // 常量早就刻意降到 16 KiB（理由见文件头注释：磁盘放大 / 归档体积 / SSE 推送），
+53|       // 只有这句描述忘了跟着改，于是被当成「实现错、文档对」的缺陷提了一轮。
+54|       maxBytes: { type: 'number', description: '读取字节上限，默认 16384（16KB）', minimum: 1, maximum: 10485760 },
+55|       lineStart: { type: 'number', description: '起始行号（1 起，含）', minimum: 1 },
+56|       lineEnd: { type: 'number', description: '结束行号（含）', minimum: 1 },
+57|       keyword: { type: 'string', description: '只返回包含该关键字的行', maxLength: 200 },
+58|       glob: { type: 'string', description: '目录路径时按 glob 过滤文件名', maxLength: 200 },
+59|     },
+60|     required: ['path'],
+61|     additionalProperties: false,
+62|   },
+63|   timeoutMs: 15000,
+64|   risk: 'low',
+65|   approvalMode: 'none',
+66|   source: 'builtin',
+67|   idempotent: true,
+68|   maxResultChars: 4000,
+69|   enabled: () => true,
+70|   handler: async (args, ctx) => {
+71|     const jail = await resolveInSandboxAsync(ctx.sandboxRoot, String(args.path ?? ''), false, undefined, ctx.allowedDirs);
+72|     if (!jail.ok) {
+73|       return {
+74|         ok: false,
+75|         summary: jail.message,
+76|         error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: jail.message, retryable: false },
+77|       };
+78|     }
+79|     const encoding = args.encoding === undefined ? 'utf8' : String(args.encoding);
+80|     if (encoding !== 'utf8' && encoding !== 'base64') {
+81|       return {
+82|         ok: false,
+83|         summary: 'encoding 只支持 utf8/base64',
+84|         error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'encoding 只支持 utf8/base64' },
+85|       };
+86|     }
+87|     const maxBytes = args.maxBytes === undefined ? DEFAULT_MAX_BYTES : Number(args.maxBytes);
+88|     if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 10485760) {
+89|       return {
+90|         ok: false,
+91|         summary: 'maxBytes 必须是 1-10485760 的整数',
+92|         error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'maxBytes 必须是 1-10485760 的整数' },
+93|       };
+94|     }
+95| 
+96|     let stats;
+97|     try {
+98|       stats = await stat(jail.absolutePath);
+99|     } catch {
+100|       return {
+101|         ok: false,
+102|         summary: `文件不存在：${jail.sandboxRelative}`,
+103|         error: {
+104|           code: 'TOOL_NOT_FOUND',
+105|           kind: 'not_found',
+106|           message: `沙箱内不存在 ${jail.sandboxRelative}`,
+107|           retryable: false,
+108|         },
+109|       };
+110|     }
+111| 
+112|     if (stats.isDirectory()) {
+113|       const { readdir } = await import('node:fs/promises');
+114|       const entries = await readdir(jail.absolutePath);
+115|       const glob = args.glob === undefined ? null : String(args.glob);
+116|       const re = glob ? globToRegExp(glob) : null;
+117|       const names = (re ? entries.filter((name) => re.test(name)) : entries).slice(0, 200);
+118|       return {
+119|         ok: true,
+120|         summary: `目录 ${jail.sandboxRelative} 含 ${entries.length} 项${glob ? `，glob 命中 ${names.length} 项` : ''}`,
+121|         data: { kind: 'directory', path: jail.sandboxRelative, entries: names, total: entries.length },
+122|       };
+123|     }
+124| 
+125|     ctx.reportProgress('reading', `读取 ${jail.sandboxRelative}`);
+126|     const buffer = await readFile(jail.absolutePath);
+127|     const truncatedBytes = buffer.byteLength > maxBytes;
+128|     const slice = truncatedBytes ? buffer.subarray(0, maxBytes) : buffer;
+129|     const raw = encoding === 'base64' ? slice.toString('base64') : slice.toString('utf8');
+130| 
+131|     let content = raw;
+132|     let lineInfo: { returned: number; total: number | null } | null = null;
+133|     if (encoding === 'utf8') {
+134|       const allLines = raw.split('\n');
+135|       let lines = allLines;
+136|       const lineStart = args.lineStart === undefined ? 1 : Number(args.lineStart);
+137|       const lineEnd = args.lineEnd === undefined ? allLines.length : Number(args.lineEnd);
+138|       if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 1 || lineEnd < lineStart) {
+139|         return {
+140|           ok: false,
+141|           summary: 'lineStart/lineEnd 不合法',
+142|           error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'lineStart/lineEnd 必须为正整数且 start ≤ end' },
+143|         };
+144|       }
+145|       lines = allLines.slice(lineStart - 1, lineEnd);
+146|       const keyword = args.keyword === undefined ? null : String(args.keyword);
+147|       if (keyword) {
+148|         lines = lines.filter((line) => line.includes(keyword));
+149|       }
+150|       const overLimit = lines.length > MAX_LINES_RETURNED;
+151|       if (overLimit) lines = lines.slice(0, MAX_LINES_RETURNED);
+152|       content = lines.join('\n');
+153|       lineInfo = { returned: lines.length, total: allLines.length };
+154|       if (overLimit || truncatedBytes) {
+155|         content += `\n…[截断：${overLimit ? `行数超过 ${MAX_LINES_RETURNED}（已返回 ${lineInfo?.returned ?? lines.length} 行）` : ''}${overLimit && truncatedBytes ? '，' : ''}${truncatedBytes ? `字节超过 ${maxBytes}` : ''}]`;
+156|         content += '\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）';
+157|       }
+158|     } else if (truncatedBytes) {
+159|       content += `…[截断：字节超过 ${maxBytes}]`;
+160|       content += '\n（继续读取请调大 maxBytes，或改用 encoding=utf8 配 lineStart/lineEnd 分段）';
+161|     }
+162| 
+163|     return {
+164|       ok: true,
+165|       summary: `已读取 ${jail.sandboxRelative}（${stats.size} 字节${lineInfo ? `，${lineInfo.total} 行` : ''}${truncatedBytes ? '，已截断' : ''}）`,
+166|       data: {
+167|         kind: 'file',
+168|         path: jail.sandboxRelative,
+169|         encoding,
+170|         sizeBytes: stats.size,
+171|         truncated: truncatedBytes || (lineInfo ? lineInfo.returned < (lineInfo.total ?? 0) : false),
+172|         lines: lineInfo,
+173|         content,
+174|       },
+175|     };
+176|   },
+177| };
+
+【问题 1：重新提名】
+从这份代码找一个有真实输入路径的 defect，按契约输出一个 JSON（id/title/gapType/gap/evidence 带行号/targetFile/observable/boundary）。observable 必须是一个具体输入 → 当前错误行为 → 期望行为的三元组，判据能机械复现。找不到就 {"id":"none"}，别编。不需要工具调用，直接答。
+
+【问题 2（上轮你漏答了）：尺子侧回灌模板】
+unexec 分桶落地后，失败回灌文本里多带哪一行，能让你下一轮直接分清「尺子没跑」和「我没修对」？给一行含占位符的模板。

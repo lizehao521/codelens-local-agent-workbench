@@ -1,0 +1,14 @@
+【编译器报错：先修这些，判据在语法不合法时一条都跑不起来】
+src/tools/builtin/fs-read.tool.ts(176,98): error TS2304: Cannot find name 'userRequestedLineStart'.
+src/tools/builtin/fs-read.tool.ts(176,124): error TS2304: Cannot find name 'userRequestedLineEnd'.
+
+【未使用符号：定义了却没有用上，最常见的是漏传参数/漏调用】
+src/tools/builtin/fs-read.tool.ts(4,1): error TS6133: 'path' is declared but its value is never read.
+
+【判据未通过：1 条】
+· fsReadTool explicit line window truncated flag returns truncated:false when user explicitly requests a line window smaller than file
+  → userRequestedLineStart is not defined
+
+【围栏结论】
+FAIL  类型检查未通过（2 处）—— 判据绿但构建会挂，不构成一次升级
+FAIL  判据未执行（unexec）：tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts —— 尺子没跑起来（加载失败或无用例），不是「跑了没过」

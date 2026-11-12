@@ -401,7 +401,10 @@ async function preflightUpstream(): Promise<{
   if (!base) {
     return { ok: false, reason: '没有配置任何 LLM 上游地址（RSI_BASE_URL / TRIAL_BASE_URL）', base: '(未配置)' };
   }
-  const key = process.env.LLM_SERVER_API_KEY ?? '';
+  // 与 author-task/seed-agent-loop/propose-gaps 同口径：RSI_API_KEY 优先。
+  // NVIDIA 直连只认 RSI_API_KEY；只用 LLM_SERVER_API_KEY（中继键）会 401，
+  // 把完全可用的上游误判成故障，整轮停机。
+  const key = process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '';
   const auth = { Authorization: `Bearer ${key}` };
   try {
     // 第一跳：/models 只证明「连得上」。实测 AMD OneClick 的日限额耗尽时，
