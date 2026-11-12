@@ -13,7 +13,7 @@
 ## 功能
 
 - **Agent 工作台**：自然语言任务 → 显式状态机（原生 function calling / ReAct 双通道）→ 工具调用 → 观测反馈 → 最终答案；每轮工具与推理可见
-- **工具调用 + 三档审批**：内置工具（`fs.read` / `fs.list` / `fs.write`、计算、时间、UUID、JSON、文本 diff、HTTP 请求）与 MCP 连接器；高危工具走审批（none / soft / hard / two_step），审批令牌 HMAC 签名，支持改参重批与单步重跑
+- **工具调用 + 三档审批**：内置工具（`fs.read` / `fs.list` / `fs.write`、`code.check`（语法）/ `type.check`（项目根 `tsc --noEmit`）/ `test.run`（项目根跑单文件测试）、计算、时间、UUID、JSON、文本 diff、HTTP 请求）与 MCP 连接器；高危工具走审批（none / soft / hard / two_step），审批令牌 HMAC 签名，支持改参重批与单步重跑
 - **上下文与预算**：上下文占用条、75% 自动压缩；单任务四道预算（迭代数、工具调用总数、累计 token、墙钟）同时生效，到顶先写 RunState 终态再停，汇报卡区分「已完成 / 预算耗尽 · 未完成」
 - **会话持久化**：服务端 SQLite（node:sqlite），刷新/重开不丢失；恢复码支持换机找回
 - **BYOK**：DeepSeek / 智谱 GLM / Moonshot / 通义千问 / OpenAI / 自定义 OpenAI 兼容端点；Key 仅存本浏览器，服务端只代理转发、不落库、不记日志

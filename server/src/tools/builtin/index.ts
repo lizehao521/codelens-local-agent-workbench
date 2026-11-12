@@ -1,4 +1,4 @@
-/** BUILTIN_TOOLS — the single registration point for the ten builtin tools. */
+/** BUILTIN_TOOLS — the single registration point for the builtin tools. */
 
 import type { ToolDefinition } from '../../types/tool.js';
 import { httpRequestTool } from './http-request.tool.js';
@@ -17,6 +17,7 @@ import { evalRunTool } from './eval-run.tool.js';
 import { evalProposeTool } from './eval-propose.tool.js';
 import { codeCheckTool } from './code-check.tool.js';
 import { testRunTool } from './test-run.tool.js';
+import { typeCheckTool } from './type-check.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -35,4 +36,5 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   evalProposeTool,
   codeCheckTool,
   testRunTool,
+  typeCheckTool,
 ];
