@@ -2,7 +2,7 @@
 // 设计取舍：只做文字 + 脉冲点，不做假进度条；计时每秒本地更新，10s 未拿到上游响应升级提示。
 
 import { useEffect, useState } from 'react';
-import { Loader2, Square, Timer, WifiOff } from 'lucide-react';
+import { LoaderCircle, Square, Timer, WifiOff } from 'lucide-react';
 import { useRunStore } from '../../stores/runStore';
 import type { AgentStagePayload } from '../../types';
 import { cn } from '../../lib/cn';
@@ -56,7 +56,7 @@ export function RunStageBanner({ onAbort }: { onAbort: () => void }) {
       {failed ? (
         <WifiOff size={12} className="shrink-0 text-danger" aria-hidden="true" />
       ) : (
-        <Loader2 size={12} className="shrink-0 animate-spin text-accent" aria-hidden="true" />
+        <LoaderCircle size={12} className="shrink-0 animate-spin text-accent" aria-hidden="true" />
       )}
 
       <span

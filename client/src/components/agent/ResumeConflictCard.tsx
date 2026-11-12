@@ -1,7 +1,7 @@
 // ResumeConflictCard —— F：续跑冲突态（C 强校验失败时的明确视觉与文案）。
 // 只展示冲突清单与下一步动作；不在前端做任何自动覆盖。
 
-import { AlertTriangle, RefreshCw, X } from 'lucide-react';
+import { TriangleAlert, RefreshCw, X } from 'lucide-react';
 import { useRunStore } from '../../stores/runStore';
 import { resumeRun } from '../../services/api';
 import { useState } from 'react';
@@ -37,7 +37,7 @@ export function ResumeConflictCard() {
       data-state="resume-conflict"
     >
       <div className="flex items-center gap-1.5 text-xs font-medium text-warning">
-        <AlertTriangle size={13} />
+        <TriangleAlert size={13} />
         续跑已阻止：文件与你上次授权后不一致
         <button
           type="button"

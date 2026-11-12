@@ -1,10 +1,10 @@
-// 加载指示 —— Loader2 旋转 / 三点脉冲（design-tokens.css .dot-pulse）
+// 加载指示 —— LoaderCircle 旋转 / 三点脉冲（design-tokens.css .dot-pulse）
 
-import { Loader2 } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
 export function Spinner({ size = 16, className }: { size?: number; className?: string }) {
-  return <Loader2 size={size} className={cn('animate-spin text-text-secondary', className)} />;
+  return <LoaderCircle size={size} className={cn('animate-spin text-text-secondary', className)} />;
 }
 
 /** 排队等待首 token 的三点脉冲（opacity 交错，CSS 动画见 design-tokens.css） */

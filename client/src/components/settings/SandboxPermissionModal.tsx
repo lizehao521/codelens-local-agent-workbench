@@ -3,7 +3,7 @@
 // 安全边界：越界与危险 URL 的硬拒绝不被豁免绕过（见 security-gateway.applyExemptions）。
 
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FolderOpen, Plus, ShieldAlert, Trash2 } from 'lucide-react';
+import { TriangleAlert, FolderOpen, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
 import { useAsyncData } from '../../hooks/useAsyncData';
@@ -232,7 +232,7 @@ export function SandboxPermissionModal({ open, onClose }: { open: boolean; onClo
 
           {(saveError ?? error) && (
             <p className="flex items-start gap-1.5 rounded bg-danger-subtle px-2.5 py-2 text-xs leading-relaxed text-danger">
-              <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
               {saveError ?? error}
             </p>
           )}

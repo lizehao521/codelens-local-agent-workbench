@@ -4,7 +4,7 @@
 // 读 meta.channel 回填；supported → native，否则 react 并在运行卡标注「提示词解析模式」。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CircleCheck, CircleX, Eye, EyeOff, Loader, RefreshCw, Server } from 'lucide-react';
+import { TriangleAlert, CircleCheck, CircleX, Eye, EyeOff, Loader, RefreshCw, Server } from 'lucide-react';
 import type { Provider, Settings } from '../../types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -242,7 +242,7 @@ export function ProviderZone() {
               role="alert"
               className="flex items-start gap-1.5 rounded border border-danger bg-danger-subtle px-2 py-1.5 text-xs text-danger"
             >
-              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+              <TriangleAlert size={12} className="mt-0.5 shrink-0" />
               <span className="min-w-0 flex-1 break-words">{relayError}</span>
               <button
                 type="button"

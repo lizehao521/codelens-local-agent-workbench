@@ -8,7 +8,7 @@
 // 这里刻意不做任何「手动改判决」的入口：r 只能来自运行期 Judge。
 
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Gauge, HelpCircle, XCircle } from 'lucide-react';
+import { TriangleAlert, CircleCheckBig, Gauge, HelpCircle, CircleX } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
 import { useAsyncData } from '../../hooks/useAsyncData';
@@ -60,8 +60,8 @@ function runLabel(verdict: JudgeRunVerdict): string {
 }
 
 function VerdictIcon({ status }: { status: JudgeVerdictStatus }) {
-  if (status === 'pass') return <CheckCircle2 size={12} className="shrink-0 text-success" />;
-  if (status === 'fail') return <XCircle size={12} className="shrink-0 text-danger" />;
+  if (status === 'pass') return <CircleCheckBig size={12} className="shrink-0 text-success" />;
+  if (status === 'fail') return <CircleX size={12} className="shrink-0 text-danger" />;
   return <HelpCircle size={12} className="shrink-0 text-text-tertiary" />;
 }
 
@@ -120,7 +120,7 @@ export function JudgePanelModal({ open, onClose }: { open: boolean; onClose: () 
 
         {!loading && error && (
           <p className="flex items-start gap-1.5 rounded bg-bg-inset p-2.5 text-xs text-danger">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <TriangleAlert size={13} className="mt-0.5 shrink-0" />
             {error}
           </p>
         )}
@@ -235,7 +235,7 @@ function RunsView({ runs, coverageThreshold }: { runs: JudgeRunSummary[]; covera
               </button>
               {lowCoverage && (
                 <p className="mt-1 flex items-center gap-1 text-[11px] text-warning">
-                  <AlertTriangle size={11} className="shrink-0" />
+                  <TriangleAlert size={11} className="shrink-0" />
                   可用判据覆盖率不足 60%，本次结论不作为「通过」采信
                 </p>
               )}

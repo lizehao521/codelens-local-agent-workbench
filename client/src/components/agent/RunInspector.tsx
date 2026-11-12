@@ -2,7 +2,7 @@
 // 与中栏解耦：只订阅 runStore 与 toolCallStore，不随消息流重渲染。
 
 import { useMemo } from 'react';
-import { Activity, AlertTriangle, Gauge, ListOrdered, Sparkles, Wrench } from 'lucide-react';
+import { Activity, TriangleAlert, Gauge, ListOrdered, Sparkles, Wrench } from 'lucide-react';
 import { useRunStore } from '../../stores/runStore';
 import { countUnsuccessful, useToolCallStore } from '../../stores/toolCallStore';
 import { fmtTokens, formatDuration } from '../../lib/tool-format';
@@ -48,7 +48,7 @@ export function RunInspector() {
 
         {/* F：风险项 —— 汇报卡的触发项与失败工具集中呈现 */}
         <section className="mb-4" aria-live="polite" aria-label="风险项">
-          <GroupTitle icon={AlertTriangle} title="风险项" />
+          <GroupTitle icon={TriangleAlert} title="风险项" />
           {(report?.triggers.length ?? 0) === 0 && !error ? (
             <p className="text-xs text-text-tertiary">暂无风险项。</p>
           ) : (

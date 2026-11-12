@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle,
+  TriangleAlert,
   Cpu,
   Gauge,
   Info,
@@ -142,7 +142,7 @@ export function ModelCapabilityPanel({
             </span>
           ) : sync.lastStatus === 'failed' ? (
             <span className="flex items-center gap-1.5">
-              <AlertTriangle size={13} /> 上游模型同步失败
+              <TriangleAlert size={13} /> 上游模型同步失败
             </span>
           ) : (
             <span>尚未同步上游模型</span>
@@ -160,7 +160,7 @@ export function ModelCapabilityPanel({
       {/* 异常条 + 重试（降级不空白） */}
       {providersError && (
         <div className="flex items-center gap-2 rounded-md border border-danger bg-danger-subtle px-2.5 py-1.5 text-xs text-danger">
-          <AlertTriangle size={13} />
+          <TriangleAlert size={13} />
           <span className="flex-1">模型目录加载失败：{providersError}（已降级到本地默认目录）</span>
           <button
             type="button"

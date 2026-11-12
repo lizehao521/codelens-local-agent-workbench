@@ -2,7 +2,7 @@
 // 左会话列表 | 中 Agent 工作台 | 右运行检视器；恢复码一次性弹窗；无 Key 引导条
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { AgentWorkbench } from '../agent/AgentWorkbench';
 import { RunInspector } from '../agent/RunInspector';
 import { RecoveryCodeModal } from '../agent/RecoveryCodeModal';
@@ -180,7 +180,7 @@ function NoKeyBanner({ onConfigure }: { onConfigure: () => void }) {
 
   return (
     <div className="flex shrink-0 items-center gap-2 bg-warning-subtle px-3 py-1.5 text-sm text-text-primary">
-      <AlertTriangle size={16} className="shrink-0 text-warning" />
+      <TriangleAlert size={16} className="shrink-0 text-warning" />
       <span className="min-w-0 flex-1 truncate">{trialBannerText(trial)}</span>
       <button
         type="button"

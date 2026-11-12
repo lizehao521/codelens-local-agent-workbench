@@ -3,7 +3,7 @@
 // 因此曲线按分母分段绘制、断点单独标注，不能跨段连线比较。
 
 import {
-  AlertTriangle, CheckCircle2, FlaskConical, GitCompare, Info, ListChecks,
+  TriangleAlert, CircleCheckBig, FlaskConical, GitCompare, Info, ListChecks,
   RefreshCw, ServerOff, ShieldCheck,
 } from 'lucide-react';
 import type { RsiEval, RsiOverview, RsiRulesContract } from '../../services/api';
@@ -133,7 +133,7 @@ function ErrorBlock({ error, onRetry }: { error: string; onRetry: () => void }) 
         {offline ? (
           <ServerOff size={15} className="mt-0.5 shrink-0 text-danger" />
         ) : (
-          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-danger" />
+          <TriangleAlert size={15} className="mt-0.5 shrink-0 text-danger" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-danger">
@@ -187,7 +187,7 @@ function DataVersionNotice({ evalData }: { evalData: RsiEval | null }) {
   if (isStructuredEval(evalData)) {
     return (
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded border border-success bg-success-subtle px-3 py-2">
-        <CheckCircle2 size={13} className="shrink-0 text-success" />
+        <CircleCheckBig size={13} className="shrink-0 text-success" />
         <span className="text-xs font-medium text-success">
           结构化数据（source={evalData.source || 'structured'}）
         </span>
@@ -214,7 +214,7 @@ function DataVersionNotice({ evalData }: { evalData: RsiEval | null }) {
   return (
     <div className="rounded border border-warning bg-warning-subtle px-3 py-2">
       <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
-        <AlertTriangle size={13} className="shrink-0" />
+        <TriangleAlert size={13} className="shrink-0" />
         旧格式（source={evalData.source || 'detail_only'}）· 结论不完整
       </p>
       <p className="mt-1 text-[11px] leading-relaxed text-text-secondary">

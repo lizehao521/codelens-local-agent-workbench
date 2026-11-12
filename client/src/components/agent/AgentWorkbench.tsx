@@ -3,7 +3,7 @@
 // AC-10 干预：打断（输入框停止钮）/ 单步重试 / 从某步重跑 / 改参数（审批条内）全部接 agent/stream
 
 import { useCallback, useState } from 'react';
-import { AlertTriangle, Gauge, History, LineChart, MessageSquare, ShieldAlert, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
+import { TriangleAlert, Gauge, History, LineChart, MessageSquare, ShieldAlert, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
 import type { AgentStreamRequest, SessionMessageRow, Task } from '../../types';
 import { buildAgentStreamRequest, rerunFromPatch, TASK_MODES } from '../../lib/agent-request';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -341,7 +341,7 @@ export function AgentWorkbench() {
       {errorBar && (
         <div role="alert" className="shrink-0 border-t border-danger bg-danger-subtle px-3 py-2">
           <div className="flex items-start gap-2">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0 text-danger" />
+            <TriangleAlert size={13} className="mt-0.5 shrink-0 text-danger" />
             <div className="min-w-0 flex-1">
               <p className="whitespace-pre-line text-xs leading-relaxed text-danger">{errorBar.message}</p>
               {errorBar.code !== 'CONFIG_ERROR' && (
