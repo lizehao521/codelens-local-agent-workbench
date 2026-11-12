@@ -26,6 +26,9 @@
 import { existsSync, appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { PROTECTED_PATHS, isProtected } from './lib/protected-paths.js';
+import { formatResult } from './lib/propose-result.js';
 
 const SERVER = process.cwd();
 const ROOT = path.join(SERVER, '..');
@@ -116,15 +119,14 @@ function doneTasks(): string {
  *   · 指向受保护路径（tests/、krsi/、judge/、rsi/、eval/）——那是改尺子
  *   · 已经有同 id 的提议（重复）
  */
-function screen(p: Proposal): { ok: boolean; reason?: string } {
+export function screen(p: Proposal): { ok: boolean; reason?: string } {
   if (!p.id || !/^[a-z0-9][a-z0-9-]{2,40}$/.test(p.id)) return { ok: false, reason: 'id 必须是 kebab-case' };
   if (!p.title || p.title.length < 4) return { ok: false, reason: 'title 太短' };
   if (!p.gap || p.gap.length < 10) return { ok: false, reason: 'gap 说清楚缺什么（≥10 字）' };
   if (!Array.isArray(p.evidence) || p.evidence.length === 0) return { ok: false, reason: '必须给证据' };
   if (!p.targetFile || !p.targetFile.startsWith('src/')) return { ok: false, reason: 'targetFile 必须在 src/ 下' };
-  for (const prot of ['tests/', 'krsi/', 'src/services/judge/', 'src/services/rsi/', 'src/services/eval/', 'scripts/']) {
-    if (p.targetFile.startsWith(prot)) return { ok: false, reason: `targetFile 不能在受保护路径 ${prot} 下` };
-  }
+  const prot = PROTECTED_PATHS.find((prefix) => p.targetFile.startsWith(prefix));
+  if (prot) return { ok: false, reason: `targetFile 不能在受保护路径 ${prot} 下` };
   if (!existsSync(path.join(SERVER, p.targetFile))) return { ok: false, reason: `targetFile 不存在：${p.targetFile}` };
   if (!p.observable || p.observable.length < 8) return { ok: false, reason: 'observable 说清楚「怎么看出修好了」' };
   if (!p.boundary || p.boundary.length < 4) return { ok: false, reason: 'boundary 说清楚这条不能碰什么' };
@@ -146,7 +148,7 @@ function existingIds(): Set<string> {
 
 /** 可改的源码文件清单（相对 server/）。不给清单它就会编路径 —— 上一轮它提的
  *  targetFile 是 src/agent/tool-planner.ts，这个文件根本不存在。 */
-function sourceFiles(): string[] {
+export function sourceFiles(): string[] {
   const out: string[] = [];
   const walk = (dir: string, depth: number): void => {
     if (depth > 3 || out.length > 120) return;
@@ -162,7 +164,7 @@ function sourceFiles(): string[] {
         if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
         walk(rel, depth + 1);
       } else if (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts') && !e.name.endsWith('.d.ts')) {
-        out.push(rel);
+        if (!isProtected(rel)) out.push(rel);
       }
     }
   };
@@ -366,6 +368,7 @@ async function main(): Promise<void> {
   if (!proposal) {
     console.log('  ✗ 它没给出可解析的提议（或选择「想不出来」）');
     console.log(`  原始输出末尾：${text.slice(-300).replace(/\n/g, ' ')}`);
+    console.log(formatResult({ status: 'no-proposal' }));
     stop?.();
     return;
   }
@@ -374,11 +377,13 @@ async function main(): Promise<void> {
   if (!v.ok) {
     console.log(`  ✗ 提议被机械筛掉：${v.reason}`);
     console.log(`     ${JSON.stringify(proposal, null, 2)}`);
+    console.log(formatResult({ status: 'rejected', reason: v.reason, targetFile: proposal.targetFile, id: proposal.id }));
     stop?.();
     return;
   }
   if (existingIds().has(proposal.id)) {
     console.log(`  ✗ 提议 id 已存在：${proposal.id}`);
+    console.log(formatResult({ status: 'duplicate', id: proposal.id }));
     stop?.();
     return;
   }
@@ -392,11 +397,16 @@ async function main(): Promise<void> {
   console.log(`    ${proposal.id}｜${proposal.title}`);
   console.log(`    靶子 ${proposal.targetFile}｜可观察 ${proposal.observable}`);
   console.log('    下一步：由出题环节把提议转成规格与判据（author-task.ts），判据仍需外置。');
+  console.log(formatResult({ status: 'accepted', id: proposal.id, targetFile: proposal.targetFile }));
   void arg;
   stop?.();
 }
 
-main().catch((e: unknown) => {
-  console.error(`FATAL: ${e instanceof Error ? e.message : String(e)}`);
-  process.exit(1);
-});
+const invokedDirectly = process.argv[1] !== undefined
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
+  main().catch((e: unknown) => {
+    console.error(`FATAL: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  });
+}

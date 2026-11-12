@@ -33,6 +33,7 @@ import path from 'node:path';
 import { attributeFailure, toLedgerFields, LAYER_META } from './failure-attribution.js';
 import { startLoopService } from './loop-service.js';
 import { bumpVersion } from './version-bump.js';
+import { parseResult, proposeStatusLine } from './lib/propose-result.js';
 
 const SERVER = process.cwd();
 const ROOT = path.join(SERVER, '..');
@@ -356,14 +357,17 @@ async function main(): Promise<void> {
           UPGRADE_BASE: svc.base,
           RSI_MODEL: MODEL_ROTATION[0] ?? MODEL,
         });
+        const result = parseResult(r.out);
+        console.log(proposeStatusLine(result, r.ok));
+        if (r.ok && result?.status === 'accepted') {
+          console.log('  下一步：node scripts/author-task.ts 由出题人把提议转成判据草案，再由人采纳。');
+        }
         for (const l of r.out.split('\n').filter((x) => x.trim()).slice(-10)) {
           console.log(`  ${l.trim().slice(0, 200)}`);
         }
       } finally {
         svc.stop();
       }
-      console.log('  提议记在 .self-upgrade/proposals.jsonl（沙箱外，它自己写不到）。');
-      console.log('  下一步：node scripts/author-task.ts 由出题人把提议转成判据草案，再由人采纳。');
     }
     console.log('\n（题源仍需人工补 —— 见 self-upgrade/tasks.json，或走上面的自主提议。）');
     return;
