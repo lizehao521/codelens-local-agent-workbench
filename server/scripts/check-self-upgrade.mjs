@@ -19,7 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deletedRationaleComments } from './lib/rationale-guard.mjs';
 import { classifyJudgeRun } from './lib/judge-run-classify.mjs';
@@ -134,9 +134,21 @@ const PROTECTED = [
   'scripts/',
 ];
 
+// 指纹按行尾归一后取。受保护件在 Windows 检出是 CRLF、Linux 是 LF：比裸字节会把
+// 没人碰过的文件报成「受保护文件被修改」——本机实测 256 件里 237 件两口径不同，
+// 换台机器跑围栏就整片红，而红的原因是刻度不是内容。
+// 用 latin1 做逐字节无损往返（0x00-0xFF ↔ U+0000-U+00FF）；utf8 会把非法字节换成
+// U+FFFD，那等于在取指纹之前先改了内容。
 function sha256(file) {
-  return createHash('sha256').update(readFileSync(file)).digest('hex');
+  const normalized = readFileSync(file).toString('latin1').replace(/\r\n/g, '\n');
+  return createHash('sha256').update(Buffer.from(normalized, 'latin1')).digest('hex');
 }
+
+// 编译产物不是尺子。`krsi/krsi.exe` 是 `krsi/main.go` 的派生物（源码件本身受保护），
+// 把它钉进基线的后果：别的机器上它不存在 → 报「受保护文件被删除」；每次 go build
+// 字节都变 → 报「受保护文件被修改」。两种红都与「有没有人改判据」无关。
+const DERIVED_EXT = new Set(['.exe', '.dll', '.so', '.dylib', '.o', '.a', '.bin']);
+const skippedDerived = [];
 
 function walk(dir) {
   const out = [];
@@ -146,6 +158,10 @@ function walk(dir) {
       if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
       out.push(...walk(full));
     } else {
+      if (DERIVED_EXT.has(extname(entry.name).toLowerCase())) {
+        skippedDerived.push(relative(SERVER, full).split(sep).join('/'));
+        continue;
+      }
       out.push(full);
     }
   }
@@ -251,7 +267,7 @@ for (const [file, hash] of Object.entries(baseline.protected)) {
 const added = Object.keys(current).filter((f) => !(f in baseline.protected));
 
 if (changed.length === 0 && removed.length === 0 && added.length === 0) {
-  ok(`受保护路径零改动（${Object.keys(baseline.protected).length} 个文件）`);
+  ok(`受保护路径零改动（基线 ${Object.keys(baseline.protected).length} 件 / 现扫 ${Object.keys(current).length} 件）`);
 } else {
   for (const f of changed) fail(`受保护文件被修改：${f}`);
   for (const f of removed) fail(`受保护文件被删除：${f}`);
@@ -262,6 +278,11 @@ if (changed.length === 0 && removed.length === 0 && added.length === 0) {
   // 实际是基线过期。自动循环每道题派单前会重打基线，所以只有手动跑才会踩到。
   console.log('      → 若这些改动来自会话对尺子的合法修改（不是本次派单造成的），');
   console.log('        先重打基线再判：node scripts/check-self-upgrade.mjs --baseline --package=... --allowed=... --judge=...');
+}
+
+// 排除项必须上屏：否则「少扫了一件」与「那件没被改」在读数上长得一模一样。
+if (skippedDerived.length) {
+  console.log(`      派生产物不入指纹（${skippedDerived.length} 件，由其源码件守）：${skippedDerived.join(', ')}`);
 }
 
 // ── 2. 判据指纹 ────────────────────────────────────────────────────────────
