@@ -130,12 +130,14 @@ curl http://127.0.0.1:8080/api/health
 
 ## 9. 验证面（当前）
 
+读数锚点：GitHub Actions **run #5 @ `4d6ed81`**（ubuntu-latest / node 22，两 job 全 step success）。下表只记这一趟真跑出来的数；CI 不跑的项按 UNEXEC 记，不继承旧读数。
+
 | 项 | 结果 |
 |---|---|
-| `server npm run test:acceptance` | exit 0；**1507/1507（161 文件）**；krsi 10/10；套件地板 3/3；C1 PASS；工具契约 PASS |
-| client 测试 | 136/136 |
-| e2e | 14/14 |
-| 变异探针 | 2/2 杀死 |
+| `server npm run test:acceptance` | exit 0；**1512 passed + 1 skipped（162 文件）**；krsi 10/10；套件地板 3/3（`[input]` 夹具 sha `fd44d506…`，与本地 Windows 那趟同一份字节）；C1 PASS；工具契约 17 工具 PASS（对外清单核对 UNEXEC：runner 上服务未运行） |
+| client 测试 | 136/136（15 文件）；UI 静态卫生门禁 3 项 PASS |
+| e2e | UNEXEC（CI 不跑 `scripts/e2e.sh`，本表未重测） |
+| 变异探针 | UNEXEC（CI 不跑，本表未重测） |
 
 改动后必须重跑；未跑 = UNEXEC，不算通过。
 

@@ -17,7 +17,7 @@
 
 ## 3. 验证
 
-- server：`cd server && npm run test:acceptance`（含 typecheck / 1507 用例 / 套件地板 / C1 / 工具契约）。
+- server：`cd server && npm run test:acceptance`（含 typecheck / vitest / krsi / 套件地板 / C1 / 工具契约）。用例体量以实跑输出为准，别把某个数写死当规范：锚点 run #5 @ `4d6ed81` 在 Linux 上读到 162 文件 / 1512 passed + 1 skipped（skip 的那条依赖真实 `.env`，缺席即跳过，不算通过）。
 - client：`cd client && npm test`。
 - 端到端：`bash scripts/e2e.sh`（Git Bash；可用 `E2E_PORT` 指定端口）。
 - 改动 `src/` 后必须重跑对应验证；未跑 = UNEXEC，不算通过。
