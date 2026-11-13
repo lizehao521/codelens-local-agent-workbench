@@ -15,6 +15,7 @@
     "test:acceptance": "npm run typecheck && npm run test && npm run check:suite-floor && npm run check:task-metadata && npm run check:tool-contract",
     "check:task-metadata": "node ../scripts/check-task-metadata.mjs",
     "check:tool-contract": "tsx ../scripts/assert-tool-registry-contract.mjs",
+    "check:mutation": "node ../scripts/mutation-probe.mjs",
     "test:krsi": "node scripts/run-krsi-conformance.mjs",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-real.mjs",
