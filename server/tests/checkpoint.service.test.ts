@@ -509,7 +509,7 @@ describe('CheckpointsController — 双重闸门', () => {
     const res = mockRes();
     await controller.rollback({ params: { id: summary.id }, headers: {} } as never, res as never);
     expect(res.statusCode).toBe(400);
-    expect((res.body as { error: string }).error).toContain('x-codelens-confirm');
+    expect((res.body as { error: { message: string } }).error.message).toContain('x-codelens-confirm');
   });
 
   it('POST rollback：确认头值不对 → 400', async () => {
@@ -533,7 +533,10 @@ describe('CheckpointsController — 双重闸门', () => {
       res as never,
     );
     expect(res.statusCode).toBe(409);
-    expect(res.body).toEqual({ enabled: false, error: 'CHECKPOINT_ENABLED 未开启' });
+    expect(res.body).toEqual({
+      enabled: false,
+      error: { code: 'CAPABILITY_DISABLED', message: 'CHECKPOINT_ENABLED 未开启' },
+    });
   });
 
   it('POST rollback：两道闸门都过 → 200 + report', async () => {
@@ -564,6 +567,6 @@ describe('CheckpointsController — 双重闸门', () => {
       res as never,
     );
     expect(res.statusCode).toBe(404);
-    expect((res.body as { error: string }).error).toContain('快照不存在');
+    expect((res.body as { error: { message: string } }).error.message).toContain('快照不存在');
   });
 });

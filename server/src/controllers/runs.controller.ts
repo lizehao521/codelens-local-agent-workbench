@@ -25,7 +25,7 @@ export class RunsController {
     const runId = typeof req.params.runId === 'string' ? req.params.runId : '';
     const state = this.service.get(runId);
     if (!state) {
-      res.status(404).json({ error: `run 不存在: ${runId}` });
+      res.status(404).json({ error: { code: 'RUN_NOT_FOUND', message: `run 不存在: ${runId}` } });
       return;
     }
     res.json({ state, report: this.service.getReport(runId) });
@@ -41,7 +41,7 @@ export class RunsController {
     const state = this.service.get(runId);
     const evidence = this.checkpoints.getRun(runId);
     if (!state && evidence.steps.length === 0) {
-      res.status(404).json({ error: `run 不存在: ${runId}` });
+      res.status(404).json({ error: { code: 'RUN_NOT_FOUND', message: `run 不存在: ${runId}` } });
       return;
     }
 
@@ -98,7 +98,10 @@ export class RunsController {
     const runId = typeof req.params.runId === 'string' ? req.params.runId : '';
     const result = await this.resumeService.precheck(runId);
     if (result.status === 'not_found') {
-      res.status(404).json({ status: result.status, error: `run 不存在: ${runId}` });
+      res.status(404).json({
+        status: result.status,
+        error: { code: 'RUN_NOT_FOUND', message: `run 不存在: ${runId}` },
+      });
       return;
     }
     if (result.status === 'conflict') {
@@ -115,7 +118,7 @@ export class RunsController {
   list(req: Request, res: Response): void {
     const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : '';
     if (!sessionId) {
-      res.status(400).json({ error: '需要 sessionId 查询 run 列表' });
+      res.status(400).json({ error: { code: 'SESSION_REQUIRED', message: '需要 sessionId 查询 run 列表' } });
       return;
     }
     const rawLimit = Number(req.query.limit);

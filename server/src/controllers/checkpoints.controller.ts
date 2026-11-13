@@ -6,7 +6,7 @@
  *  - POST /checkpoints/:id/rollback → { enabled: true, report }
  *
  * 回滚是本能力**唯一的写操作**，因此走双重闸门（顺序固定）：
- *  1. 能力未启用              → 409 { enabled: false, error: 'CHECKPOINT_ENABLED 未开启' }
+ *  1. 能力未启用              → 409 { enabled: false, error: { code: 'CAPABILITY_DISABLED', message } }
  *  2. 未带显式确认头           → 400 { error: '需要显式头 x-codelens-confirm: rollback 以确认回滚' }
  *  3. 两闸都过 → 执行回滚 → 200 { enabled: true, report: { ok, restored[], failed[] } }
  *
@@ -68,7 +68,7 @@ export class CheckpointsController {
   async rollback(req: Request, res: Response): Promise<void> {
     // 闸门 1：能力未启用。
     if (!this.service.enabled) {
-      res.status(409).json({ enabled: false, error: 'CHECKPOINT_ENABLED 未开启' });
+      res.status(409).json({ enabled: false, error: { code: 'CAPABILITY_DISABLED', message: 'CHECKPOINT_ENABLED 未开启' } });
       return;
     }
 
@@ -77,7 +77,10 @@ export class CheckpointsController {
     const confirm = Array.isArray(rawConfirm) ? rawConfirm[0] : rawConfirm;
     if (typeof confirm !== 'string' || confirm.trim() !== ROLLBACK_CONFIRM_VALUE) {
       res.status(400).json({
-        error: `需要显式头 ${ROLLBACK_CONFIRM_HEADER}: ${ROLLBACK_CONFIRM_VALUE} 以确认回滚`,
+        error: {
+          code: 'CONFIRM_HEADER_REQUIRED',
+          message: `需要显式头 ${ROLLBACK_CONFIRM_HEADER}: ${ROLLBACK_CONFIRM_VALUE} 以确认回滚`,
+        },
       });
       return;
     }
@@ -92,7 +95,7 @@ export class CheckpointsController {
       res.json({ enabled: true, report });
     } catch (err) {
       if (err instanceof CheckpointNotFoundError) {
-        res.status(404).json({ error: err.message });
+        res.status(404).json({ error: { code: 'CHECKPOINT_NOT_FOUND', message: err.message } });
         return;
       }
       throw err;
@@ -102,7 +105,7 @@ export class CheckpointsController {
   /** GET /checkpoints/runs/:runId → 按 run 查「改了什么 + 来自哪一步」。 */
   getRun(req: Request, res: Response): void {
     if (!this.service.enabled) {
-      res.status(409).json({ enabled: false, error: 'CHECKPOINT_ENABLED 未开启' });
+      res.status(409).json({ enabled: false, error: { code: 'CAPABILITY_DISABLED', message: 'CHECKPOINT_ENABLED 未开启' } });
       return;
     }
     const runId = typeof req.params.runId === 'string' ? req.params.runId : '';
@@ -112,14 +115,17 @@ export class CheckpointsController {
   /** POST /checkpoints/runs/:runId/rollback → run 粒度（可带 step / files）。 */
   async rollbackRun(req: Request, res: Response): Promise<void> {
     if (!this.service.enabled) {
-      res.status(409).json({ enabled: false, error: 'CHECKPOINT_ENABLED 未开启' });
+      res.status(409).json({ enabled: false, error: { code: 'CAPABILITY_DISABLED', message: 'CHECKPOINT_ENABLED 未开启' } });
       return;
     }
     const rawConfirm = req.headers[ROLLBACK_CONFIRM_HEADER];
     const confirm = Array.isArray(rawConfirm) ? rawConfirm[0] : rawConfirm;
     if (typeof confirm !== 'string' || confirm.trim() !== ROLLBACK_CONFIRM_VALUE) {
       res.status(400).json({
-        error: `需要显式头 ${ROLLBACK_CONFIRM_HEADER}: ${ROLLBACK_CONFIRM_VALUE} 以确认回滚`,
+        error: {
+          code: 'CONFIRM_HEADER_REQUIRED',
+          message: `需要显式头 ${ROLLBACK_CONFIRM_HEADER}: ${ROLLBACK_CONFIRM_VALUE} 以确认回滚`,
+        },
       });
       return;
     }
@@ -140,7 +146,7 @@ export class CheckpointsController {
     const pinned = body.pinned !== false;
     const ok = this.service.pin(id, pinned);
     if (!ok) {
-      res.status(404).json({ error: `快照不存在: ${id}` });
+      res.status(404).json({ error: { code: 'CHECKPOINT_NOT_FOUND', message: `快照不存在: ${id}` } });
       return;
     }
     res.json({ ok: true, pinned });

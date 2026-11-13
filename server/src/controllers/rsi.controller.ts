@@ -77,20 +77,20 @@ export class RsiController {
   overview(req: Request, res: Response): void {
     const sessionId = typeof req.query.session === 'string' ? req.query.session : null;
     if (!sessionId) {
-      res.status(400).json({ error: '?session=xxx required' });
+      res.status(400).json({ error: { code: 'SESSION_REQUIRED', message: '?session=xxx required' } });
       return;
     }
     try {
       const out = buildRsiOverview(this.db, sessionId);
       if (!out.ok) {
-        res.status(out.status).json({ error: out.error });
+        res.status(out.status).json({ error: { code: 'RSI_OVERVIEW_FAILED', message: out.error } });
         return;
       }
       // 与 rules 一致禁用缓存：否则浏览器缓存旧 overview 会让两个出口分叉。
       res.setHeader('Cache-Control', 'no-store');
       res.json(out.payload);
     } catch (e: any) {
-      res.status(500).json({ error: e?.message ?? 'rsi overview failed' });
+      res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: e?.message ?? 'rsi overview failed' } });
     }
   }
 

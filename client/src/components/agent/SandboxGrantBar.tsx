@@ -29,8 +29,14 @@ export function SandboxGrantBar() {
         body: JSON.stringify({ allow }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        setError(data?.error ?? `请求失败（HTTP ${res.status}）`);
+        const data = (await res.json().catch(() => null)) as
+          | { error?: { code?: string; message?: string } | string }
+          | null;
+        const message =
+          typeof data?.error === 'string'
+            ? data.error
+            : (data?.error?.message ?? `请求失败（HTTP ${res.status}）`);
+        setError(message);
         return;
       }
       clear(null);

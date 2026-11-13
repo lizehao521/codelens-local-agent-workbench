@@ -88,9 +88,10 @@ describe('可观测面端点接线（能力目录 / 轨迹 / 技能库 / 工作�
     const res = await request(app).post('/api/v1/checkpoints/does-not-exist/rollback');
 
     // 闸门顺序：能力未启用 → 409；未带确认头 → 400。
-    // 两者都必须在「执行回滚」之前拦住，且 body 是扁平的 error 字符串。
+    // 两者都必须在「执行回滚」之前拦住，且 body 是统一的 error 对象。
     expect([400, 409]).toContain(res.status);
-    expect(typeof res.body.error).toBe('string');
+    expect(typeof res.body.error).toBe('object');
+    expect(typeof res.body.error.message).toBe('string');
     expect(res.body.report).toBeUndefined();
   });
 

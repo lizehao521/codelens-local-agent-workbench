@@ -24,12 +24,12 @@ export class SandboxGrantsController {
     const id = typeof req.params.id === 'string' ? req.params.id : '';
     const body = (req.body ?? {}) as { allow?: unknown };
     if (typeof body.allow !== 'boolean') {
-      res.status(400).json({ error: 'body.allow 必须是 boolean' });
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'body.allow 必须是 boolean' } });
       return;
     }
     const result = this.service.decide(id, body.allow);
     if (!result.ok) {
-      res.status(404).json({ error: `授权请求不存在或已失效: ${id}` });
+      res.status(404).json({ error: { code: 'GRANT_NOT_FOUND', message: `授权请求不存在或已失效: ${id}` } });
       return;
     }
     res.json({ ok: true, decision: result.decision });
@@ -38,7 +38,7 @@ export class SandboxGrantsController {
   revoke(req: Request, res: Response): void {
     const id = typeof req.params.id === 'string' ? req.params.id : '';
     if (!this.service.revoke(id)) {
-      res.status(404).json({ error: `授权不存在或已撤销: ${id}` });
+      res.status(404).json({ error: { code: 'GRANT_NOT_FOUND', message: `授权不存在或已撤销: ${id}` } });
       return;
     }
     res.json({ ok: true });

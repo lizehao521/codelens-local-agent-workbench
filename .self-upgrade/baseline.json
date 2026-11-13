@@ -1,11 +1,17 @@
 {
-  "createdAt": "2026-11-13T03:12:03.137Z",
+  "createdAt": "2026-11-13T04:08:27.671Z",
   "allowed": [
-    "src/tools/builtin/fs-read.tool.ts"
+    "src/controllers/checkpoints.controller.ts",
+    "src/controllers/runs.controller.ts",
+    "src/controllers/sandbox-grants.controller.ts",
+    "src/controllers/rsi.controller.ts"
   ],
   "judge": "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-read.tool.ts": "7c853ff60a3cf0c6efcab04080071b130b509b4f00a703db960c20cba82c2627"
+    "src/controllers/checkpoints.controller.ts": "f189a04faf3b6031ac36fa022b613db002651cd8f32ec9460495a25042da8a76",
+    "src/controllers/runs.controller.ts": "07afe337356b4db094bae31be675805bb3ddb137734ea7d00c2e8372943ecc75",
+    "src/controllers/sandbox-grants.controller.ts": "492a4177b3580942531b6dcee4c939f9ecdb7ff36dc131dd6edd6988f1541dcb",
+    "src/controllers/rsi.controller.ts": "58ff62c60744cf6d3e21115ee8b63e6af517341d64fe1f7acd4189f367b6abc2"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "ebc3e56615019c4db1eb717a0a6ee577b0c0f96a52dc571b1ceadc9f0e40143b",
@@ -34,7 +40,7 @@
     "tests/capability-registry.test.ts": "fc2d6f0237ad02b2106c7bb7309a5a03869557f2166fedc0734d44164d709995",
     "tests/checkpoint-evidence.test.ts": "64d02e7a40f7e63d7c937a4075324fe0613294d256a0e8681ecded8aa8338945",
     "tests/checkpoint-trigger.test.ts": "cefde760570200452f9903f9204db669e5f53dc7f9441b3c1511bcf580d96099",
-    "tests/checkpoint.service.test.ts": "26f08b1b58cee4ea4b0320c06a1c0db340b75268207c1fbb594e4dce832626c9",
+    "tests/checkpoint.service.test.ts": "96dd0b67ad32e33da42970f55d2ada5e6bfd9935017ed51aa88327d59a7b9a1f",
     "tests/closure-drill.test.ts": "3147818f89a51eff8f64cf979880f768cadfdac31bad35bda87ecfff8eb6775a",
     "tests/config-host.test.ts": "6d23ff691f008dd56bc81290d16a210aabee98a2e59e1fcf1e4ff337485c175b",
     "tests/context-manager.test.ts": "e148021a949db9640a98446927c6cc8017a6e52f5c8f7cf31791fdc23fe3552d",
@@ -82,7 +88,7 @@
     "tests/mcp-connector.test.ts": "152debcafdd2730da802be667255421d838ba78cdcd6a45c45345aba32657699",
     "tests/model-sync.integration.test.ts": "0628ede68ab5a6f1c97ecf4167efb743ece6f2aa3bdcd8bab567d7282647f8c6",
     "tests/model-sync.service.test.ts": "6e7d01994236cfff01208e98be0785c790a5866c5a9d18e6c27efb201c533803",
-    "tests/observability-endpoints.test.ts": "0408f4dbc4d7b162f4001abd7bd5318816b6dedaf79a2997aeaeb6831c35fa17",
+    "tests/observability-endpoints.test.ts": "fea9b81039372d9e957896512f73fd64427440a48ea941fc1400c8248b01aa87",
     "tests/output-governance.test.ts": "f8d8c69f17ea288b22cabf444f66655396448e5fd8c8f440c14082380c382d9b",
     "tests/path-jail.test.ts": "1fae03a19451ac9376cb831cf9cbce9dcd41f1fc5dee219eef9e73cbe1d6a0d6",
     "tests/policy-rollback.test.ts": "cc12c4aa23f7c3f7ef11073c4302faef34aaac1c82cab71e5605f38b46204880",
@@ -263,8 +269,7 @@
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "src/tools/builtin/fs-list.tool.ts",
-    "src/tools/builtin/fs-write.tool.ts",
-    "tests/tool-fs-path-hint.test.ts"
+    "tests/checkpoint.service.test.ts",
+    "tests/observability-endpoints.test.ts"
   ]
 }
