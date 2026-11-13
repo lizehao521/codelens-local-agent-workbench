@@ -9,6 +9,7 @@
     {
       "id": "ip-form",
       "title": "SSRF 守卫按书写形态判 IPv6，十六进制映射可穿透",
+      "strengthens": "Judge",
       "allowed": [
         "src/utils/ssrf-guard.ts"
       ],
@@ -19,6 +20,7 @@
     {
       "id": "obs-render",
       "title": "工具结果回灌被字符截断，模型拿到半截 JSON 且无法续读",
+      "strengthens": "Act",
       "allowed": [
         "src/services/tools/observation-render.ts"
       ],
@@ -29,6 +31,7 @@
     {
       "id": "code-check",
       "title": "没有自检手段：改完不能编译、不能试跑",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/code-check.tool.ts",
         "src/tools/builtin/index.ts"
@@ -40,6 +43,7 @@
     {
       "id": "fs-replace",
       "title": "改动粒度太粗：改一行要重抄整份文件，长文件必然带字面量噪声",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/fs-write.tool.ts"
       ],
@@ -50,6 +54,7 @@
     {
       "id": "code-check-column",
       "title": "语法错误只报行不报列，模型还得自己在该行里找",
+      "strengthens": "Judge",
       "allowed": [
         "src/tools/builtin/code-check.tool.ts"
       ],
@@ -61,6 +66,7 @@
     {
       "id": "test-run-scaffold",
       "title": "第一步：test.run 的骨架、三个校验、注册（约 50 行，不写执行逻辑）",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/test-run.tool.ts",
         "src/tools/builtin/index.ts"
@@ -76,6 +82,7 @@
     {
       "id": "test-run",
       "title": "第二步：给骨架补上执行逻辑（跑 vitest、读回断言差异、超时熔断、环境白名单）",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/test-run.tool.ts",
         "src/tools/builtin/index.ts"
@@ -89,6 +96,7 @@
     {
       "id": "iteration-view",
       "title": "前端改进：把迭代闸门的展示逻辑抽成可测纯函数（三态不得混）",
+      "strengthens": "Act",
       "package": "client",
       "allowed": [
         "src/lib/iteration-gate-view.ts",
@@ -104,6 +112,7 @@
     {
       "id": "exec-partial-on-timeout",
       "title": "命令超时丢弃已产出的输出，模型无法区分慢与卡死",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/sys-exec.tool.ts"
       ],
@@ -125,6 +134,7 @@
     {
       "id": "fs-delete-dir-requires-recursive",
       "title": "删除目录未校验 recursive 参数，直接抛出系统错误",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/fs-write.tool.ts"
       ],
@@ -147,6 +157,7 @@
     {
       "id": "fs-write-delete-recursive-missing-schema",
       "title": "delete 操作需 recursive 参数但 schema 未声明，目录无法删除",
+      "strengthens": "Act",
       "allowed": [
         "src/tools/builtin/fs-write.tool.ts"
       ],
@@ -169,6 +180,7 @@
     {
       "id": "fs-replace-match-count",
       "title": "fs.write replace 操作在 oldText 出现 0/多次时仅报错不给定位",
+      "strengthens": "Judge",
       "allowed": [
         "src/tools/builtin/fs-write.tool.ts"
       ],
@@ -177,6 +189,7 @@
       "mode": "red-baseline",
       "maxAttempts": 3,
       "status": "done",
+      "releasedIn": "2.10.0",
       "boundary": "不新增参数/字段，仅在现有错误对象里补位置信息",
       "adoptedAt": "2026-11-12T07:28:30.051Z",
       "adoptedBy": "auto-adopt",
@@ -190,6 +203,7 @@
     {
       "id": "fs-read-truncated-flag-false-positive",
       "title": "fs.read 显式行窗口请求被误标 truncated=true",
+      "strengthens": "Judge",
       "allowed": [
         "src/tools/builtin/fs-read.tool.ts"
       ],

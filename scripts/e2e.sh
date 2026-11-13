@@ -8,8 +8,11 @@
 # ============================================================
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NODE="C:/Users/Administrator/.workbuddy/binaries/node/versions/22.22.2-6/node.exe"
-NPMCLI="C:/Users/Administrator/.workbuddy/binaries/node/versions/22.22.2-6/node_modules/npm/bin/npm-cli.js"
+NODE="${E2E_NODE:-$(command -v node || true)}"
+NPM="${E2E_NPM:-$(command -v npm || true)}"
+if [ -z "$NODE" ] || [ -z "$NPM" ]; then
+  echo "找不到 node/npm（可用 E2E_NODE / E2E_NPM 指定绝对路径）"; exit 1
+fi
 PORT="${E2E_PORT:-8080}"
 BASE="http://localhost:${PORT}"
 PASS=0; FAIL=0
@@ -31,8 +34,8 @@ fi
 GUARD="${CODEBUDDY_SAFE_DELETE_BULK_GUARD:-C:/Users/Administrator/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/cli/vendor/shim/safe-delete-bulk-guard.cjs}"
 "$NODE" "$GUARD" approve --scope turn >/dev/null 2>&1 || true
 rm -rf "$ROOT/client/dist" "$ROOT/server/dist-client"
-if ( cd "$ROOT/client" && "$NODE" "$NPMCLI" run build >/tmp/e2e-client-build.log 2>&1 ); then ok "client 构建"; else bad "client 构建（见 /tmp/e2e-client-build.log）"; tail -20 /tmp/e2e-client-build.log; exit 1; fi
-if ( cd "$ROOT/server" && "$NODE" "$NPMCLI" run build >/tmp/e2e-server-build.log 2>&1 ); then ok "server 构建"; else bad "server 构建（见 /tmp/e2e-server-build.log）"; tail -20 /tmp/e2e-server-build.log; exit 1; fi
+if ( cd "$ROOT/client" && "$NPM" run build >/tmp/e2e-client-build.log 2>&1 ); then ok "client 构建"; else bad "client 构建（见 /tmp/e2e-client-build.log）"; tail -20 /tmp/e2e-client-build.log; exit 1; fi
+if ( cd "$ROOT/server" && "$NPM" run build >/tmp/e2e-server-build.log 2>&1 ); then ok "server 构建"; else bad "server 构建（见 /tmp/e2e-server-build.log）"; tail -20 /tmp/e2e-server-build.log; exit 1; fi
 # 前端产物复制进服务端托管目录（dist-client 已在上面清理）
 cp -r "$ROOT/client/dist" "$ROOT/server/dist-client"
 ok "dist-client 就位"

@@ -1,11 +1,11 @@
 {
-  "createdAt": "2026-11-12T13:26:32.945Z",
+  "createdAt": "2026-11-13T02:50:01.197Z",
   "allowed": [
     "src/tools/builtin/fs-read.tool.ts"
   ],
   "judge": "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-read.tool.ts": "57a684750dcb4de41aec27e7a842da18eaab2d6335684e55dfe5fb49aee4df3e"
+    "src/tools/builtin/fs-read.tool.ts": "cc53d144e4d566d21bc6a2866b889c1e6e3d49ac9829173c6fe6b83c8a668185"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "ebc3e56615019c4db1eb717a0a6ee577b0c0f96a52dc571b1ceadc9f0e40143b",
@@ -38,6 +38,7 @@
     "tests/closure-drill.test.ts": "3147818f89a51eff8f64cf979880f768cadfdac31bad35bda87ecfff8eb6775a",
     "tests/config-host.test.ts": "6d23ff691f008dd56bc81290d16a210aabee98a2e59e1fcf1e4ff337485c175b",
     "tests/context-manager.test.ts": "e148021a949db9640a98446927c6cc8017a6e52f5c8f7cf31791fdc23fe3552d",
+    "tests/contract/rsi-exit-consistency.test.ts": "b83d4782bddefcf9e238ce3121581d6fe7c8015289b57c4b0b8c2840fccd3213",
     "tests/convergence-detector.test.ts": "07f1048d34937d8b1c748b02b6216b955b66517603b544c9fe96fe17d2dcdbde",
     "tests/digest.test.ts": "0ecee9e3112ae6dc02db30c0a39d8a5464892c1a8c49750f3269a2d971272fbb",
     "tests/error-handler.test.ts": "64b693d49a3eae5261745d436098ad8b536a0fad579f745cfe2d9a887e248828",
@@ -100,7 +101,7 @@
     "tests/review-facts-projection.test.ts": "289f011832c048c99f2d1779cf0e6fcb2566cc87a36a072dccc0d7523c3e82be",
     "tests/review.service.test.ts": "2940c6a3bf64336323ad24f9b6852f4acc2f1b0032a76b794a09a73ddee6f21a",
     "tests/rsi-attributor.test.ts": "2bc662bd1cf184871572d0c7c19e4289b1a5f07250d786802ec5652580a5fa38",
-    "tests/rsi-iteration-gate.test.ts": "01827a4e5d7dc2708d995c913f1969511b8f1b992e5ae30b35661f91061d417b",
+    "tests/rsi-iteration-gate.test.ts": "56290c4421145c35677da9667c67125677b8f60ba0c25e73b1036d02844b933b",
     "tests/rsi-ledger-verify.test.ts": "04cb43932446b7f66f6ea76f005d39b628c4aa025154f90479b73ea5bb5b843f",
     "tests/rsi-manifest-builder.test.ts": "d1f7f6c4e8f8042fed6a217ede82df0c858878888a5cc1a5438f9f8c0f83dfe3",
     "tests/rsi-overview.test.ts": "b5bd508ec14c40409bd4e0be8335fcce9496d0fbfdb08b76a0e6b6678153558a",
@@ -121,14 +122,16 @@
     "tests/self-upgrade/code-check.test.ts": "a9ab35748b88bf96f6aa200763756142a17ea24dca8337169178c880c10d3407",
     "tests/self-upgrade/exec-partial-on-timeout.test.ts": "4cb05e0928080a6476b60753699ad5a7bce68eb604ab37a9463b5b0b324fa644",
     "tests/self-upgrade/fixtures/probe.test.ts": "17610b6b3e23eb6f25b954a105171f6a05abf7134a1f9878c19eceec530eca70",
+    "tests/self-upgrade/fixtures/root-probe.test.ts": "3b7f547bb5319e57aac117e2d074544cd3d6ae8799b4411b4acfc5a6a539b91a",
     "tests/self-upgrade/fs-delete-dir-requires-recursive.test.ts": "db5a00b50233c35337d2cf4357e77f9d6f2d8029ab935aae840d3d2d48a9dfd7",
     "tests/self-upgrade/fs-read-observation.test.ts": "fbfdce7e0c9b1570adead5f808940a142557c43d63d766b1d468fc9abb217a3e",
     "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts": "ed2f855cc5e610f0f2fdba4e49d25e1f4dfeb761fd91e600a7aaab111b9fccd5",
+    "tests/self-upgrade/fs-replace-empty-oldtext.test.ts": "bd975624a02680b0cd6b1d34ecdf695e811cc7f35ae7c29961a45121ef347299",
     "tests/self-upgrade/fs-replace-match-count.test.ts": "c59d8916fd5d089af27dd9c9dd954f79e0f1921c1005e600e33f448b4622c4ac",
     "tests/self-upgrade/fs-write-delete-recursive-missing-schema.test.ts": "99c53a95426ee3467788b261405b9092467f3a3d30f019f578cfed79edecd53d",
     "tests/self-upgrade/fs-write-replace.test.ts": "a28c6c83f43ba2ff8b6dd331ab800565d79dafd2c44364fc98863db5e9f3de60",
     "tests/self-upgrade/ip-form.test.ts": "fdd059494994c355d8c99a62d30b8b45e8c24b4cdc68ddcbfc63095bb0b07d66",
-    "tests/self-upgrade/test-run-scaffold.test.ts": "c0a6368908782f36f31c70632b3acc2f3fc96caf4a8a477c69112ba89b88f6e0",
+    "tests/self-upgrade/test-run-scaffold.test.ts": "ebebb5f223e7083485e93351e02681ee56c44a6d165e5ddc3ecda24c0c551ae0",
     "tests/self-upgrade/test-run.test.ts": "f8bcb92ed31c8935ccca6f7e99a0666da8059dfda5f277d965b8253b15a3eaef",
     "tests/sessions-access.test.ts": "521222256486ad945db83924a8f40c08a035b8475529b0c363ed139ea26cb90c",
     "tests/sessions-detail.test.ts": "4db1b449cabd1013dffac46a381a0647af193c07cc42fa61e99fb12b7e65f05e",
@@ -146,6 +149,8 @@
     "tests/tool-discipline-mutation.test.ts": "2327000980bcc4ee543ea9205125af2e75a0d7025c0206d4351e41f0e224498a",
     "tests/tool-discipline.test.ts": "1d525b11398e54f16988802a7a99881c9df2f621bf14cdf5f8102e5f12694d1f",
     "tests/tool-forge.test.ts": "27110b9d0f8aa8e5e33bc6119dde2e68a8b6f03630958cb2b699218ad229212c",
+    "tests/tool-test-run-project-root.test.ts": "8ca6b0763677f80651ca9f6a3e01c6acb4737d790df8c4b2dcdc5f6e991ce59c",
+    "tests/tool-type-check.test.ts": "712eecbedf43e8d0de79122cd0be23a75d03bc81b757f4737d9fc426a6c74efa",
     "tests/tools-selftest.test.ts": "b0f307e867a465fdf00a58f7a3ecc3816e0690ef9aa281418033bc13360313e5",
     "tests/trace.service.test.ts": "da006ef2d5020f9433134c930824a2969296c6761d9bb03dd5668c0083d0f6b3",
     "tests/trial-resilience.test.ts": "2df8679c74331fa1035988785d87241aaa09c2227b1f246071de7f2e81db71c2",
@@ -175,13 +180,14 @@
     "src/services/judge/tool-discipline.ts": "d514a3cb221499622b48d63fec8f3cc3a0d8e83c1cbc3220e2efe912f3a951d2",
     "src/services/judge/types.ts": "bbe593920480c3b1578b3b9fd83c5273d1402972fea5af2cbfeb9cd8c9a8f767",
     "src/services/rsi/change-domain.ts": "b04d2f67c3e828577ec6b8cfc90f4791cacb14aa580374e253bf9a0bd7390038",
-    "src/services/rsi/iteration-gate.ts": "a7f4a3f1528f864a28037ba2a8ad3d786c7d059c0fdb73337cfb6fb185262a02",
-    "src/services/rsi/iteration-store.ts": "673fcd592c5fac224e7a031dada31265e148a5f55d9211c5e81fd9a847a77669",
+    "src/services/rsi/iteration-gate.ts": "a3d14deb9bddc9acd88c88ea99d9fd23e910ad0722a27eb1d6506c5bb4b20318",
+    "src/services/rsi/iteration-store.ts": "fc2357265406a3a761e8ef98bf6423d82dab5aa00d14805d84d4b79745de4aa1",
     "src/services/rsi/ledger-migrate.ts": "f13afa38191de565e74c0ef07febff35035435919729b4e97425f726681b8ef3",
     "src/services/rsi/ledger-verify.ts": "73fe68b22bddd37d18afe8b87ffd86142ea704e91c1ebbc845888e94c38cfeb9",
     "src/services/rsi/manifest-builder.ts": "096ea0a9ba34f7cfb5e504fa326a4732b1103e8b686916e82f81978e300d0243",
     "src/services/rsi/rsi-attributor.ts": "5cc32e1a1fc9cacaa1236b1b7ae5bcbe186f4a48403a60f9d52866c53e9dc213",
     "src/services/rsi/rsi-bridge.service.ts": "f095a950dc5d7cb770c6c0ba0e14a82577d5e2f0be14915602d7cb5c38a46aab",
+    "src/services/rsi/rsi-overview.service.ts": "a1f3016c85369f2d4b9a95f9ee962a95e2537d0627c4f59aa7083b4f280de83b",
     "src/services/rsi/rules-contract.ts": "e5ebc518cafdbf343587a33da22bb0c6f9c4fe33415ef27ba5d4c8861996d47f",
     "src/services/eval/propose.ts": "8263bd025bc77ae83e3cd0df736ba692ada31ea078d65694d12139171470c332",
     "src/services/eval/runner.ts": "55bf61d9486ff7ee64004e7da8784e9fd0dece1e617d426a3e15ef077a9cb3cf",
@@ -214,7 +220,7 @@
     "client/tests/layout-states.test.ts": "82934d81711d93e9f480217814912dcdae0ff8afe61f7bb3ab089eab126f0222",
     "client/tests/model-capability-panel.test.ts": "dc7268e5408807c16bf446481c8602e219da26f41b62f8bd54d6fe360c45897a",
     "client/tests/reasoning-stream.test.ts": "0705d3693c5009046483415eab7bd1fa800d6f0ee5cae2ef94b79a45ad3b636a",
-    "client/tests/rsi-dashboard.test.ts": "ade18208cb716c4d2654a092fa99b04457506146a6b4198b07c07e46099c41c5",
+    "client/tests/rsi-dashboard.test.ts": "f42ee0c62cdbe35a9fd13a60f428b53d74fbf5a114069be40564e949327ff509",
     "client/tests/rsi-rules.test.ts": "f1e7176f8f25cac763b88a22a44ee7714405a461e35dd33298ff45172187a849",
     "client/tests/rsi-series.test.ts": "65a39c374e7dc87d662edf6e5b80d7023a21a9bfbcc46c082eec4d5c99063556",
     "client/tests/run-stage-banner.test.ts": "9a2e63528a737aa3e2b4dc58b4ed88b0848e479a5ac4be862b24e7d5c5364a6e",
@@ -222,12 +228,12 @@
     "client/tests/tool-skill-modal.test.ts": "8561ee680fad9803d7a1f6f77c86a8619a2387a144ec7bd55d3e28fff370b42d",
     "client/tests/use-async-data.test.ts": "482589516efe20b293bcce6f8545c6a0e220ade7f9f2fa5bd6b41f794b852f11",
     "self-upgrade/backlog.json": "b6eda9767bdb55ec5fb0bcbb7a97e9fa4bc0ee8b94d8d914af1d769a2e568a51",
-    "self-upgrade/tasks.json": "1ab51a355016fe92e8a8d2fd5636b45241d41195bf5ab34499552c444e606631",
+    "self-upgrade/tasks.json": "5a9670919757d0edb983af11927731c05f381f40df8a54dcb90c577f77a8d650",
     "scripts/author-task.ts": "ef0e64533043c1187e54c4258d78486591ead3b0937806e91c387ddcac3c7543",
     "scripts/auto-adopt.ts": "711dc67c4ede3cf4dd1e292e2bbf222c94a96beebb0077b9a1287d885e91929f",
     "scripts/check-rsi-contract.mjs": "92ef5a771c995ada5f45062f8b3ab1b52a162f918e5c6b374e69834e3b7cb24b",
     "scripts/check-self-upgrade.mjs": "d2b7c7bbd8c99f1190dbd9da4d719989342d1810e8861a34a730d91a0ecbebc9",
-    "scripts/check-suite-floor.mjs": "210f5d7d77f3c22b00132b465225c88526f941a2be4045135142d9fa6b374fe6",
+    "scripts/check-suite-floor.mjs": "b24c15ab18d908b2b728ed990979b4d8aa1c946af4aee723c670ecfea461daae",
     "scripts/dispatch-bridge.ts": "2ee70d357d408f607a514427b713bccc821b6118cc39a612cd3fa03acf79937d",
     "scripts/failure-attribution.ts": "7642308b3ca66ece37b9478b5ed968ff58ee388396ad6670fb6f0a3567507cc3",
     "scripts/failure-stats.mjs": "8d3cdfc657c035fe54c8352fed72858a40f08451f3180925574812a9dd5ff7c2",
@@ -255,9 +261,5 @@
     "scripts/verify-rsi-ledger.ts": "65718c9481ff3080aec6ab1a2aaffdc4cdbe991937e528b94687a4e975b8ef7e",
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
-  "preexistingDirty": [
-    "scripts/self-upgrade-loop.ts",
-    "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
-    "tests/tool-discipline-mutation.test.ts"
-  ]
+  "preexistingDirty": []
 }
