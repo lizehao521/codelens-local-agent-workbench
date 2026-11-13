@@ -14,7 +14,7 @@
 
 ## 0.5 引擎与外壳：插件时代的 host 定位（2026-11-13 并入）
 
-> 来源：`产品宪法补丁.md`（原草案）。只并入不与 §1–§8 重复的部分。
+> 来源：`产品宪法补丁.md`（已并入；展开版与现状对照见原文件 §8）。只并入不与 §1–§8 重复的部分。
 
 - **引擎 = 强化闭环；外壳 = 插件时代 host。** 内核决定「你越来越强」，外壳决定「用户为什么用你、且离不开你」。
 - 插件、模型、UI、DSH 都只是 `Act` 的作用面或 `τ` 的证据来源，**不是中心**；中心是环能不能越转越强。
@@ -150,10 +150,10 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
 
 | 铁律 | 系统里的落点 | 状态 |
 |---|---|---|
-| **C1 中心性** | `self-upgrade/tasks.json` 每题必须有 `title`；判据只锁可观察行为；提议 schema 必填 `gap`；**新增 `strengthens`（Act/Judge/Update/Memory），由根 `scripts/check-task-metadata.mjs` 校验、进 acceptance，并在围栏启动时强制执行（缺字段直接 FAIL）** | **成立（字段层）**——13 题已回填（Act 9 / Judge 4）；Update/Memory 维暂无题 |
-| **C2 闭环** | 账本 `.self-upgrade/ledger.jsonl` 被 `scripts/failure-stats.mjs` 消费；归因聚合被 `scripts/propose-gaps.ts` 当作输入 → **下一道题由它自己反复失败的那件事决定** | **成立**（这是本轮最重要的闭环：r 真的改变了下一轮考什么） |
-| **C3 自证** | `scripts/judge-audit.mjs` + 围栏第 3d 道闸：每份判据至少要有一条**反向断言**（期望失败/被拒），且占比 ≥20%；`author-task.ts` 的 `judgeLint` 对新生判据同规则；判据草案**必须能编译** | **部分成立**——金丝雀（反向断言）已规则化；工具纪律已有变异测试（`tests/tool-discipline-mutation.test.ts`），但**并非每条判据都有破坏夹具** |
-| **C4 不外推** | 围栏区分 PASS/FAIL，不把未跑的步骤算绿；`--accept-current=<理由>` 要求留痕；诊断里的编译器错误是原文照抄 | **部分**——**缺 UNEXEC 这个第三态**：目前"没跑到"和"失败"都记 FAIL |
+| **C1 中心性** | `self-upgrade/tasks.json` 每题必须有 `title`；判据只锁可观察行为；提议 schema 必填 `gap`；**新增 `strengthens`（Act/Judge/Update/Memory），由根 `scripts/check-task-metadata.mjs` 校验、进 acceptance，并在围栏启动时强制执行（缺字段直接 FAIL）** | **成立（字段 + 闸 + 围栏）**——13 题全部回填（Act 9 / Judge 4）；Update/Memory 能力有实现、有判据，但**没有任务归属**（归属缺口，见 §10） |
+| **C2 闭环** | 账本 `.self-upgrade/ledger.jsonl` 被 `scripts/failure-stats.mjs` 消费；归因聚合被 `scripts/propose-gaps.ts` 当作输入 → **下一道题由它自己反复失败的那件事决定** | **链路成立、覆盖不足**：r→提议→出题这条链跑通过；但账本 7 行只覆盖 1/13，`exemplars` 缺失（数据丢失，不是通过） |
+| **C3 自证** | `scripts/judge-audit.mjs` + 围栏第 3d 道闸：每份判据至少要有一条**反向断言**（期望失败/被拒），且占比 ≥20%；`author-task.ts` 的 `judgeLint` 对新生判据同规则；判据草案**必须能编译** | **部分成立**——反向断言已规则化；2026-11-13 新增源码级变异探针 `scripts/mutation-probe.mjs`（path-jail / checkpoint 两处 **2/2 杀死**）；仍**没有覆盖每条判据** |
+| **C4 不外推** | 围栏区分 PASS/FAIL，不把未跑的步骤算绿；`--accept-current=<理由>` 要求留痕；诊断里的编译器错误是原文照抄 | **部分**——元数据闸已有 `exit 3 UNEXEC` 第三态；**围栏本身仍是 PASS/FAIL 两态**，「没跑到」与「失败」不分 |
 | **判据塔 L0–L3** | 只有 L0（机械：格式/类型/判据/回归）；L1 金丝雀刚补一半；L2 语义评估、L3 红队均未建 | **L2/L3 UNEXEC** |
 | **工具纪律（第 6 节）** | 工具是静态内置（`tools/builtin/`），无动态创建路径；三闸已实现为运行时判据：`src/services/judge/tool-discipline.ts`（孤儿/配对/写闸复用）接入 `judge.service`，配套 `tests/tool-discipline.test.ts` 与变异测试 | **成立（静态时代口径）**——闸 2 在无动态工具时常态 UNEXEC，按 C4 不算绿 |
 | **记忆（第 5 节）** | 账本（失败记忆）+ `.workbuddy/memory/*.md`（任务日志）+ git（回滚点）；三者口径分开 | **部分**——"召回并改变决策"只在归因→提议这一条链路上验证过 |
@@ -162,9 +162,8 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
 
 ### 一句话看懂这张表
 
-**成立的三条**（C2 闭环、元规则、终止条件）恰好是"让系统自己找活干"的那三条——
-它们撑起了这轮从「量得到」到「学得到」的转变。
-**UNEXEC 的集中在判据塔 L1–L3 和工具纪律**——那是下一步该动的地方。
+**现在的分布**：C1 已成立（字段 + 闸 + 围栏），C2/C3/C4 仍是「部分」——不是没做，是还没覆盖到每条判据与每个失败态。
+**UNEXEC 集中在判据塔 L2–L3、逐题变异、调度闭环与 CI**——那是下一步该动的地方。
 
 ## 10. 现状：哪些是实测，哪些是未执行
 
@@ -182,17 +181,29 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
   正指自己 `NO_TOOL_CALL ×3` 这个真短板。
 - 工具纪律三闸已从静态测试升级为运行时判据（`services/judge/tool-discipline.ts` 接入 `judge.service`），
   并有破坏夹具 `tests/tool-discipline-mutation.test.ts`（188 行）。
+- **全量口径（2026-11-13）**：server `test:acceptance` exit 0，**1507/1507（161 文件）**；krsi 10/10；套件地板 3/3；C1 元数据闸 PASS；工具注册表契约 PASS（17 个工具）。client 136/136；e2e 14/14。
+- **R1 关闭**：文件工具 description 与 not-found 文案点明「相对路径按沙箱根解析、授权目录用绝对路径」，并新增 `tests/tool-fs-path-hint.test.ts` 锁定模型可见说明（`43e48af`）。
+- **R2 关闭**：17 处 legacy 错误体统一为 `{ error: { code, message } }`（checkpoints/runs/sandbox-grants/rsi），前端双兼容；新增 `tests/api-error-shape.test.ts` 防回潮（`6d398e7`、`ea32028`）。
+- **工具注册表契约闸**：规范名/线上名可逆推导、`risk` 必填、`tool_calls.tool_name ⊆ 注册表`、`/api/v1/tools ⊇ 注册表`（`ccc97e7`）。
+- **DSH 技能层**：48 个 `SKILL.md` 安装到 `skills/dsh/`，47 个经正式 API 入库；19 个工具按决定移除（它们是 DSH 插件模块，非独立 CLI）；沙箱根切到仓库根，运行实例开启 `SKILL_LIBRARY_ENABLED=true`（`8a37d8c`）。
+- **任务开始只读体检**：`scripts/rsi-tick.mjs`（`npm run check:rsi-tick`）输出题集/账本/正例/候选读数，不采纳、不写盘（`def2f0f`）。
 
 **未执行（UNEXEC，不许当绿）**
 
-- **破坏夹具（变异测试）**：只在工具纪律一处做了（`tests/tool-discipline-mutation.test.ts`）；
-  没有对每道题注入已知缺陷再跑判据。
+- **破坏夹具（变异测试）**：目前只覆盖 3 处——工具纪律（`tests/tool-discipline-mutation.test.ts`）、
+  path-jail 越界检查、checkpoint 确认头（后两者由 `scripts/mutation-probe.mjs` 验证，2/2 杀死）；
+  **没有对每道题注入已知缺陷再跑判据**。
 - **L2 语义判据**：没有任何一条判据回答"质量是否真的提升"。
 - **L3 红队**：没有专门构造"骗过判据"的样本去攻击现有判据。
 - **动态造工具路径**：三闸已实现并接入 Judge，但系统仍只有静态内置工具，
   闸 2 常态 UNEXEC（C4：不算绿）。
-- **账本覆盖**：13 道 done 题里只有 1 道能在 `.self-upgrade/ledger.jsonl` 找到 verified 记录
-  （账本曾从 57 条缩到 7 条），覆盖率只报不判——这是数据丢失，不是通过。
+- **账本覆盖**：13 道 done 题里只有 1 道能在 `.self-upgrade/ledger.jsonl` 找到记录
+  （账本 7 行，曾从 57 条缩到 7 条），覆盖率只报不判——这是数据丢失，不是通过。
+- **正例库**：`.self-upgrade/exemplars.jsonl` 不存在，few-shot 正例回灌缺失。
+- **调度**：`src/` 内没有任何地方启动 `self-upgrade-loop.ts`；目前只有只读体检（rsi-tick），
+  自动调度与 staging→promote 流程未实现。
+- **CI**：仓库无 `.github/workflows`，围栏/C1/契约闸都靠本地或 acceptance 触发。
+- **Update/Memory 归属**：两维代码与判据存在，但 13 题中 0 题归属它们。
 - **跨模型一致性**：同一份判据在不同模型上是否同样能判，没有测过。
 
 ## 11. 修改记录
@@ -204,7 +215,11 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
 | 2026-11-11 | C3 从"要求"变成"闸"：`judge-audit.mjs` + 围栏第 3d 道 | "一次跑绿但破坏夹具打不红 ⇒ 不是强化"需要机器可查 | `scripts/check-self-upgrade.mjs` |
 | 2026-11-13 | 并入《产品宪法补丁》的 host 定位（新增 §0.5）；据代码现状修订 §9/§10 的工具纪律与 C3 状态 | 补丁待并入；§10 把已实现的闸写成 UNEXEC，违反 C4 | git（本文件） |
 | 2026-11-13 | C1 落地：13 题补 `strengthens`，新增根 `scripts/check-task-metadata.mjs` 并入 acceptance；tasks.json 变更后重锚基线（252 个受保护文件） | 元数据只写不验就是装饰；改 tasks.json = 改尺子，必须显式重锚 | git（tasks.json / baseline.json / 本文件） |
-| 2026-11-13 | C1 闸进围栏：`check-self-upgrade.mjs` 启动即校验元数据，缺字段 exit 1；e2e 启动清空兜底 Key，缺 Key 用例可复现 | Q8：只在 acceptance 跑会被“提交前补字段”绕过；e2e 依赖 `.env` 导致假红 | git（check-self-upgrade.mjs / e2e.sh / 本文件） |
+| 2026-11-13 | C1 闸进围栏：`check-self-upgrade.mjs` 启动即校验元数据，缺字段 exit 1；e2e 启动清空兜底 Key，缺 Key 用例可复现 | Q8：只在 acceptance 跑会被"提交前补字段"绕过；e2e 依赖 `.env` 导致假红 | git（check-self-upgrade.mjs / e2e.sh / 本文件） |
+| 2026-11-13 | 关闭 R1（路径语义显式化 + 判据 `43e48af`）与 R2（17 处错误体统一 + 形状护栏 `6d398e7`/`ea32028`） | 原「永久接受」的前提经复核不成立：说明与实现矛盾、前端消费方可兼容 | git（fs-read/fs-write/fs-list、controllers、SandboxGrantBar、tests） |
+| 2026-11-13 | 新增工具注册表契约闸（17 工具）与源码级变异探针（2/2） | C3 需要可执行的判别力证据，不能只统计反向断言占比 | git（`ccc97e7`、`f0b4b08`） |
+| 2026-11-13 | DSH 48 技能落地（47 入库）、19 工具移除、沙箱根改仓库根、技能库开启 | 技能是 `τ` 的证据来源；工具是插件模块，不能当 CLI 用 | git（`8a37d8c`）；沙箱与库开关在 `server/.env` |
+| 2026-11-13 | 新增任务开始只读体检 `rsi-tick`；裁决 Q16=A / Q17=B / Q18=A | 「没人调度升级环」先补可观测入口；D4 仍必须人 promote | git（`def2f0f`） |
 
 ---
 
