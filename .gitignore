@@ -88,3 +88,19 @@ server/scratch/_mentor*
 server/scratch/_stability-probe.*
 server/scratch/_db-consistency.mjs
 server/scratch/_list-models.mjs
+# 布局实测截图：hash 名的三张是既有取证产物（继续跟踪），layout-* 可重跑，不进版本控制
+.screenshots/layout-*.png
+
+# 人所有目录重锚时 cp 出来的改前留档（还原版），不是要发布的基线
+.self-upgrade/*.bak-*
+
+# 本机磁盘巡检脚本与两份交付包（产物，不是源码）
+_disk_scan.ps1
+delivery-scope-guardian.zip
+iteration-governance.zip
+
+# 本轮探针与外来技能包的临时落盘
+server/scratch/_patch-env.mjs
+server/scratch/live7.mjs
+server/scratch/dsh-index.json
+server/scratch/dsh-pkg-1/
