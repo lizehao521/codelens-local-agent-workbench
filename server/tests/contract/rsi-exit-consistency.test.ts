@@ -18,7 +18,7 @@
  * 这种错误在运行时是静默的（旧路径仍然可用）。
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
@@ -133,10 +133,13 @@ describe('RSI 看板读数：/api/v1 与旧 /api 同源', () => {
 });
 
 describe('前端已迁到 /api/v1（防回退）', () => {
-  it('api.ts 里不再出现旧前缀字面量', () => {
-    // 相对本文件定位仓库根：tests/contract → server → repo
-    const apiPath = path.resolve(__dirname, '..', '..', '..', 'client', 'src', 'services', 'api.ts');
-    const source = readFileSync(apiPath, 'utf8');
+  it('api*.ts 里不再出现旧前缀字面量', () => {
+    // api.ts 已拆成 api-*.ts，扫描整个 services 目录而不是单文件。
+    const dir = path.resolve(__dirname, '..', '..', '..', 'client', 'src', 'services');
+    const source = readdirSync(dir)
+      .filter((f) => /^api.*\.ts$/.test(f))
+      .map((f) => readFileSync(path.join(dir, f), 'utf8'))
+      .join('\n');
 
     expect(source).not.toContain('/api/rsi/');
     expect(source).toContain('/api/v1/rsi/overview');
