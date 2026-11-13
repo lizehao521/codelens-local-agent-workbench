@@ -9,7 +9,7 @@ export const fsListTool: ToolDefinition = {
   wireName: 'fs_list',
   displayName: '浏览目录',
   category: 'file',
-  description: '列出沙箱内目录内容（名称/类型/大小）。recursive=true 时递归（默认关），maxEntries 上限默认 200。',
+  description: '列出沙箱内目录内容（名称/类型/大小）。recursive=true 时递归（默认关），maxEntries 上限默认 200。路径可以是沙箱相对路径（按沙箱根解析）或授权目录内的绝对路径。',
   inputSchema: {
     type: 'object',
     properties: {

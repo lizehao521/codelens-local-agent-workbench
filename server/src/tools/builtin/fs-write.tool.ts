@@ -64,7 +64,7 @@ export const fsWriteTool: ToolDefinition = {
   displayName: '写入文件',
   category: 'file',
   description:
-    '在沙箱内写文件。operation：create（不存在才建）/overwrite（覆盖）/append（追加）/rename（移动到 newPath）/delete（删除）/purge（清空目录内容并保留空目录）/replace（精确替换一处 oldText 为 newText）。路径必须是沙箱相对路径；覆盖、删除、清空属于高危操作，执行前需要用户确认。',
+    '在沙箱内写文件。operation：create（不存在才建）/overwrite（覆盖）/append（追加）/rename（移动到 newPath）/delete（删除）/purge（清空目录内容并保留空目录）/replace（精确替换一处 oldText 为 newText）。路径可以是沙箱相对路径（按沙箱根解析）或授权目录内的绝对路径；覆盖、删除、清空属于高危操作，执行前需要用户确认。',
   inputSchema: {
     type: 'object',
     properties: {

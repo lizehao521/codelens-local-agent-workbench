@@ -1,11 +1,11 @@
 {
-  "createdAt": "2026-11-13T02:58:57.174Z",
+  "createdAt": "2026-11-13T03:12:03.137Z",
   "allowed": [
     "src/tools/builtin/fs-read.tool.ts"
   ],
   "judge": "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-read.tool.ts": "cc53d144e4d566d21bc6a2866b889c1e6e3d49ac9829173c6fe6b83c8a668185"
+    "src/tools/builtin/fs-read.tool.ts": "7c853ff60a3cf0c6efcab04080071b130b509b4f00a703db960c20cba82c2627"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "ebc3e56615019c4db1eb717a0a6ee577b0c0f96a52dc571b1ceadc9f0e40143b",
@@ -149,6 +149,7 @@
     "tests/tool-discipline-mutation.test.ts": "2327000980bcc4ee543ea9205125af2e75a0d7025c0206d4351e41f0e224498a",
     "tests/tool-discipline.test.ts": "1d525b11398e54f16988802a7a99881c9df2f621bf14cdf5f8102e5f12694d1f",
     "tests/tool-forge.test.ts": "27110b9d0f8aa8e5e33bc6119dde2e68a8b6f03630958cb2b699218ad229212c",
+    "tests/tool-fs-path-hint.test.ts": "a96faa29a74f1d31311499f0f52c96e9238789c2692d76f49b0b02332dcb5e4b",
     "tests/tool-test-run-project-root.test.ts": "8ca6b0763677f80651ca9f6a3e01c6acb4737d790df8c4b2dcdc5f6e991ce59c",
     "tests/tool-type-check.test.ts": "712eecbedf43e8d0de79122cd0be23a75d03bc81b757f4737d9fc426a6c74efa",
     "tests/tools-selftest.test.ts": "b0f307e867a465fdf00a58f7a3ecc3816e0690ef9aa281418033bc13360313e5",
@@ -262,6 +263,8 @@
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "scripts/check-self-upgrade.mjs"
+    "src/tools/builtin/fs-list.tool.ts",
+    "src/tools/builtin/fs-write.tool.ts",
+    "tests/tool-fs-path-hint.test.ts"
   ]
 }

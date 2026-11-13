@@ -41,7 +41,7 @@ export const fsReadTool: ToolDefinition = {
   displayName: '读取文件',
   category: 'file',
   description:
-    '读取沙箱内文件内容。支持 encoding（utf8/base64）、maxBytes（上限，默认 16KB）、lineStart/lineEnd（1 起的行号窗口）、keyword（只返回含该关键字的行）、glob（目录时按名过滤）。路径必须是沙箱相对路径。',
+    '读取沙箱内文件内容。支持 encoding（utf8/base64）、maxBytes（上限，默认 16KB）、lineStart/lineEnd（1 起的行号窗口）、keyword（只返回含该关键字的行）、glob（目录时按名过滤）。路径可以是沙箱相对路径（按沙箱根解析），也可以是授权目录内的绝对路径——相对路径不会去白名单里找。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -102,7 +102,7 @@ export const fsReadTool: ToolDefinition = {
         error: {
           code: 'TOOL_NOT_FOUND',
           kind: 'not_found',
-          message: `沙箱内不存在 ${jail.sandboxRelative}`,
+          message: `沙箱内不存在 ${jail.sandboxRelative}（相对路径只按沙箱根解析；授权目录内的文件请传绝对路径）`,
           retryable: false,
         },
       };
