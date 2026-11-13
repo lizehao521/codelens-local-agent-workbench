@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-13T04:08:27.671Z",
+  "createdAt": "2026-11-13T04:14:04.249Z",
   "allowed": [
     "src/controllers/checkpoints.controller.ts",
     "src/controllers/runs.controller.ts",
@@ -23,6 +23,7 @@
     "tests/agent-loop-e2e.test.ts": "bfd8e658c085c1a42042e44019244b8b57cd51a2090dbc8868830d2191df36e1",
     "tests/agent-stage-events.test.ts": "8d0c96b5e41e9db70ba7de6891736ba7ddb9ad4d9b2f6d8ba1eef3afcac2f858",
     "tests/agent-stage-timeout.test.ts": "93cc998684858060c3254d1e9d3301b094ac2bf9575743029672ae8498fa619a",
+    "tests/api-error-shape.test.ts": "25394422d99fe5d758e7572c537e08611d8d5785a4e45f1e19ddf256dafb611c",
     "tests/approval-dedup.test.ts": "ddfd73a1790665fe2310d58e488b91f75c16351b318e7e5e0496150994fbc992",
     "tests/approval-repository.test.ts": "bfc35c6721a45e0ee5c8714daaa252dca1f330b70eb136551bb735c087f8c1b9",
     "tests/approval-secret.test.ts": "e6653b49c0db013c1188c0193dc313047e4a33d6d0f2521dd53bb9806470f6b6",
@@ -269,7 +270,6 @@
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "tests/checkpoint.service.test.ts",
-    "tests/observability-endpoints.test.ts"
+    "tests/api-error-shape.test.ts"
   ]
 }
