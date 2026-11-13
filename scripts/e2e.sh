@@ -46,7 +46,8 @@ if curl -sf "$BASE/api/health" >/dev/null 2>&1; then
   bad "端口 $PORT 已被占用（$BASE 已有服务响应），请先停止该进程再跑 E2E"; exit 1
 fi
 # exec 替换子 shell，确保 $! 就是 node 进程 PID（否则杀的是 wrapper，node 会泄漏）
-( cd "$ROOT/server" && exec env PORT=$PORT "$NODE" dist/app.js >/tmp/e2e-server-run.log 2>&1 ) &
+# 缺 Key 用例要可复现：显式清空服务端兜底 Key（dotenv 不覆盖已存在的环境变量，空串也算已设置）。
+( cd "$ROOT/server" && exec env PORT=$PORT LLM_SERVER_API_KEY= "$NODE" dist/app.js >/tmp/e2e-server-run.log 2>&1 ) &
 SERVER_PID=$!
 echo "$SERVER_PID" > /tmp/e2e-server.pid
 # 等待健康检查

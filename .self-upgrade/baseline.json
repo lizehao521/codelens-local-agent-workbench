@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-13T02:50:01.197Z",
+  "createdAt": "2026-11-13T02:58:57.174Z",
   "allowed": [
     "src/tools/builtin/fs-read.tool.ts"
   ],
@@ -228,11 +228,11 @@
     "client/tests/tool-skill-modal.test.ts": "8561ee680fad9803d7a1f6f77c86a8619a2387a144ec7bd55d3e28fff370b42d",
     "client/tests/use-async-data.test.ts": "482589516efe20b293bcce6f8545c6a0e220ade7f9f2fa5bd6b41f794b852f11",
     "self-upgrade/backlog.json": "b6eda9767bdb55ec5fb0bcbb7a97e9fa4bc0ee8b94d8d914af1d769a2e568a51",
-    "self-upgrade/tasks.json": "5a9670919757d0edb983af11927731c05f381f40df8a54dcb90c577f77a8d650",
+    "self-upgrade/tasks.json": "b470a3b7217812dcfda838711483a83237d55ae7e7ff988f163e398d760e3342",
     "scripts/author-task.ts": "ef0e64533043c1187e54c4258d78486591ead3b0937806e91c387ddcac3c7543",
     "scripts/auto-adopt.ts": "711dc67c4ede3cf4dd1e292e2bbf222c94a96beebb0077b9a1287d885e91929f",
     "scripts/check-rsi-contract.mjs": "92ef5a771c995ada5f45062f8b3ab1b52a162f918e5c6b374e69834e3b7cb24b",
-    "scripts/check-self-upgrade.mjs": "d2b7c7bbd8c99f1190dbd9da4d719989342d1810e8861a34a730d91a0ecbebc9",
+    "scripts/check-self-upgrade.mjs": "4f21e910f347d239dad45ee73b8c400296ecde20081bc34264757716d8961f8f",
     "scripts/check-suite-floor.mjs": "b24c15ab18d908b2b728ed990979b4d8aa1c946af4aee723c670ecfea461daae",
     "scripts/dispatch-bridge.ts": "2ee70d357d408f607a514427b713bccc821b6118cc39a612cd3fa03acf79937d",
     "scripts/failure-attribution.ts": "7642308b3ca66ece37b9478b5ed968ff58ee388396ad6670fb6f0a3567507cc3",
@@ -261,5 +261,7 @@
     "scripts/verify-rsi-ledger.ts": "65718c9481ff3080aec6ab1a2aaffdc4cdbe991937e528b94687a4e975b8ef7e",
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
-  "preexistingDirty": []
+  "preexistingDirty": [
+    "scripts/check-self-upgrade.mjs"
+  ]
 }

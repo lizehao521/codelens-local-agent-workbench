@@ -150,7 +150,7 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
 
 | 铁律 | 系统里的落点 | 状态 |
 |---|---|---|
-| **C1 中心性** | `self-upgrade/tasks.json` 每题必须有 `title`；判据只锁可观察行为；提议 schema 必填 `gap`；**新增 `strengthens`（Act/Judge/Update/Memory），由根 `scripts/check-task-metadata.mjs` 校验并进 acceptance** | **成立（字段层）**——13 题已回填（Act 9 / Judge 4）；Update/Memory 维暂无题 |
+| **C1 中心性** | `self-upgrade/tasks.json` 每题必须有 `title`；判据只锁可观察行为；提议 schema 必填 `gap`；**新增 `strengthens`（Act/Judge/Update/Memory），由根 `scripts/check-task-metadata.mjs` 校验、进 acceptance，并在围栏启动时强制执行（缺字段直接 FAIL）** | **成立（字段层）**——13 题已回填（Act 9 / Judge 4）；Update/Memory 维暂无题 |
 | **C2 闭环** | 账本 `.self-upgrade/ledger.jsonl` 被 `scripts/failure-stats.mjs` 消费；归因聚合被 `scripts/propose-gaps.ts` 当作输入 → **下一道题由它自己反复失败的那件事决定** | **成立**（这是本轮最重要的闭环：r 真的改变了下一轮考什么） |
 | **C3 自证** | `scripts/judge-audit.mjs` + 围栏第 3d 道闸：每份判据至少要有一条**反向断言**（期望失败/被拒），且占比 ≥20%；`author-task.ts` 的 `judgeLint` 对新生判据同规则；判据草案**必须能编译** | **部分成立**——金丝雀（反向断言）已规则化；工具纪律已有变异测试（`tests/tool-discipline-mutation.test.ts`），但**并非每条判据都有破坏夹具** |
 | **C4 不外推** | 围栏区分 PASS/FAIL，不把未跑的步骤算绿；`--accept-current=<理由>` 要求留痕；诊断里的编译器错误是原文照抄 | **部分**——**缺 UNEXEC 这个第三态**：目前"没跑到"和"失败"都记 FAIL |
@@ -204,6 +204,7 @@ Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
 | 2026-11-11 | C3 从"要求"变成"闸"：`judge-audit.mjs` + 围栏第 3d 道 | "一次跑绿但破坏夹具打不红 ⇒ 不是强化"需要机器可查 | `scripts/check-self-upgrade.mjs` |
 | 2026-11-13 | 并入《产品宪法补丁》的 host 定位（新增 §0.5）；据代码现状修订 §9/§10 的工具纪律与 C3 状态 | 补丁待并入；§10 把已实现的闸写成 UNEXEC，违反 C4 | git（本文件） |
 | 2026-11-13 | C1 落地：13 题补 `strengthens`，新增根 `scripts/check-task-metadata.mjs` 并入 acceptance；tasks.json 变更后重锚基线（252 个受保护文件） | 元数据只写不验就是装饰；改 tasks.json = 改尺子，必须显式重锚 | git（tasks.json / baseline.json / 本文件） |
+| 2026-11-13 | C1 闸进围栏：`check-self-upgrade.mjs` 启动即校验元数据，缺字段 exit 1；e2e 启动清空兜底 Key，缺 Key 用例可复现 | Q8：只在 acceptance 跑会被“提交前补字段”绕过；e2e 依赖 `.env` 导致假红 | git（check-self-upgrade.mjs / e2e.sh / 本文件） |
 
 ---
 

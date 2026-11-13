@@ -26,6 +26,26 @@ import { classifyJudgeRun } from './lib/judge-run-classify.mjs';
 
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 
+// ── C1 元数据闸（2026-11-13）────────────────────────────────────────────────
+// 只在 acceptance 跑 = 提交前补字段就能绕过（第 8 轮对话 Q8 的原话）。
+// 放在围栏启动处：每道题派单/采用都会经过这里，缺 strengthens 直接 FAIL。
+// 账本不可得时校验器返回 3；那是 UNEXEC，不是通过，这里只记一行，不伪造绿。
+try {
+  execFileSync(process.execPath, [join(SERVER, '..', 'scripts', 'check-task-metadata.mjs'), '--quiet'], {
+    stdio: 'pipe',
+  });
+} catch (err) {
+  if (err.status === 1) {
+    console.error('[C1] 任务元数据不合法（缺 strengthens 或状态不一致）：');
+    console.error(String(err.stdout ?? ''));
+    console.error(String(err.stderr ?? ''));
+    process.exit(1);
+  }
+  if (err.status === 3) {
+    console.error('[C1] 账本不可得：元数据字段已校验，覆盖率 UNEXEC（不当作通过）');
+  }
+}
+
 /**
  * 本轮要验的是哪个包（server / client）。
  *
