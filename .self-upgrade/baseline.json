@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-13T15:01:51.073Z",
+  "createdAt": "2026-11-13T15:14:09.178Z",
   "allowed": [
     "src/controllers/checkpoints.controller.ts",
     "src/controllers/runs.controller.ts",
@@ -60,6 +60,7 @@
     "tests/fixtures/agent-http.ts": "756015b740da84aa76e1d9572ae36c7411d59d2a2ed15a70285c4e976d0481d2",
     "tests/fixtures/fake-llm.ts": "307f562233af0bbf8a50ac782a6d79a45ce5b356a7cfa444f59d5039b8aa00ca",
     "tests/fixtures/fake-mcp-server.mjs": "2c92cf31fdb3701574b3325213578e5f6b85731b2bd67320dbf6dd77d7731cf9",
+    "tests/fixtures/suite-floor-base.json": "fd44d506dc19f94cf24762cd3136ebe7b90c7ba3818a73a9ae69949a232f9dc8",
     "tests/fs-read-default-doc.test.ts": "1380997be900b56f32c580fa66c83e2623c266d883d629f9c632614d6b1cafcf",
     "tests/fs-write-git-guard.test.ts": "211610d842842534e7b5f56e879fa693d7d3d15dc57bb7ed5672265adbc7565a",
     "tests/fs-write-purge.test.ts": "6d568a7c930c571dbb3f1fe45b694ae0a0ddc3b06be5f858a7d4c86eeda0c8a3",
@@ -242,7 +243,7 @@
     "scripts/auto-adopt.ts": "711dc67c4ede3cf4dd1e292e2bbf222c94a96beebb0077b9a1287d885e91929f",
     "scripts/check-rsi-contract.mjs": "e8337eee9232d2aa1b05d6d00b4343ac458fced9a3d2bebbfee9304dbaf43a0e",
     "scripts/check-self-upgrade.mjs": "4f21e910f347d239dad45ee73b8c400296ecde20081bc34264757716d8961f8f",
-    "scripts/check-suite-floor.mjs": "8f493588d9ea8400bed8441f2f9b36af1a43dbc5e8fc3afa9f7587251e3ad186",
+    "scripts/check-suite-floor.mjs": "81dee079bc9b00ad6f8a6c0a8724f3d2346e648239d4f3e0b8bd5e2940106f26",
     "scripts/dispatch-bridge.ts": "2ee70d357d408f607a514427b713bccc821b6118cc39a612cd3fa03acf79937d",
     "scripts/failure-attribution.ts": "7642308b3ca66ece37b9478b5ed968ff58ee388396ad6670fb6f0a3567507cc3",
     "scripts/failure-stats.mjs": "b155106a017cf8d6939798759ab723ea20fd52011bc81d3a531b478be2225f1c",
@@ -271,6 +272,7 @@
     "scripts/version-bump.ts": "d6c5c4651dc821c7f5a39f112bbb49874415f9114be1617cd8d6e0719f1acc8c"
   },
   "preexistingDirty": [
-    "scripts/check-suite-floor.mjs"
+    "scripts/check-suite-floor.mjs",
+    "tests/fixtures/suite-floor-base.json"
   ]
 }

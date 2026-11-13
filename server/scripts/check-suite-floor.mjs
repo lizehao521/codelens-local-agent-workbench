@@ -17,10 +17,11 @@
  * 退出码（M2：红轮与被跳过必须可区分）：
  *   0 = 判据按预期工作
  *   1 = 判据失效（该拦没拦 / 误杀真改进）
- *   2 = 前置不可得（找不到 krsi 二进制）
+ *   2 = 前置不可得（找不到 krsi 二进制，或基准夹具不可用）
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -31,37 +32,30 @@ import { fileURLToPath } from 'node:url';
 const KRSI = process.env.KRSI_BIN_PATH || join(tmpdir(), process.platform === 'win32' ? 'krsi.exe' : 'krsi');
 // 必须用 fileURLToPath：仓库路径含中文，new URL().pathname 会给出 %E6%96%B0... 编码串。
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const RSI_DIR = join(ROOT, 'data/rsi');
-// 原写死的会话 id 作首选，保留可复现性；它不在了就退化选任一可用夹具。
-const PREFERRED = join(RSI_DIR, '7d7876d4-aee0-4ac2-b2f0-e61ed30c94f3-next-gen1.json');
+// 基准夹具必须受跟踪：CI 的 checkout 里没有 gitignored 的 data/，理由见 resolveFixture。
+const FIXTURE = join(ROOT, 'tests/fixtures/suite-floor-base.json');
 
 /**
- * 找一个能当基准的 manifest。
+ * 取基准 manifest。
  *
- * 原来这里写死一个会话 id 的绝对路径。`data/rsi` 被清账换过一批会话之后，
- * 那个文件不存在 → readFileSync 抛 ENOENT → 进程 exit 1。可这是**前置不可得**，
- * 不是「门禁失效」：脚本自己的退出码契约（2 = 前置不可得）被自己的崩栈覆盖了。
- * 与 agent-feedback 那条 JUDGE_FIXTURE_BLOCKED 同一形态——尺子跑不动不能记成被衡量者的错。
+ * 一条规矩：显式设了 KRSI_FIXTURE_MANIFEST 就**只认它**，没设才用受跟踪的那份
+ * tests/fixtures/suite-floor-base.json。
+ *
+ * 两处都是被实测打回来改的：
+ * 1) 原先还会退化去扫 gitignored 的 `data/rsi`——本地拿到的是某个历史会话的读数，
+ *    CI 的 checkout 里是空集，两边判的不是同一件事。现在两宿主读同一份字节。
+ * 2) 原先把显式夹具排在前面、跟踪的垫在后面当后备，实测（ARM B）一个没有
+ *    test_pass_rate 的显式夹具被静默吞掉、改用跟踪夹具并打印 PASS——
+ *    你以为在测探针，其实测的是默认题。前置不可得必须显式失败，不许换输入。
  *
  * 判据：能解析 + readings 里真有 test_pass_rate（下面要用它的 n 改数）。
  */
-function resolveFixture() {
-  const explicit = process.env.KRSI_FIXTURE_MANIFEST;
-  const candidates = [];
-  if (explicit) candidates.push(explicit);
-  candidates.push(PREFERRED);
-  try {
-    if (existsSync(RSI_DIR)) {
-      const rest = readdirSync(RSI_DIR)
-        .filter((f) => f.endsWith('-next-gen1.json'))
-        .sort()
-        .reverse()
-        .map((f) => join(RSI_DIR, f));
-      candidates.push(...rest);
-    }
-  } catch {}
+const FIXTURE_CANDIDATES = process.env.KRSI_FIXTURE_MANIFEST
+  ? [process.env.KRSI_FIXTURE_MANIFEST]
+  : [FIXTURE];
 
-  for (const path of candidates) {
+function resolveFixture() {
+  for (const path of FIXTURE_CANDIDATES) {
     try {
       const parsed = JSON.parse(readFileSync(path, 'utf8'));
       if (!Array.isArray(parsed.readings)) continue;
@@ -97,10 +91,19 @@ if (!krsiRunnable()) {
 
 const fixture = resolveFixture();
 if (!fixture) {
-  console.error('[P2] 前置不可得：data/rsi 下找不到可用的 *-next-gen1.json 基准 manifest');
+  console.error(`[P2] 前置不可得：基准 manifest 不可用（试过 ${FIXTURE_CANDIDATES.join(' | ')}）`);
   console.error('     可用 KRSI_FIXTURE_MANIFEST=<path> 显式指定。这不是通过，也不是失败。');
   process.exit(2);
 }
+
+// 自证输入：本趟判的是哪份夹具，路径与 sha 一起印出来。
+// 跨宿主比较只比 sha256（路径必然不同：本机与 runner 的仓库根不一样）。
+// 按行尾归一后取哈希——*.json 没有 .gitattributes 规则，Windows 检出可能是 CRLF、
+// Linux 是 LF，比裸字节会把同一份夹具说成两份（与 UI Token 基线同一口径）。
+const fixtureSha = createHash('sha256')
+  .update(readFileSync(fixture.path, 'utf8').replace(/\r\n/g, '\n'))
+  .digest('hex');
+console.log(`[input] fixture=${fixture.path} sha256=${fixtureSha}`);
 
 const base = fixture.parsed;
 const FP = '522c3ddad8478b63d01074841fd2faaa68b5cef2d41fd0076f0003b51e11dee4';

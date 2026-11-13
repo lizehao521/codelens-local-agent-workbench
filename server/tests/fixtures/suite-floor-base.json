@@ -1,0 +1,16 @@
+{
+  "producer": "codelens-agentkernel",
+  "generation": 1,
+  "artifacts": [],
+  "criteria_sha256": "522c3ddad8478b63d01074841fd2faaa68b5cef2d41fd0076f0003b51e11dee4",
+  "criteria_diff": [],
+  "readings": [
+    { "metric": "tool_success_rate", "n": 1, "basis": 1, "direction": "up", "role": "guard" },
+    { "metric": "approval_friction", "n": 0, "basis": 5, "why_absent": "agent_verdict_without_score", "direction": "down", "role": "guard" },
+    { "metric": "tool_write_coverage", "n": 1, "basis": 1, "direction": "up", "role": "guard" },
+    { "metric": "capability_reuse_ratio", "n": 0, "basis": 5, "why_absent": "agent_verdict_without_score", "direction": "up", "role": "objective" },
+    { "metric": "tool_lifecycle_score", "n": 0, "basis": 5, "why_absent": "agent_verdict_without_score", "direction": "up", "role": "guard" },
+    { "metric": "test_pass_rate", "n": 0.345, "basis": 1, "direction": "up", "role": "objective" }
+  ],
+  "claim": "套件地板门禁的受跟踪基准夹具"
+}
