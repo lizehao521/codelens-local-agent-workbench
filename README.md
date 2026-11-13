@@ -8,6 +8,7 @@
 
 > 为避免两代文档并存造成的叙事分裂，在此显式指路：
 > - **现行规格（v2.0）**：`docs/agent/spec.md` —— 产品定位与能力契约的唯一真相源。
+> - **当前运行态说明书**：`docs/agent/CODELENS-MANUAL.md` —— 工具清单、沙箱、技能库、RSI、门禁与已知边界（v2.11.0 实测）。
 > - **已退役文档（v1.0，仅作历史参考）**：`docs/spec.md`、`docs/phase1-prd.md`、`docs/phase1-uiux.md`、`docs/openapi.yaml` 已被 `docs/agent/*` 取代，**请勿以其过时定位（例如 v1.0「代码分析四能力」）当作现行定位**。
 
 ## 功能
