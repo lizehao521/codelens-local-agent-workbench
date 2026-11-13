@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "registry": "https://clawhub.ai",
+  "slug": "paper-schema",
+  "ownerHandle": "sciverse",
+  "installedVersion": "0.1.1",
+  "installedAt": 1791169845293,
+  "artifact": {
+    "kind": "archive",
+    "sha256": "eabf9bff4f2441a425b020754e5e028902beae1193be03e69420c1aea2e9e6f4",
+    "integrity": "sha256-6r+b/08kQaQlsCB1Tl4CiQK+rhGTvgPmlCDBrqLp5vQ="
+  },
+  "skillFile": {
+    "path": "SKILL.md",
+    "sha256": "03544108c2e84fc94993e041501d7f3d075121a19aa5663659bced9614156380"
+  }
+}
