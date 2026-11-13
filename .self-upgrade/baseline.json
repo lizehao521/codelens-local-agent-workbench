@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-13T04:14:04.249Z",
+  "createdAt": "2026-11-13T05:31:33.779Z",
   "allowed": [
     "src/controllers/checkpoints.controller.ts",
     "src/controllers/runs.controller.ts",
@@ -269,7 +269,5 @@
     "scripts/verify-rsi-ledger.ts": "65718c9481ff3080aec6ab1a2aaffdc4cdbe991937e528b94687a4e975b8ef7e",
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
-  "preexistingDirty": [
-    "tests/api-error-shape.test.ts"
-  ]
+  "preexistingDirty": []
 }
