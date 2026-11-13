@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-13T14:40:09.298Z",
+  "createdAt": "2026-11-13T15:01:51.073Z",
   "allowed": [
     "src/controllers/checkpoints.controller.ts",
     "src/controllers/runs.controller.ts",
@@ -242,7 +242,7 @@
     "scripts/auto-adopt.ts": "711dc67c4ede3cf4dd1e292e2bbf222c94a96beebb0077b9a1287d885e91929f",
     "scripts/check-rsi-contract.mjs": "e8337eee9232d2aa1b05d6d00b4343ac458fced9a3d2bebbfee9304dbaf43a0e",
     "scripts/check-self-upgrade.mjs": "4f21e910f347d239dad45ee73b8c400296ecde20081bc34264757716d8961f8f",
-    "scripts/check-suite-floor.mjs": "0d7d98fd4b7b0d8f83ae12b5068135590e38356f8ed97cb86b9cac7e8ea27d99",
+    "scripts/check-suite-floor.mjs": "8f493588d9ea8400bed8441f2f9b36af1a43dbc5e8fc3afa9f7587251e3ad186",
     "scripts/dispatch-bridge.ts": "2ee70d357d408f607a514427b713bccc821b6118cc39a612cd3fa03acf79937d",
     "scripts/failure-attribution.ts": "7642308b3ca66ece37b9478b5ed968ff58ee388396ad6670fb6f0a3567507cc3",
     "scripts/failure-stats.mjs": "b155106a017cf8d6939798759ab723ea20fd52011bc81d3a531b478be2225f1c",
@@ -271,11 +271,6 @@
     "scripts/version-bump.ts": "d6c5c4651dc821c7f5a39f112bbb49874415f9114be1617cd8d6e0719f1acc8c"
   },
   "preexistingDirty": [
-    "src/controllers/sandbox-permissions.controller.test.ts",
-    "src/services/tools/sandbox-permission.service.test.ts",
-    "src/services/tools/sandbox-permission.test.ts",
-    "src/services/tools/security-gateway.test.ts",
-    "src/validators/mcp-command.ts",
-    "tests/author-model-resolution.test.ts"
+    "scripts/check-suite-floor.mjs"
   ]
 }

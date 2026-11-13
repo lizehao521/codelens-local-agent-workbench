@@ -25,7 +25,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-const KRSI = process.env.KRSI_BIN_PATH || 'C:/Users/Admin/AppData/Local/Temp/krsi';
+// 默认值必须跟着宿主算，不能写死某台机器的路径：原先是 'C:/Users/Admin/AppData/Local/Temp/krsi'，
+// Linux runner 上必然找不到 → 按本脚本契约退 2，而 CI 的 && 链把 exit 2 当失败。
+// 口径与 run-krsi-conformance.mjs 的产物名一致（Windows 带 .exe，否则 spawn ENOENT）。
+const KRSI = process.env.KRSI_BIN_PATH || join(tmpdir(), process.platform === 'win32' ? 'krsi.exe' : 'krsi');
 // 必须用 fileURLToPath：仓库路径含中文，new URL().pathname 会给出 %E6%96%B0... 编码串。
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const RSI_DIR = join(ROOT, 'data/rsi');
