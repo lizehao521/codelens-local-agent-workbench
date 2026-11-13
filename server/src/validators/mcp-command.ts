@@ -9,8 +9,6 @@
  * 即授权本机用户权限，必须 UI 明示 + 导入时二次确认），不在本函数职责内。
  */
 
-import path from 'node:path';
-
 export interface McpCommandVerdict {
   ok: boolean;
   reason?: string;
@@ -46,6 +44,27 @@ const INTERPRETER_DENYLIST = new Set([
 
 const COMMAND_RE = /^[A-Za-z0-9._\-\\/:]+$/;
 
+/**
+ * 路径口径与宿主解耦。
+ *
+ * 原先直接用 `path.basename` / `path.isAbsolute`，而 `path` 跟着 OS 走：
+ * Linux 上 `basename('C:\\a\\cmd.exe')` 返回整串（反斜杠不是分隔符）、
+ * `isAbsolute` 判 false —— 于是「按 basename 拒绝解释器」这条在非 Windows 上
+ * 从来没生效过，`C:\Windows\System32\cmd.exe` 被拒是因为 isAbsolute 失败，
+ * 理由是错的。MCP 配置跨机分发，同一个 command 在两台机器上必须同判。
+ */
+const SEPARATOR_RE = /[\\/]/;
+
+function baseName(command: string): string {
+  const parts = command.split(SEPARATOR_RE).filter((s) => s !== '');
+  return (parts[parts.length - 1] ?? command).toLowerCase();
+}
+
+/** 三种绝对形式都认：POSIX `/x`、盘符 `C:\x` 或 `C:/x`、UNC `\\server\x`。 */
+function looksAbsolute(command: string): boolean {
+  return command.startsWith('/') || /^[A-Za-z]:[\\/]/.test(command) || command.startsWith('\\\\');
+}
+
 export function isAllowedMcpCommand(command: string): McpCommandVerdict {
   const trimmed = command.trim();
   if (!trimmed) return { ok: false, reason: 'command 不能为空' };
@@ -53,14 +72,14 @@ export function isAllowedMcpCommand(command: string): McpCommandVerdict {
     return { ok: false, reason: 'command 不允许包含 shell 元字符' };
   }
 
-  const base = path.basename(trimmed).toLowerCase();
+  const base = baseName(trimmed);
   if (INTERPRETER_DENYLIST.has(base)) {
     return { ok: false, reason: `command 不允许将解释器 ${base} 作为 MCP 服务命令` };
   }
   if (RUNNER_ALLOWLIST.has(base)) return { ok: true };
 
   // 绝对路径且 basename 未命中拒绝名单 → 允许自定义 MCP 服务端可执行文件。
-  if (path.isAbsolute(trimmed)) return { ok: true };
+  if (looksAbsolute(trimmed)) return { ok: true };
 
   return { ok: false, reason: 'command 必须是受信任运行时（node/npx/uvx/python…）或可执行文件的绝对路径' };
 }

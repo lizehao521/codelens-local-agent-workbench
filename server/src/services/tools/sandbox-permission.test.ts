@@ -6,12 +6,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, parse as parsePath } from 'node:path';
+import { join, dirname } from 'node:path';
 import { validateAllowDir, normalizeConfig, DEFAULT_PERMISSION_CONFIG } from './sandbox-permission.js';
 
 // 测试夹具必须落在「非受限目录前缀」之外（C:\Users / /home 等被安全策略禁止作为 allowDir）。
 // 故把临时根放到磁盘根目录（C:\ 或 /）下，而非 os.tmpdir()（Windows 上位于 C:\Users）。
-const TMP_BASE = join(parsePath(tmpdir()).root, 'codelens-sp-');
+const TMP_BASE = join(tmpdir(), 'codelens-sp-');
 
 describe('validateAllowDir', () => {
   let base: string;

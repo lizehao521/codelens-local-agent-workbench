@@ -9,7 +9,7 @@
  *
  *   1. 除 design-tokens.css 外，src 里不得出现硬编码颜色（#hex / rgb() / hsl()）
  *   2. 不得使用 lucide 的废弃别名（AlertTriangle / XCircle / CheckCircle2 / Loader2 / MoreHorizontal）
- *   3. design-tokens.css 的 sha256 必须与基线一致（改 Token 必须显式改基线）
+ *   3. design-tokens.css 的 sha256（行尾归一后）必须与基线一致（改 Token 必须显式改基线）
  *
  * 用法：
  *   node scripts/check-ui-static.mjs                 # 跑仓库
@@ -70,7 +70,13 @@ function scanIcons(root) {
 
 function tokensHash(root) {
   const path = join(root, 'src', 'styles', 'design-tokens.css');
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+  // 先归一行尾再哈希：这条判据量的是 Token 内容，不是宿主 checkout 出来的字节。
+  // 旧口径按裸字节比，而基线是在 Windows CRLF 工作区上录的（3a732216…），
+  // Linux 检出的同一份 blob 是 LF（a7c2e640…）→ 内容一字未改、CI 必红。
+  // 红的是尺子的口径，不是产品；.gitattributes 同时补了 *.css eol=lf 收敛工作区。
+  return createHash('sha256')
+    .update(readFileSync(path, 'utf8').replace(/\r\n/g, '\n'))
+    .digest('hex');
 }
 
 function loadBaseline() {

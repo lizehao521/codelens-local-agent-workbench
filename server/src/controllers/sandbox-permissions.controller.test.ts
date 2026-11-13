@@ -5,13 +5,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, parse as parsePath } from 'node:path';
+import { join } from 'node:path';
 import type { Db } from '../repositories/db.js';
 import { SandboxPermissionsController } from './sandbox-permissions.controller.js';
 import { SandboxPermissionService } from '../services/tools/sandbox-permission.service.js';
 
 // 临时根必须落在受限目录前缀之外（见 sandbox-permission.test.ts 注释）。
-const TMP_BASE = join(parsePath(tmpdir()).root, 'codelens-sp-');
+const TMP_BASE = join(tmpdir(), 'codelens-sp-');
 
 function makeFakeDb(initial?: { config_json: string }): Db {
   let row = initial;

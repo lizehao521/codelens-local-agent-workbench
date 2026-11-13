@@ -8,12 +8,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, parse as parsePath } from 'node:path';
+import { join } from 'node:path';
 import { runGateway } from './security-gateway.js';
 import type { ToolDefinition } from '../../types/tool.js';
 
 // 临时根必须落在受限目录前缀之外（见 sandbox-permission.test.ts 注释）。
-const TMP_BASE = join(parsePath(tmpdir()).root, 'codelens-sp-');
+const TMP_BASE = join(tmpdir(), 'codelens-sp-');
 
 function fsWriteDef(): ToolDefinition {
   return {
