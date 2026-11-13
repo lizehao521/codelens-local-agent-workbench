@@ -15,6 +15,10 @@ import type { AddressInfo } from 'node:net';
 export interface FakeStep {
   toolCall?: { id: string; name: string; arguments: string };
   text?: string;
+  /** 只输出推理、没有正文（模拟 reasoning 型模型）。 */
+  reasoning?: string;
+  /** 收尾原因；默认 stop。设为 length 可模拟「推理吃满输出预算」。 */
+  finishReason?: string;
   /** P0-1: deliver a usage-bearing chunk, then stall the stream forever. */
   hang?: boolean;
   /** R3: accept the request but never even send response headers（模拟上游长尾无响应）。 */
@@ -221,9 +225,14 @@ export class FakeLlm {
         usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 },
       });
     } else {
+      if (step.reasoning) {
+        chunk({
+          choices: [{ index: 0, delta: { role: 'assistant', reasoning_content: step.reasoning } }],
+        });
+      }
       chunk({ choices: [{ index: 0, delta: { role: 'assistant', content: step.text ?? '' } }] });
       chunk({
-        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        choices: [{ index: 0, delta: {}, finish_reason: step.finishReason ?? 'stop' }],
         usage: { prompt_tokens: 160, completion_tokens: 12, total_tokens: 172 },
       });
     }

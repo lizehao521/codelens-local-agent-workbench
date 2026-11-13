@@ -196,6 +196,11 @@ export type AgentRunStage =
    * 前者该放宽超时或换通道，后者该重试或换模型。
    */
   | 'upstream_empty'
+  /**
+   * 推理耗尽输出预算后的自适应重试：只发生一次，说明本轮没有正文/工具调用，
+   * 已提高 max_tokens 重试。与 upstream_empty 区分：这不是上游故障。
+   */
+  | 'budget_adapted'
   | 'aborted';
 
 export interface SseStagePayload {

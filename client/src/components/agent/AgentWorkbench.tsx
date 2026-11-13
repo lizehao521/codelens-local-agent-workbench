@@ -3,7 +3,7 @@
 // AC-10 干预：打断（输入框停止钮）/ 单步重试 / 从某步重跑 / 改参数（审批条内）全部接 agent/stream
 
 import { useCallback, useState } from 'react';
-import { TriangleAlert, Gauge, History, LineChart, MessageSquare, ShieldAlert, ShieldCheck, Sparkles, Wrench } from 'lucide-react';
+import { TriangleAlert, Wrench } from 'lucide-react';
 import type { AgentStreamRequest, SessionMessageRow, Task } from '../../types';
 import { buildAgentStreamRequest, rerunFromPatch, TASK_MODES } from '../../lib/agent-request';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -22,23 +22,7 @@ import { RunReportCard } from './RunReportCard';
 import { ResumeConflictCard } from './ResumeConflictCard';
 import { AuditView } from './AuditView';
 import { SandboxGrantBar } from './SandboxGrantBar';
-import { SandboxPermissionModal } from '../settings/SandboxPermissionModal';
-import { JudgePanelModal } from './JudgePanelModal';
-import { RsiDashboardModal } from './RsiDashboardModal';
-import { RsiIterationGate } from './RsiIterationGate';
-import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
-
-/**
- * URL 直达（交接 / 演示用）：?rsi=1&session=<id>
- * 打开页面即展开 RSI 读数面板，并优先用 URL 指定的会话取数，
- * 避免先手动选会话、再点按钮才能看到判据读数。
- */
-function rsiDeepLink(): { open: boolean; sessionId: string | null } {
-  if (typeof window === 'undefined') return { open: false, sessionId: null };
-  const params = new URLSearchParams(window.location.search);
-  return { open: params.get('rsi') === '1', sessionId: params.get('session') };
-}
 
 const SUGGESTIONS = [
   '用计算工具算 (1234.5*87)/13，并说明每一步',
@@ -112,14 +96,10 @@ export function AgentWorkbench() {
   const resetApprovals = useApprovalStore((s) => s.reset);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [taskKind, setTaskKind] = useState<Task | null>(null);
-  const [permOpen, setPermOpen] = useState(false);
-  const [judgeOpen, setJudgeOpen] = useState(false);
-  const [rsiOpen, setRsiOpen] = useState(() => rsiDeepLink().open);
-  const [iterationOpen, setIterationOpen] = useState(false);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const showRecoveryCode = useUiStore((s) => s.showRecoveryCode);
-  // F：主视图切换（会话 / 审计台）。审计台按当前 runId 取数，不另存一份运行态。
-  const [view, setView] = useState<'chat' | 'audit'>('chat');
+  // 主视图由左侧能力导航控制（会话 / 审计台），本组件不再维护第二份状态。
+  const workspaceView = useUiStore((s) => s.workspaceView);
   const runId = useRunStore((s) => s.runId);
   // 错误条按「码 + 文案」归类：认证/模型不存在/超时/网络/额度 → 都给可行动入口
   const errorBar = sessionError ? { code: 'CONFIG_ERROR', message: sessionError } : error;
@@ -248,82 +228,7 @@ export function AgentWorkbench() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-bg-primary">
-      {/* 会话头：标题 + 通道徽标 */}
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-        <Sparkles size={15} className="text-accent" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-          {session?.title ?? '新会话'}
-        </span>
-        <div role="group" aria-label="主视图切换" className="flex shrink-0 items-center rounded-md border border-border p-0.5">
-          <button
-            type="button"
-            aria-pressed={view === 'chat'}
-            onClick={() => setView('chat')}
-            className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-              view === 'chat' ? 'bg-accent-subtle text-accent' : 'text-text-secondary hover:text-accent',
-            )}
-          >
-            <MessageSquare size={12} /> 会话
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === 'audit'}
-            onClick={() => setView('audit')}
-            className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-              view === 'audit' ? 'bg-accent-subtle text-accent' : 'text-text-secondary hover:text-accent',
-            )}
-          >
-            <History size={12} /> 审计台
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => setJudgeOpen(true)}
-          title="判据塔：判决历史、自证状态与经验有效性"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
-        >
-          <Gauge size={13} />
-          判据塔
-        </button>
-        <button
-          type="button"
-          onClick={() => setRsiOpen(true)}
-          title="RSI 判据读数：套件通过率、分母基线与代际曲线"
-          aria-label="RSI 判据读数"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
-        >
-          <LineChart size={13} />
-          <span className="hidden sm:inline">RSI 曲线</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setIterationOpen(true)}
-          title="自我迭代闸门：逐轮的量化判据、去留决策与人工处置"
-          aria-label="自我迭代闸门"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
-        >
-          <ShieldCheck size={13} />
-          <span className="hidden sm:inline">迭代闸门</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setPermOpen(true)}
-          title="沙箱权限：放开沙箱外目录与免审批"
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
-        >
-          <ShieldAlert size={13} />
-          沙箱权限
-        </button>
-        {error && !streaming && (
-          <span className="shrink-0 text-xs text-danger" title={error.message}>
-            {error.code}
-          </span>
-        )}
-      </header>
-
-      {view === 'audit' ? (
+      {workspaceView === 'audit' ? (
         <AuditView runId={runId} />
       ) : (
         <>
@@ -402,12 +307,6 @@ export function AgentWorkbench() {
         </>
       )}
 
-      <SandboxPermissionModal open={permOpen} onClose={() => setPermOpen(false)} />
-      <JudgePanelModal open={judgeOpen} onClose={() => setJudgeOpen(false)} />
-      <RsiDashboardModal open={rsiOpen} onClose={() => setRsiOpen(false)} sessionId={rsiDeepLink().sessionId ?? session?.id ?? null} />
-      <Modal open={iterationOpen} onClose={() => setIterationOpen(false)} title="自我迭代闸门" maxWidth={880}>
-        <RsiIterationGate />
-      </Modal>
     </div>
   );
 }
@@ -418,7 +317,7 @@ function WorkbenchEmpty({ onPick, hasKey }: { onPick: (text: string) => void; ha
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle">
         <Wrench size={22} className="text-accent" />
       </div>
-      <div className="text-center">
+      <div className="w-full max-w-md text-center">
         <p className="text-sm font-medium text-text-primary">一句话交代，Agent 动手；每步可见，风险处你拍板</p>
         <p className="mt-1 text-xs text-text-secondary">
           工具调用、参数与结果都摊在界面上；写文件、执行命令等高风险动作按等级先请示你，密钥只留在本机（BYOK）。

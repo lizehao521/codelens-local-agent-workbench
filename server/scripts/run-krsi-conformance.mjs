@@ -38,10 +38,19 @@ if (!go) {
   process.exit(2);
 }
 
+// Go 需要一个可写的 build cache。受控环境（CI / Agent 运行时）常常没有
+// LOCALAPPDATA 或 HOME，此时 go 会直接拒绝编译，验收链就会红在环境而不是代码上。
+// 显式兜底到系统临时目录，让 `npm run test:acceptance` 不依赖宿主环境变量。
+const goEnv = {
+  ...process.env,
+  GOCACHE: process.env.GOCACHE || path.join(os.tmpdir(), 'codelens-go-cache'),
+};
+
 const binary = path.join(os.tmpdir(), isWin ? 'krsi.exe' : 'krsi');
 const build = spawnSync(go, ['build', '-C', 'krsi', '-o', binary, '.'], {
   cwd: serverRoot,
   stdio: 'inherit',
+  env: goEnv,
 });
 if (build.error) {
   console.error(`[krsi] 编译启动失败：${build.error.message}`);

@@ -20,7 +20,7 @@
   /* 前景层 */
   --c-text-primary: #F0F6FC;
   --c-text-secondary: #8B949E;
-  --c-text-tertiary: #6E7681;
+  --c-text-tertiary: #7D8590;
   --c-text-on-accent: #FFFFFF;
 
   /* 边框层 */
@@ -70,8 +70,8 @@
   --c-bg-inset: #F3F4F6;
 
   --c-text-primary: #111827;
-  --c-text-secondary: #6B7280;
-  --c-text-tertiary: #9CA3AF;
+  --c-text-secondary: #4B5563;
+  --c-text-tertiary: #6B7280;
   --c-text-on-accent: #FFFFFF;
 
   --c-border: #E5E7EB;

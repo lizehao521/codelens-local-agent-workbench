@@ -2,7 +2,7 @@
 // 与中栏解耦：只订阅 runStore 与 toolCallStore，不随消息流重渲染。
 
 import { useMemo } from 'react';
-import { Activity, TriangleAlert, Gauge, ListOrdered, Sparkles, Wrench } from 'lucide-react';
+import { TriangleAlert, Gauge, ListOrdered, Sparkles, Wrench } from 'lucide-react';
 import { useRunStore } from '../../stores/runStore';
 import { countUnsuccessful, useToolCallStore } from '../../stores/toolCallStore';
 import { fmtTokens, formatDuration } from '../../lib/tool-format';
@@ -17,12 +17,7 @@ export function RunInspector() {
   const report = useRunStore((s) => s.report);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg-secondary">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
-        <Activity size={14} className="text-accent" />
-        <span className="text-sm font-medium text-text-primary">运行检视器</span>
-      </header>
-
+    <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {!meta && !run && !error && stages.length === 0 && (
           <p className="text-xs text-text-tertiary">任务开始后，这里显示阶段、成本与风险。</p>
@@ -207,6 +202,8 @@ function stageLabel(stage: string): string {
       return '上游错误';
     case 'upstream_timeout':
       return '上游超时';
+    case 'budget_adapted':
+      return '自适应预算';
     case 'aborted':
       return '已中止';
     case 'tool_call':

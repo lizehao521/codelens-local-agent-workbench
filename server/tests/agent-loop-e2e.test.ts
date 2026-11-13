@@ -420,6 +420,26 @@ describe('T12 agent loop end-to-end (fake LLM)', () => {
     expect(system?.content).toContain('根因分析');
     expect(system?.content).toContain('3. 遗留项');
   }, 25_000);
+  it('推理吃满预算：只重试一次并抬到 2048', { timeout: 60_000 }, async () => {
+    fake.script([
+      { reasoning: '先推理很多步……', finishReason: 'length' },
+      { text: '这是最终答案。' },
+    ]);
+    const stages: string[] = [];
+    const { status } = await runAgentStream(
+      base,
+      { ...agentBody('请思考后回答'), channelMode: 'native', maxTokens: 512, maxIterations: 5 },
+      (event) => {
+        if (event.name === 'stage') stages.push(String(event.data.stage));
+      },
+    );
+    expect(status).toBe(200);
+    expect(stages).toContain('budget_adapted');
+    const generation = fake.requests.filter((r) => !r.__probe__ && Array.isArray(r.messages));
+    expect(generation.length).toBeGreaterThanOrEqual(2);
+    expect(generation[0].max_tokens).toBe(512);
+    expect(generation[1].max_tokens).toBe(2048);
+  });
 });
 
 describe('AbortRegistry serialization guard (P0-2)', () => {

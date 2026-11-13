@@ -8,6 +8,7 @@
   "probe": "fs-read-truncated-flag-false-positive.probe.ts",
   "mode": "red-baseline",
   "maxAttempts": 3,
-  "status": "candidate",
-  "boundary": "仅修正 truncated 标志位逻辑，不改变字节截断、行上限、keyword 过滤等核心行为"
+  "status": "adopted",
+  "boundary": "仅修正 truncated 标志位逻辑，不改变字节截断、行上限、keyword 过滤等核心行为",
+  "adoptedAt": "2026-11-12T13:26:10.947Z"
 }

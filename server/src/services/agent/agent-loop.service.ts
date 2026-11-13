@@ -24,6 +24,7 @@ import { ApprovalDedupService } from './approval-dedup.service.js';
 import { AbortRegistry } from './abort-registry.js';
 import { CallResolver } from './call-resolver.js';
 import { ChannelRouter, type Channel } from './channel-router.service.js';
+import { adaptOutputBudget } from './output-budget.js';
 import { CircuitBreaker } from './circuit-breaker.js';
 import { ContextManager } from './context-manager.service.js';
 import { LoopDetector } from './loop-detector.js';
@@ -657,6 +658,10 @@ export class AgentLoopService {
       const policyForPrompt = injection ? { ...injection.policy, lessons: injection.lessons } : undefined;
 
       // ── main loop ────────────────────────────────────────────────────────────
+      // 自适应预算：推理型模型可能把 max_tokens 全花在 reasoning 上，导致
+      // finish_reason=length 但无正文/无工具调用。只重试一次（见下方分支）。
+      let maxTokens = req.maxTokens;
+      let budgetAdapted = false;
       for (;;) {
         const term = checkTermination(budget, usage.promptTokens + usage.completionTokens);
         if (term.kind === 'stop') {
@@ -728,7 +733,7 @@ export class AgentLoopService {
                   messages: view.messages,
                   tools: providerTools,
                   temperature: req.temperature,
-                  maxTokens: req.maxTokens,
+                  maxTokens,
                   capabilities: decision.capabilities,
                   sse,
                   signal: turnSignal,
@@ -792,6 +797,27 @@ export class AgentLoopService {
 
         usage.promptTokens += turn.usage.promptTokens;
         usage.completionTokens += turn.usage.completionTokens;
+
+        // 自适应预算（只一次）：推理占满输出预算时，finish_reason=length 且
+        // 没有正文/工具调用。先抬预算重试同一轮，而不是直接报 UPSTREAM_EMPTY——
+        // 后者会让「预算不够」看起来像「上游故障」。
+        if (
+          turn.toolCalls.length === 0 &&
+          turn.text.trim() === '' &&
+          turn.finishReason === 'length' &&
+          !budgetAdapted
+        ) {
+          budgetAdapted = true;
+          const next = adaptOutputBudget(maxTokens);
+          maxTokens = next;
+          // 重试不计入轮次预算：这一轮没有产生任何可用于推进任务的内容。
+          budget.iteration -= 1;
+          sse.emitStage(
+            'budget_adapted',
+            `输出预算被推理耗尽（finish_reason=length），已自动提高到 ${next} 并重试本轮`,
+          );
+          continue;
+        }
 
         // ── final answer ───────────────────────────────────────────────────────
         if (turn.toolCalls.length === 0) {

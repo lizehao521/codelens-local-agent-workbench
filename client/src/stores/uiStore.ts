@@ -7,6 +7,12 @@ import { createId } from '../lib/format';
 export type MobileTab = 'chat' | 'tools' | 'history';
 export type ToastVariant = 'info' | 'success' | 'error';
 
+/** 主视图：会话工作台 / 审计台（由左侧导航切换） */
+export type WorkspaceView = 'chat' | 'audit';
+
+/** 能力面板：统一由 AppShell 挂载，导航与右栏都只负责“打开” */
+export type CapabilityModal = 'judge' | 'rsi' | 'iteration' | 'sandbox' | 'skills';
+
 export interface Toast {
   id: string;
   message: string;
@@ -16,6 +22,13 @@ export interface Toast {
 interface UiState {
   mobileTab: MobileTab;
   setMobileTab: (tab: MobileTab) => void;
+
+  workspaceView: WorkspaceView;
+  setWorkspaceView: (view: WorkspaceView) => void;
+
+  activeModal: CapabilityModal | null;
+  openCapability: (modal: CapabilityModal) => void;
+  closeCapability: () => void;
 
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -42,6 +55,13 @@ const TOAST_DURATION = 2000;
 export const useUiStore = create<UiState>((set, get) => ({
   mobileTab: 'chat',
   setMobileTab: (tab) => set({ mobileTab: tab }),
+
+  workspaceView: 'chat',
+  setWorkspaceView: (view) => set({ workspaceView: view }),
+
+  activeModal: null,
+  openCapability: (modal) => set({ activeModal: modal }),
+  closeCapability: () => set({ activeModal: null }),
 
   sidebarOpen: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

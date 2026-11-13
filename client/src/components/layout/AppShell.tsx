@@ -1,16 +1,19 @@
-// AppShell（v2.0）—— 三栏组装（≥1024 三栏 / 768-1024 两栏+抽屉 / <768 单栏+TabBar）
-// 左会话列表 | 中 Agent 工作台 | 右运行检视器；恢复码一次性弹窗；无 Key 引导条
+// AppShell（v2.1）—— 能力导航 + 会话列表 + 工作台 + 检视器，四区固定骨架。
+// ≥1024：导航(64) + 会话(224) + 工作台 + 检视器(320)；768-1023：会话抽屉 + 工作台 + 检视器；
+// <768：单栏 + 底部 Tab。所有治理弹层统一由 CapabilityHost 挂载。
 
 import { useEffect, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { AgentWorkbench } from '../agent/AgentWorkbench';
-import { RunInspector } from '../agent/RunInspector';
 import { RecoveryCodeModal } from '../agent/RecoveryCodeModal';
 import { SettingsModal } from '../settings/SettingsModal';
 import { TopBar } from './TopBar';
 import { SessionSidebar } from './SessionSidebar';
 import { StatusBar } from './StatusBar';
 import { MobileTabBar } from './MobileTabBar';
+import { SideRail } from './SideRail';
+import { RightDock } from './RightDock';
+import { CapabilityHost } from './CapabilityHost';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
 import { getTrialStatus, type TrialStatus } from '../../services/api';
@@ -93,8 +96,11 @@ export function AppShell() {
       <TopBar />
 
       <div className="relative flex min-h-0 flex-1">
-        {/* 桌面左栏：会话列表（≥1024） */}
-        <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-bg-secondary lg:flex">
+        {/* 能力导航（≥1024）：主视图与治理入口 */}
+        <SideRail />
+
+        {/* 桌面会话栏（≥1024） */}
+        <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-bg-secondary lg:flex">
           <SessionSidebar />
         </aside>
 
@@ -104,14 +110,14 @@ export function AppShell() {
           <AgentWorkbench />
         </section>
 
-        {/* 右栏：运行检视器（≥1024；手机端仅 tools Tab 可见） */}
+        {/* 右栏：运行 / 能力（手机端仅 tools Tab 可见） */}
         <section
           className={cn(
-            'flex w-full shrink-0 flex-col border-l border-border bg-bg-secondary md:w-[300px] lg:w-[340px]',
+            'flex w-full shrink-0 flex-col border-l border-border bg-bg-secondary md:w-[300px] xl:w-[320px]',
             mobileTab !== 'tools' && 'max-md:hidden',
           )}
         >
-          <RunInspector />
+          <RightDock />
         </section>
 
         {/* 手机端「会话」Tab 内容 */}
@@ -142,6 +148,7 @@ export function AppShell() {
       <StatusBar />
       <MobileTabBar />
 
+      <CapabilityHost />
       <SettingsModalLauncher />
       <RecoveryCodeModal
         open={recoveryCode !== null}

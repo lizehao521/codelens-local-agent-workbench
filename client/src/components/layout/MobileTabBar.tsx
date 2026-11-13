@@ -9,7 +9,7 @@ import { cn } from '../../lib/cn';
 
 const TABS: { id: MobileTab; label: string; icon: typeof History }[] = [
   { id: 'chat', label: '对话', icon: MessagesSquare },
-  { id: 'tools', label: '工具', icon: Wrench },
+  { id: 'tools', label: '检视', icon: Wrench },
   { id: 'history', label: '会话', icon: History },
 ];
 
@@ -42,7 +42,7 @@ export function MobileTabBar() {
               </span>
               <span
                 className={cn(
-                  'text-[10px] leading-none',
+                  'text-xs leading-none',
                   active ? 'font-medium text-accent' : 'text-text-secondary',
                 )}
               >

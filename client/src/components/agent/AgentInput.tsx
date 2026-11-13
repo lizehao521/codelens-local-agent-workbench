@@ -52,7 +52,7 @@ export function AgentInput({ onSend, onStop, streaming, disabled, placeholder }:
           }}
           rows={1}
           disabled={disabled}
-          placeholder={placeholder ?? '描述任务，Agent 将自主调用工具完成（Enter 发送，Shift+Enter 换行）'}
+          placeholder={placeholder ?? '描述任务，Enter 发送 / Shift+Enter 换行'}
           aria-label="任务输入"
           className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent px-1.5 py-1 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
         />

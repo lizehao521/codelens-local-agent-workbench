@@ -1,13 +1,12 @@
-// 顶栏 48px —— Logo(Code2)+CodeLens、会话标题、主题循环切换(Moon/Sun/Monitor)、工具技能、设置(Settings)
+// 顶栏 48px —— 品牌 + 会话标题 + 模型胶囊 + 主题 + 设置。
+// 工具技能等治理入口已移到左侧能力导航 / 右栏「能力」页，顶栏不再堆按钮。
 
-import { useState } from 'react';
-import { Boxes, Code2, History, Monitor, Moon, Settings, Sun } from 'lucide-react';
+import { Code2, History, Monitor, Moon, Settings, Sun } from 'lucide-react';
 import type { ThemeMode } from '../../types';
 import { useActiveServerSession } from '../../stores/serverSessionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
 import { IconButton } from '../common/IconButton';
-import { ToolSkillModal } from './ToolSkillModal';
 
 const THEME_ORDER: ThemeMode[] = ['system', 'dark', 'light'];
 const THEME_META: Record<ThemeMode, { icon: typeof Moon; label: string }> = {
@@ -20,9 +19,10 @@ export function TopBar() {
   const session = useActiveServerSession();
   const theme = useSettingsStore((s) => s.settings.theme);
   const setTheme = useSettingsStore((s) => s.setTheme);
-  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
+  const provider = useSettingsStore((s) => s.settings.provider);
+  const model = useSettingsStore((s) => s.settings.model);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
-  const [toolSkillOpen, setToolSkillOpen] = useState(false);
+  const setSidebarOpen = useUiStore((s) => s.setSidebarOpen);
 
   const cycleTheme = (): void => {
     const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
@@ -33,7 +33,7 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-bg-secondary px-3">
-      {/* 平板（768-1023）：历史抽屉入口 */}
+      {/* 平板（768-1023）：左栏隐藏，用抽屉打开会话列表 */}
       <IconButton
         icon={<History size={20} />}
         label="历史会话"
@@ -53,6 +53,16 @@ export function TopBar() {
         {session?.title ?? '新会话'}
       </h1>
 
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(true)}
+        title={`当前上游：${provider} / ${model || '未选择模型'}（点击切换）`}
+        className="hidden max-w-[220px] items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent sm:flex"
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden="true" />
+        <span className="truncate">{model || '选择模型'}</span>
+      </button>
+
       <IconButton
         icon={<ThemeIcon size={20} />}
         label={`主题：${THEME_META[theme].label}（点击切换）`}
@@ -60,19 +70,11 @@ export function TopBar() {
         onClick={cycleTheme}
       />
       <IconButton
-        icon={<Boxes size={20} />}
-        label="工具技能"
-        alwaysVisible
-        onClick={() => setToolSkillOpen(true)}
-      />
-      <IconButton
         icon={<Settings size={20} />}
         label="设置"
         alwaysVisible
         onClick={() => setSettingsOpen(true)}
       />
-
-      <ToolSkillModal open={toolSkillOpen} onClose={() => setToolSkillOpen(false)} />
     </header>
   );
 }
