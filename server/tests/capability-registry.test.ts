@@ -364,6 +364,8 @@ describe('运行时能力开关目录', () => {
     const NOT_AUTO_CAPTURED: Record<string, string> = {
       'fs.read': '只读，不改文件',
       'fs.list': '只读，不改文件',
+      'fs.glob': '只读，不改文件',
+      'code.search': '只读，不改文件',
       // code.check 只把源码喂给解析器，不写盘（判据 C5 专门锁了「不执行、不落盘」）。
       'code.check': '只读：只解析语法，不写文件',
       'json.format': 'path 是 JSON Pointer，不是文件系统路径',

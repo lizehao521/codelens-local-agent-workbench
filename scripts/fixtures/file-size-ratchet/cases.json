@@ -1,0 +1,62 @@
+{
+  "_why": "受跟踪的自证夹具。棘轮闸必须能被判据喂假数据证明「能红、能绿、空扫描记 UNEXEC、孤儿条目判红、上限只降不升」，否则它就是装饰（C3）。夹具跟着仓库走，CI 上无需先扫盘即可自证。",
+  "limit": 300,
+  "entries": [
+    { "file": "src/big.ts", "ceiling": 500 },
+    { "file": "src/shrunk.ts", "ceiling": 400 },
+    { "file": "src/at-limit.ts", "ceiling": 300 }
+  ],
+  "cases": {
+    "emptyScan": {
+      "_why": "跑错目录时扫描结果为空。判绿就是「什么都没量到却宣布达标」。",
+      "files": [],
+      "expect": { "unexec": true, "passed": 0, "failures": [] }
+    },
+    "newViolation": {
+      "_why": "增量一律 ≤300：301 行的新文件必须红，存量按各自上限放行。",
+      "files": [
+        { "file": "src/new.ts", "lines": 301 },
+        { "file": "src/big.ts", "lines": 500 },
+        { "file": "src/shrunk.ts", "lines": 400 },
+        { "file": "src/at-limit.ts", "lines": 300 }
+      ],
+      "expect": { "unexec": false, "passed": 3, "failures": ["src/new.ts"], "stale": [], "graduated": ["src/at-limit.ts"] }
+    },
+    "boundary300": {
+      "_why": "恰好 300 行算达标（> 而不是 >=），否则等于把地板偷偷抬成 299。",
+      "files": [{ "file": "src/exact.ts", "lines": 300 }],
+      "expect": { "unexec": false, "passed": 1, "failures": ["src/big.ts", "src/shrunk.ts", "src/at-limit.ts"] }
+    },
+    "grown": {
+      "_why": "存量只许缩不许涨：比自己的上限多 1 行也要红。",
+      "files": [
+        { "file": "src/big.ts", "lines": 501 },
+        { "file": "src/shrunk.ts", "lines": 400 },
+        { "file": "src/at-limit.ts", "lines": 300 }
+      ],
+      "expect": { "unexec": false, "passed": 2, "failures": ["src/big.ts"], "stale": [], "graduated": ["src/at-limit.ts"] }
+    },
+    "graduated": {
+      "_why": "缩到 300 以内要报「可出清单」，棘轮必须能收紧。",
+      "files": [
+        { "file": "src/big.ts", "lines": 500 },
+        { "file": "src/shrunk.ts", "lines": 280 },
+        { "file": "src/at-limit.ts", "lines": 300 }
+      ],
+      "expect": { "unexec": false, "passed": 3, "failures": [], "stale": [], "graduated": ["src/shrunk.ts", "src/at-limit.ts"] }
+    },
+    "orphan": {
+      "_why": "清单里有、磁盘上没有 = 红。否则删掉大文件再同路径新建就能继承旧上限。",
+      "files": [{ "file": "src/big.ts", "lines": 500 }],
+      "expect": { "unexec": false, "passed": 1, "failures": ["src/shrunk.ts", "src/at-limit.ts"], "stale": ["src/shrunk.ts", "src/at-limit.ts"] }
+    }
+  },
+  "tighten": {
+    "_why": "上限只能下调。src/shrunk.ts 实测 500 比旧上限 400 大，tighten 后必须仍是 400；改成 max 就会把尺子刻度改大。",
+    "files": [
+      { "file": "src/big.ts", "lines": 400 },
+      { "file": "src/shrunk.ts", "lines": 500 }
+    ],
+    "expectCeilings": { "src/big.ts": 400, "src/shrunk.ts": 400, "src/at-limit.ts": 300 }
+  }
+}

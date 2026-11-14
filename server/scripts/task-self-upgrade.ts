@@ -26,6 +26,7 @@
 import http from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { buildDispatchTail } from './lib/sse-tail.mjs';
 
 // 凭证与上游地址只从 .env / 进程环境读，源码里不写（与 env.ts 同一口径）。
 const envPath = path.join(process.cwd(), '.env');
@@ -923,9 +924,10 @@ async function main(): Promise<void> {
 
   const done = /event:\s*done/.test(sse);
   console.log(`  done 事件：${done ? '有' : '无（可能被截断）'}`);
-  const tail = sse.slice(-900).replace(/\\n/g, '\n');
   console.log('  ── 末尾 ──');
-  console.log(tail.split('\n').slice(-10).join('\n'));
+  // 这段 stdout 是归因唯一的机械证据源，不能按字节截：run_report 后面还跟着
+  // delta/stage/done，slice(-900) 会把 run_report 整条切掉，于是预算耗尽被记成实现层。
+  console.log(buildDispatchTail(sse));
 }
 
 main().catch((e) => {

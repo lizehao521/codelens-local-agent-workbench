@@ -2,6 +2,7 @@
 
 import { buildTaskSection, type TaskKind } from './task-prompts.js';
 import type { Policy } from '../../repositories/policy.repository.js';
+import { loadProjectInstructions } from './project-instructions.js';
 
 /**
  * 基座提示词（native 与 react 通道共用；react 通道叠加文本协议段，不丢弃本段）。
@@ -71,4 +72,16 @@ export function buildWorkspaceSection(sandboxRoot: string): string {
 - 相对路径一律相对于它："." 就是它本身，不要再把目录名重复拼一次。
 - 不确定目录结构时，先用 fs_list 列一次（path 用 "."），不要凭猜测拼路径。
 - 沙箱外的绝对路径会被拒绝；需要用命令行确认结构时，用白名单内的命令（如 git）。`;
+}
+
+/**
+ * 运行时合成段：工作目录声明 + 仓库指令（若有）。
+ * 这是 agent-loop 注入 system 消息的唯一入口，保证 native 与 ReAct 两通道同源。
+ * 无指令文件时与 buildWorkspaceSection 逐字相同（向后兼容锚）。
+ */
+export function buildRuntimeSections(sandboxRoot: string): string {
+  const workspace = buildWorkspaceSection(sandboxRoot);
+  const instructions = loadProjectInstructions(sandboxRoot);
+  if (!instructions) return workspace;
+  return `${workspace}\n\n${instructions}`;
 }

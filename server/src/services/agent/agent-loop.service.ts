@@ -42,7 +42,7 @@ import { renderToolCatalogue, runReactTurn } from './react-channel.js';
 import type { TurnIR } from './turn-ir.js';
 import { SseWriter } from './sse-writer.js';
 import { RunCancellation, describeCancel } from './run-cancel.js';
-import { buildSystemPrompt, buildWorkspaceSection } from './system-prompt.js';
+import { buildSystemPrompt, buildRuntimeSections } from './system-prompt.js';
 import type { TaskKind } from './task-prompts.js';
 import { config } from '../../config/env.js';
 import { buildReverseIndex } from '../../utils/tool-name.js';
@@ -1199,7 +1199,7 @@ export class AgentLoopService {
    */
   private withWorkspace(systemPrompt: string, sandboxRoot: string): string {
     if (!sandboxRoot) return systemPrompt;
-    return `${systemPrompt}\n\n${buildWorkspaceSection(sandboxRoot)}`;
+    return `${systemPrompt}\n\n${buildRuntimeSections(sandboxRoot)}`;
   }
 
   private selectTools(names?: string[]): ToolDefinition[] {    const all = this.deps.registry.list();

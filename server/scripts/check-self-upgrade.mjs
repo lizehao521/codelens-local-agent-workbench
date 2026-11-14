@@ -18,11 +18,11 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deletedRationaleComments } from './lib/rationale-guard.mjs';
-import { classifyJudgeRun } from './lib/judge-run-classify.mjs';
+import { classifyJudgeRun, failedFilesOf, regressionRunEvidence } from './lib/judge-run-classify.mjs';
 
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 
@@ -483,14 +483,31 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
         timeout: 600_000,
         shell: process.platform === 'win32',
       });
-      return { ok: true, out: '' };
+      return { ok: true, out: '', err: null };
     } catch (e) {
-      return { ok: false, out: `${e.stdout ?? ''}${e.stderr ?? ''}` };
+      return { ok: false, out: `${e.stdout ?? ''}${e.stderr ?? ''}`, err: e };
+    }
+  };
+  // 判 FAIL 必须留得下证据：只写一句「可复现真回归」而不留失败用例名，
+  // 人事后无法核对，模型也拿不到可改的东西。原始输出整份落盘。
+  const EVIDENCE_DIR = join(SERVER, '..', '.self-upgrade', 'loop');
+  const persist = (name, out) => {
+    try {
+      mkdirSync(EVIDENCE_DIR, { recursive: true });
+      const p = join(EVIDENCE_DIR, name);
+      writeFileSync(p, out, 'utf8');
+      return p;
+    } catch {
+      return null;
     }
   };
 
   let full = runFull();
+  // 复跑会把 full 整个换掉。首次那遍的原始输出必须在这里留住，否则落盘的
+  // 只是复跑结果，「第一次为什么红」无从复核 —— 而两遍的失败项并不总是一样的。
+  const firstOut = full.out;
   let retried = false;
+  let retryMethod = '';
   // 首次红 → **只把失败的那几个文件串行复跑**，不要整轮重跑。
   //
   // 实测（2026-11-12 第三轮）：同一份代码，并发全量报 20 条红，单独跑全绿。
@@ -498,18 +515,11 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
   // 起子进程、等时序，并发挤在一起就超时。整轮重跑除了再花 2.5 分钟，还会
   // 因为负载相同而再次红，于是被判成「真回归」，白重派一轮。
   // 定向复跑同时解决两件事：更快（只跑红的文件）、更准（绕开并发）。
-  const failedFilesOf = (out) => {
-    const set = new Set();
-    for (const m of out.matchAll(/(?:FAIL|❯)\s+([\w./\\-]+\.test\.ts)/g)) {
-      const p = (m[1] ?? '').replace(/\\/g, '/').replace(/^.*?(tests\/)/, '$1');
-      if (p.startsWith('tests/')) set.add(p);
-    }
-    return [...set];
-  };
   if (!full.ok) {
     const files = failedFilesOf(full.out);
     if (files.length > 0 && files.length <= 8) {
       retried = true;
+      retryMethod = '串行复跑';
       console.log(
         `      ! 首次红 ${files.length} 个文件（${files.map((f) => f.split('/').pop()).join(', ')}）` +
           ' —— 串行单独复跑，区分并发假红与真回归',
@@ -522,15 +532,18 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
           timeout: 600_000,
           shell: process.platform === 'win32',
         });
-        full = { ok: true, out: '' };
+        full = { ok: true, out: '', err: null };
       } catch (e) {
-        full = { ok: false, out: `${e.stdout ?? ''}${e.stderr ?? ''}` };
-        // 串行复跑仍红 → 这些用例在干净条件下确实过不了，是真回归。
-        console.log('      ! 串行复跑仍红 —— 不是并发抖动');
+        full = { ok: false, out: `${e.stdout ?? ''}${e.stderr ?? ''}`, err: e };
+        console.log('      ! 串行复跑仍红');
       }
     } else {
       retried = true;
-      console.log('      ! 首次全量回归有失败用例 —— 重试一次，区分抖动与真回归');
+      retryMethod = '整轮并发重跑';
+      console.log(
+        `      ! 首次全量回归有失败用例，但提不出失败文件名（提取到 ${files.length} 个）` +
+          ' —— 只能整轮并发重跑；这一遍转绿只说明不可复现，不等于已证实是并发假红',
+      );
       full = runFull();
     }
   }
@@ -538,20 +551,32 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
   if (full.ok) {
     ok(
       retried
-        ? '全量回归通过（首次红在串行复跑中转绿 → 判为并发假红，不计入能力账）'
+        ? `全量回归通过（首次红在${retryMethod}中转绿 → 判为不可复现，不计入能力账）`
         : '全量回归通过',
     );
   } else {
-    const lines = full.out
-      .split('\n')
-      .filter((l) => /FAIL|Tests\s+\d/.test(l))
-      .slice(0, 12);
-    fail(
-      retried
-        ? '全量回归红了且串行复跑仍红 —— 可复现，判为真回归，不构成一次升级'
-        : '全量回归有失败用例 —— 判据绿但踩坏了既有行为，不构成一次升级',
-    );
-    for (const l of lines) console.log(`      ${l.trim()}`);
+    const ev = regressionRunEvidence(full.out, full.err);
+    const saved = persist(`full-regression-${Date.now()}.txt`, full.out);
+    const savedFirst = retried ? persist(`full-regression-first-${Date.now()}.txt`, firstOut) : null;
+    if (!ev.hasEvidence) {
+      // 超时被杀时 stdout 可能是空的。没有失败用例名就不许说「可复现」——
+      // 那是取证缺失，与「跑了没过」是两件事（C4）。
+      console.log('REGRESSION_VERDICT=unexec');
+      fail(
+        `全量回归取证缺失（${ev.timedOut ? '执行超时被杀' : '无输出'}，${retryMethod || '首次执行'}）` +
+          ' —— 判不了是否真回归，不计入 Agent；需人工复跑取证',
+      );
+    } else {
+      console.log('REGRESSION_VERDICT=fail');
+      fail(
+        retried
+          ? `全量回归红了且${retryMethod}仍红 —— 可复现，判为真回归，不构成一次升级`
+          : '全量回归有失败用例 —— 判据绿但踩坏了既有行为，不构成一次升级',
+      );
+      for (const l of ev.lines) console.log(`      ${l.trim()}`);
+    }
+    if (saved) console.log(`      原始输出已存 ${saved}`);
+    if (savedFirst) console.log(`      首次全量输出已存 ${savedFirst}`);
   }
 } else if (process.argv.includes('--full')) {
   // 明确写出「没跑」而不是沉默。沉默会被下游读成「跑了且红」，

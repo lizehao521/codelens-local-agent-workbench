@@ -34,6 +34,10 @@ import { attributeFailure, toLedgerFields, LAYER_META } from './failure-attribut
 import { startLoopService } from './loop-service.js';
 import { bumpVersion } from './version-bump.js';
 import { parseResult, proposeStatusLine } from './lib/propose-result.js';
+import { filterServableRotation, readToolCallEvidence } from './lib/dispatch-fidelity.mjs';
+import { DISPATCH_HEADROOM_MS, dispatchTimeoutMs, timeoutMarker } from './lib/dispatch-timeout.mjs';
+import { readSseDump, waitForSseDump } from './lib/dispatch-evidence.mjs';
+import { pickFenceEvidence } from './lib/fence-diag.mjs';
 
 const SERVER = process.cwd();
 
@@ -76,7 +80,7 @@ const AUTO_STARTED_AT = Number(process.env.RSI_AUTO_STARTED_AT ?? Date.now());
 const AUTO_WALL_MS = Number(process.env.RSI_MAX_AUTO_WALL_MS ?? 30 * 60_000);
 const MAX_CONSEC_FAILURES = Number(process.env.RSI_MAX_CONSECUTIVE_FAILURES ?? 3);
 
-const MODEL_ROTATION = (process.env.RSI_MODEL_ROTATION ?? `${MODEL},deepseek-v4-pro-0813,deepseek-v4-flash,kimi-k3`)
+let MODEL_ROTATION = (process.env.RSI_MODEL_ROTATION ?? `${MODEL},deepseek-ai/deepseek-v4.1-flash,moonshotai/kimi-k2.6,nvidia/nemotron-3-super-120b-a12b`)
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -122,6 +126,11 @@ const DEFAULT_ATTEMPTS = Number(arg('max-attempts') ?? 3);
 const DISPATCH = (process.env.RSI_DISPATCH ?? 'sse').trim() === 'bridge' ? 'bridge' : 'sse';
 /** 账本里标清这一轮的 Actor 是谁 —— 桥接轮次不能混进「被衡量模型」的能力统计。 */
 const ACTOR = DISPATCH === 'bridge' ? 'workbuddy-session' : 'rsi-model';
+/**
+ * 派单子进程超时 = 服务端墙钟 + 过冲余量，口径见 lib/dispatch-timeout.mjs。
+ * 必须在 .env 加载之后取值：旋钮写在环境里，读早了等于没读。
+ */
+const DISPATCH_TIMEOUT_MS = dispatchTimeoutMs(process.env);
 
 mkdirSync(WORK, { recursive: true });
 
@@ -152,9 +161,12 @@ function run(cmd: string, args: string[], timeoutMs: number, extraEnv?: NodeJS.P
     });
     return { ok: true, out };
   } catch (e) {
-    const err = e as { stdout?: string; stderr?: string; message?: string };
+    const err = e as { stdout?: string; stderr?: string; message?: string; code?: string; signal?: string };
     const out = `${err.stdout ?? ''}${err.stderr ?? ''}`;
-    return { ok: false, out: out || (err.message ?? '') };
+    // 超时信号必须留在输出里：只回 stdout 的话，「被外层掐断」和「跑完了但没做对」
+    // 长得一模一样，归因只能落到实现层并计入 Agent 能力账。
+    const marker = timeoutMarker(err, timeoutMs);
+    return { ok: false, out: `${out}${marker}` || (err.message ?? '') };
   }
 }
 
@@ -301,12 +313,9 @@ function diagnose(spec: TaskSpec, fenceOut: string): string {
     }
   }
 
-  const fails = fenceOut
-    .split('\n')
-    .filter((l) => /^(FAIL|WARN)\s/.test(l))
-    .slice(0, 6);
+  const fails = pickFenceEvidence(fenceOut);
   if (fails.length > 0) {
-    parts.push(['【围栏结论】', ...fails.map((l) => l.trim())].join('\n'));
+    parts.push(['【围栏结论】', ...fails].join('\n'));
   }
 
   return parts.join('\n\n');
@@ -391,6 +400,7 @@ async function preflightUpstream(): Promise<{
   reason: string;
   base: string;
   quota?: boolean;
+  servedModels?: string[];
 }> {
   const base = (
     process.env.RSI_BASE_URL ??
@@ -420,6 +430,17 @@ async function preflightUpstream(): Promise<{
     const hasModelList = r.ok;
     if (!hasModelList && ![404, 405, 501].includes(r.status)) {
       return { ok: false, reason: `/models HTTP ${r.status}`, base };
+    }
+    // 列表还有第二个用途：换模型的候选必须是上游真实服务的 ID。
+    // 实测上游 83 个模型全带厂商前缀，裸名后备换过去必然 404。
+    let servedModels: string[] | undefined;
+    if (hasModelList) {
+      try {
+        const list = (await r.json()) as { data?: Array<{ id?: string }> };
+        servedModels = (list.data ?? []).map((m) => m.id).filter((x): x is string => typeof x === 'string');
+      } catch {
+        servedModels = undefined;
+      }
     }
 
     // 第二跳：极小 chat 探针（max_tokens:1）。额度耗尽时这个请求不计费，
@@ -457,12 +478,13 @@ async function preflightUpstream(): Promise<{
         ok: true,
         reason: `${hasModelList ? `/models HTTP ${r.status}` : `/models HTTP ${r.status}（无列表接口，按可达处理）`} / chat ${probe.status}`,
         base,
+        servedModels,
       };
     } catch (e) {
       // 探针本身超时/被限流策略拦住，但 /models 是通的：放行，别把好端点误挡。
       // 真出问题会由派单阶段的归因层（UPSTREAM_*）接住。
       const msg = e instanceof Error ? e.message : String(e);
-      return { ok: true, reason: `chat 探针未完成（${msg}），按可达处理`, base };
+      return { ok: true, reason: `chat 探针未完成（${msg}），按可达处理`, base, servedModels };
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -528,6 +550,11 @@ async function main(): Promise<void> {
       return;
     }
     console.log(`  上游可达 ${pf.base}（${pf.reason}）`);
+    const rot = filterServableRotation(MODEL_ROTATION, pf.servedModels);
+    if (rot.dropped.length > 0) {
+      console.log(`  ↻ 换模型候选剔除 ${rot.dropped.length} 个上游不服务的 ID：${rot.dropped.join('、')}`);
+      MODEL_ROTATION = rot.kept;
+    }
   }
   console.log(`  待办 ${pending.length} 题：${pending.map((t) => t.id).join(' / ') || '(无)'}`);
   for (const t of pending) {
@@ -737,7 +764,7 @@ async function main(): Promise<void> {
             RSI_SSE_DUMP: sseDump,
           };
         }
-        const sent = run('npx', args, 700_000, dispatchEnv);
+        const sent = run('npx', args, DISPATCH_TIMEOUT_MS, dispatchEnv);
         const sendSec = ((Date.now() - startedAt) / 1000).toFixed(0);
         console.log(`  派单完成（${sendSec}s），${sent.ok ? '进程正常退出' : '进程异常退出'}`);
         const bridgeAbort = /BRIDGE_ABORTED=([^\s：:\n]+)/.exec(sent.out);
@@ -751,16 +778,29 @@ async function main(): Promise<void> {
             console.log(`    ! ${l.trim().slice(0, 200)}`);
           }
         }
+        // 外层掐断在 Windows 上只打掉 shell：node 子进程会晚几秒才把 SSE 落盘，
+        // 而围栏紧接着就要读盘判哈希。不先等它静止，判的就是移动靶 ——
+        // 实测围栏在 06:43:0x 判「靶子未被改动」，Agent 06:43:07.569 才写入。
+        // 证据落到盘上就以盘为准：既拿到完整 run_report（盘上有），也让围栏读定稿。
+        // 正常退出时文件早就在盘上，同步读一次即可，不为已完整的证据付等待。
+        const diskEvidence = sent.ok ? readSseDump(sseDump) : await waitForSseDump(sseDump, DISPATCH_HEADROOM_MS);
+        const evidence = diskEvidence || sent.out;
         // 「只说不做」是真实失败模式：第一版循环的首轮，它回了一句
         // 「I'll fix the extractErrorInfo function…」就结束，0 次工具调用。
         // 这种情况围栏只会说「靶子未被改动」，模型看不出是自己的问题，必须点名。
-        const calls = Number((/"toolCallCount":(\d+)/.exec(sent.out) ?? [])[1] ?? 0);
-        if (calls === 0) {
+        const calls = readToolCallEvidence(evidence);
+        if (!calls.known) {
+          console.log('    ! 本轮没有 run_report，工具调用数未知 —— 不能断定它「只说不做」');
+        } else if (calls.count === 0) {
           console.log(`    ! 本轮 0 次工具调用（只回了文字，没有动文件）`);
         }
 
+        // 排除名单必须从 all 算，不能从 pending 算：pending 已被 --only 收窄成
+        // 当前这一题，于是单题派单时名单恒为空，「下一步还没做的题」的判据进了
+        // 全量回归并必然红，被围栏读成「踩坏了既有行为」。实证 2026-11-14：
+        // --only=fs-glob-shared 第 3 轮，未派单的 code-search 判据出现在失败项里。
         const otherPendingJudges = all
-          .filter((t) => t.id !== spec.id && pending.some((p) => p.id === t.id))
+          .filter((t) => t.id !== spec.id && t.status !== 'done' && !done.has(t.id))
           .map((t) => t.judge);
         const fence = run('node', fenceArgs(spec, otherPendingJudges), 700_000);
         console.log(`  围栏：${fence.ok ? 'PASS' : 'FAIL'}`);
@@ -799,7 +839,7 @@ async function main(): Promise<void> {
           taskId: spec.id,
           attempt,
           maxAttempts,
-          dispatch: { exitOk: sent.ok, output: sent.out },
+          dispatch: { exitOk: sent.ok, output: evidence },
           diagnosis: feedback,
           fence: fa,
           // 服务是本次循环自己起的、就绪后才派单；中途挂掉会由 ECONNREFUSED 在
@@ -855,6 +895,15 @@ async function main(): Promise<void> {
           infraRetries += 1;
           attempt -= 1; // for 的 ++ 会把它还原，等价于重跑同一轮
           continue;
+        }
+        // 天花板是 env 旋钮，不是模型能力问题：拆题、换模型都撞同一道顶。
+        // 停机等人工调大再派 —— 不继续消耗尝试次数，也不把模型轮转烧在假因上。
+        if (attr.nextAction === 'raise_budget') {
+          console.log(`  ⛔ 资源天花板低于任务规模，停机等人工调预算。`);
+          console.log(`    ${attr.note}`);
+          ledger({ task: spec.id, verdict: 'halted', attempt, layer: attr.layer, code: attr.code, note: attr.note, actor: ACTOR, countsAgainstAgent: false });
+          summary.push({ id: spec.id, verdict: 'halted', attempts: attempt, version: null });
+          return;
         }
         // 资源层（预算被掐断）第一次先提示拆题；**同一模型第二次**再换模型。
         //

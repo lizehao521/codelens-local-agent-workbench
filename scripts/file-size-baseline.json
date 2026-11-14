@@ -1,0 +1,204 @@
+{
+  "_why": "存量豁免清单（棘轮）。本机实测 server/src 34 件 + client/src 15 件超 300 行，一刀切会让闸从诞生起就红 49 处、结局是被关掉。语义：存量按现状封顶只许缩不许涨，增量一律 ≤300。",
+  "_measuredAt": "2026-11-14 @ 2.15.0，物理行口径（含空行与注释）",
+  "_tighten": "node scripts/check-file-size.mjs --tighten 只下调上限；缩到 300 以内的文件应从本清单移除。改这份清单等于改尺子：attribution=human + 重锚 .self-upgrade/baseline.json。",
+  "limit": 300,
+  "entries": [
+    {
+      "file": "client/src/components/agent/AgentMessageItem.tsx",
+      "ceiling": 349
+    },
+    {
+      "file": "client/src/components/agent/AgentWorkbench.tsx",
+      "ceiling": 345
+    },
+    {
+      "file": "client/src/components/agent/AuditView.tsx",
+      "ceiling": 618
+    },
+    {
+      "file": "client/src/components/agent/JudgePanelModal.tsx",
+      "ceiling": 650
+    },
+    {
+      "file": "client/src/components/agent/RsiDashboardModal.tsx",
+      "ceiling": 907
+    },
+    {
+      "file": "client/src/components/agent/ToolApprovalBar.tsx",
+      "ceiling": 371
+    },
+    {
+      "file": "client/src/components/agent/ToolCallCard.tsx",
+      "ceiling": 314
+    },
+    {
+      "file": "client/src/components/layout/ToolSkillModal.tsx",
+      "ceiling": 446
+    },
+    {
+      "file": "client/src/components/settings/ModelCapabilityPanel.tsx",
+      "ceiling": 330
+    },
+    {
+      "file": "client/src/components/settings/ProviderZone.tsx",
+      "ceiling": 336
+    },
+    {
+      "file": "client/src/lib/rsi-rules.ts",
+      "ceiling": 492
+    },
+    {
+      "file": "client/src/services/api-judge.ts",
+      "ceiling": 313
+    },
+    {
+      "file": "client/src/services/api-rsi.ts",
+      "ceiling": 519
+    },
+    {
+      "file": "client/src/stores/toolCallStore.ts",
+      "ceiling": 326
+    },
+    {
+      "file": "client/src/types/index.ts",
+      "ceiling": 772
+    },
+    {
+      "file": "server/src/config/env.ts",
+      "ceiling": 399
+    },
+    {
+      "file": "server/src/controllers/judge.controller.ts",
+      "ceiling": 366
+    },
+    {
+      "file": "server/src/providers/openai-compatible.adapter.ts",
+      "ceiling": 667
+    },
+    {
+      "file": "server/src/repositories/judge.repository.ts",
+      "ceiling": 383
+    },
+    {
+      "file": "server/src/repositories/schema.ts",
+      "ceiling": 606
+    },
+    {
+      "file": "server/src/runtime.ts",
+      "ceiling": 450
+    },
+    {
+      "file": "server/src/services/agent/agent-loop.service.ts",
+      "ceiling": 1550
+    },
+    {
+      "file": "server/src/services/agent/approval.service.ts",
+      "ceiling": 490
+    },
+    {
+      "file": "server/src/services/agent/call-resolver.ts",
+      "ceiling": 453
+    },
+    {
+      "file": "server/src/services/agent/run-state.service.ts",
+      "ceiling": 360
+    },
+    {
+      "file": "server/src/services/capability/capability-registry.service.ts",
+      "ceiling": 345
+    },
+    {
+      "file": "server/src/services/eval/runner.ts",
+      "ceiling": 451
+    },
+    {
+      "file": "server/src/services/eval/suites.ts",
+      "ceiling": 1039
+    },
+    {
+      "file": "server/src/services/judge/canary.ts",
+      "ceiling": 313
+    },
+    {
+      "file": "server/src/services/judge/deep-assessor.ts",
+      "ceiling": 481
+    },
+    {
+      "file": "server/src/services/judge/judge.service.ts",
+      "ceiling": 1136
+    },
+    {
+      "file": "server/src/services/judge/replay.ts",
+      "ceiling": 412
+    },
+    {
+      "file": "server/src/services/judge/semantic.ts",
+      "ceiling": 385
+    },
+    {
+      "file": "server/src/services/judge/tool-discipline.ts",
+      "ceiling": 428
+    },
+    {
+      "file": "server/src/services/rsi/change-domain.ts",
+      "ceiling": 370
+    },
+    {
+      "file": "server/src/services/rsi/ledger-verify.ts",
+      "ceiling": 404
+    },
+    {
+      "file": "server/src/services/rsi/manifest-builder.ts",
+      "ceiling": 393
+    },
+    {
+      "file": "server/src/services/rsi/rsi-bridge.service.ts",
+      "ceiling": 832
+    },
+    {
+      "file": "server/src/services/rsi/rules-contract.ts",
+      "ceiling": 333
+    },
+    {
+      "file": "server/src/services/skills/skill-library.service.ts",
+      "ceiling": 520
+    },
+    {
+      "file": "server/src/services/tools/executor.service.ts",
+      "ceiling": 751
+    },
+    {
+      "file": "server/src/services/tx/checkpoint.service.ts",
+      "ceiling": 1437
+    },
+    {
+      "file": "server/src/tools/builtin/expression-parser.ts",
+      "ceiling": 333
+    },
+    {
+      "file": "server/src/tools/builtin/fs-write.tool.ts",
+      "ceiling": 350
+    },
+    {
+      "file": "server/src/tools/builtin/http-request.tool.ts",
+      "ceiling": 332
+    },
+    {
+      "file": "server/src/tools/builtin/path-jail.ts",
+      "ceiling": 357
+    },
+    {
+      "file": "server/src/tools/builtin/sys-exec.policy.ts",
+      "ceiling": 621
+    },
+    {
+      "file": "server/src/tools/builtin/sys-exec.tool.ts",
+      "ceiling": 341
+    },
+    {
+      "file": "server/src/tools/builtin/tool-forge.tool.ts",
+      "ceiling": 393
+    }
+  ]
+}

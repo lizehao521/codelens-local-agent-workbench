@@ -1,0 +1,40 @@
+{
+  "id": "project-instructions",
+  "title": "G1 仓库指令文件自动加载：AGENTS.md / CLAUDE.md 进系统提示词（Memory 维破零）",
+  "strengthens": "Memory",
+  "package": "server",
+  "allowed": [
+    "src/services/agent/project-instructions.ts",
+    "src/services/agent/system-prompt.ts",
+    "src/services/agent/agent-loop.service.ts"
+  ],
+  "judge": "tests/self-upgrade/project-instructions.test.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "draft",
+  "requireAllTargets": true,
+  "attribution": "human",
+  "gap": "CodeLens 完全不读仓库自己的操作约定。本仓库根就摆着 AGENTS.md（「先读手册」「tests/ 是人所有，改动必须 attribution=human」「未执行写 UNEXEC」），Agent 一条都看不到，只能靠用户在每条消息里手贴。主流 Agent 都把这件事当默认能力：Claude Code 读 CLAUDE.md，Codex / Cursor 读 AGENTS.md。这与 buildWorkspaceSection 修的是同一类缺陷——不是工具实现错了，是**模型缺少一个事实**；那处缺陷的实测代价是 10 轮工具调用 / 68123 prompt token 一个文件都没读到（见 system-prompt.ts:56-67 的现场记录）。Memory 维此前只有 SQLite 轨迹与经验库（src/services/memory/ 是仓储层），没有任何「仓库级长期约定」的入口，本题为它破零。",
+  "observable": "判据 tests/self-upgrade/project-instructions.test.ts 共 30 个用例，实现前整体红（project-instructions.ts 不存在，属真 unexec）。变绿必须同时成立：(1) 新模块 src/services/agent/project-instructions.ts 导出 INSTRUCTION_FILENAMES=['AGENTS.md','CLAUDE.md']（顺序即优先级）、MAX_INSTRUCTION_CHARS=8000、loadProjectInstructions(sandboxRoot)；(2) AGENTS.md 内容逐字进入提示词，且注入块写明来源文件名与「仓库指令」标签；只有 CLAUDE.md 时同样加载；两个都在时 AGENTS.md 优先、CLAUDE.md 内容**不叠加**（两份约定可能互相矛盾，叠加等于让模型自己挑一条听）；(3) 无文件 / 空串根 / 根不存在 / AGENTS.md 是目录 / 文件只有空白 → 一律返回空串且**不抛**；(4) 超过 8000 字符按字符截断，注入块必须出现「截断」与「fs_read」指路，静默截断比不截断更坏；(5) **只读沙箱根那一层，不许向上找父目录**（判据在沙箱父目录放了诱饵 AGENTS.md）；(6) 注入块必须声明自己从属于基座「硬性规则」——AGENTS.md 可能来自 clone 下来的第三方仓库，把它抬到与硬性规则同级等于给提示词注入开门；(7) 合成器 buildRuntimeSections(sandboxRoot) = buildWorkspaceSection(sandboxRoot) + loadProjectInstructions(sandboxRoot)，**无指令文件时两者逐字相同**（向后兼容锚）；buildWorkspaceSection 与 buildSystemPrompt 的签名与输出不得改变；(8) 真实链路：经真 ContextManager.buildView 后 system 消息仍含指令；经真 buildReactSystemPrompt 降级到 ReAct 通道后指令不丢；200 条历史 + 4000 窗口触发压缩后 messages[0] 仍是 system 且指令仍在；(9) 接线机械断言：agent-loop.service.ts 必须 import buildRuntimeSections 且**不再出现 buildWorkspaceSection**，withWorkspace 体内调用 buildRuntimeSections(sandboxRoot) 并保留空根守卫；(10) 工程约束：agent-loop.service.ts 行数 ≤1550、新模块 ≤300 行、新模块以文件级注释块开头（C1 闸1）、新模块不得引入第三方依赖。",
+  "boundary": "只改 allowed 里那三个文件，三个都必须真的被改动（requireAllTargets）。**行数硬约束：agent-loop.service.ts 此刻在棘轮上是 1550/1550，零余量**（口径是 scripts/lib/file-size-ratchet.mjs 的 split('\\n').length，不是 wc -l 的 1549；判定是 lines > ceiling 才红）。所以本题对该文件只许做**净增 0 行**的标识符替换：第 45 行 import 里的 buildWorkspaceSection 换成 buildRuntimeSections，第 1202 行调用点同样换名。多写一行 import 就会把棘轮打红。新逻辑一律住进新模块 project-instructions.ts（≤300 行），合成器 buildRuntimeSections 放 system-prompt.ts（现 75 行，余量充足）。不改判据、不改其它服务、不动 inputSchema、不引入任何第三方依赖（只用 node:fs / node:path）。**不要改 buildWorkspaceSection 本身**：tests/workspace-context.test.ts 直接断言它的输出，污染它会把既有判据打红。**不要给 buildSystemPrompt 加参数**：它被多处测试直接调用，指令是运行时上下文，属于 loop 的职责（与 withWorkspace 的既有理由一致）。范围只到沙箱根那一层的 AGENTS.md / CLAUDE.md：不做子目录嵌套加载、不做 ~/.claude 全局约定、不做 .qoder/QODER.md、不做导入语法（@path）、不做缓存层——每轮读一次 ≤8KB 文件是亚毫秒级同步 I/O，为它加缓存属于超出本题需要的复杂度。文件读取失败一律降级为空串，不许抛断整个 run。",
+  "evidence": [
+    "注入缝已定位（人核对）：agent-loop.service.ts:1200-1203 的私有 withWorkspace 是唯一合成点，调用点在 :692-695，native 与 ReAct 两通道共用（ReAct 的 baseSystem 取自 buildView 产出的 system 消息，见 react-channel.ts:83-85），所以换这一个标识符即两通道同时生效。",
+    "棘轮零余量实测（人实跑 node 脚本，口径与 scripts/lib/file-size-ratchet.mjs 一致）：agent-loop.service.ts split('\\n').length = 1550，scripts/file-size-baseline.json 的 ceiling = 1550，判定式是 lines > ceiling（scripts/lib/file-size-ratchet.mjs:46）→ 恰好压线，多一行即红。system-prompt.ts = 75 行、不在清单里 → 受 300 行增量上限约束。",
+    "域判定实跑（人用真 checkDomain）：三个靶子 → D2「服务层（首次需人批）」，fileCount 3 / maxFiles 8。trigger=manual + humanApproved=true → ok:true；trigger=schedule + humanApproved=false → ok:false，两条拒绝理由（触发方式不允许 / 需要人工批准）。**这是 24 题里第一道 D2 题**：auto-adopt.ts:594 的 A4 闸用的正是 schedule+未人批口径，所以本题不可能被自动采纳，必须由人 promote。",
+    "C3 红基线前提已实测：src/services/agent/project-instructions.ts 不存在，system-prompt.ts 未导出 buildRuntimeSections（人用 tsx 直接 import 真模块核对，两项均为真）→ 判据 promote 后整体红属真 unexec，不是断言写错。",
+    "C 块夹具已在真模块上验过（人实跑 tsx 探针，20/20 OK）：真 ContextManager（createDb + SCHEMA_SQL + SessionRepository + MessageRepository）可构建；空历史时 system 消息逐字等于传入 prompt 且 compacted=false；200 条历史 + 4000 窗口时 compacted=true 且 compactionFailed=null（摘要用 SUMMARY_SECTIONS 九段 + 数字/路径证据地板，与 tests/context-manager.test.ts 的既有夹具同形）；压缩后 messages[0].role 仍是 system；buildReactSystemPrompt(renderToolCatalogue([]), base) 保留基座。",
+    "教训沿用（上一轮 dispatch-channel-fidelity / budget-ceiling-attribution）：**手工拼装生产者输出的夹具只测了消费者**——#19 的天花板修复因此在线上失效而判据全绿。所以本题 C 块一律走真生产者（buildRuntimeSections → 真 buildView → 真 buildReactSystemPrompt），D 块机械断言 loop 真的换了调用点，防「建了模块没人调用」。",
+    "判据自证体检口径已核对（scripts/judge-audit.mjs）：30 用例 / 反向 13 / 正向 6 / 反向占比 0.684（线是 ≥0.20 且至少 1 条反向），无 skip。",
+    "判据草案位置：server/candidates/project-instructions.candidate.ts。未派单的判据不得留在 tests/ 下进全量回归——vitest.config.ts 已排除 candidates/。派单前由人 promote 回 judge 字段所指路径，promote 属 D4 写，必须 attribution=human。",
+    "草稿态不可原地执行：candidate 的相对 import 按 promote 后的位置（tests/self-upgrade/）写成 ../../src/...，在 candidates/ 下深度不对。红基线读数必须在 promote 之后取，草稿态只作暂存。",
+    "TaskKind 合法值只有 analyze/explain/debug/optimize（task-prompts.ts:9 的 TASK_KINDS 是单一来源）；buildTaskSection 对未知 kind 会抛 TypeError。判据 B 块用 'debug'，不要用 'implement'——那是 N2 题要新增的模式，此刻不存在。",
+    "题目与判据均由人撰写（attribution=human）；实现由 CodeLens 派单落地，围栏判绿后由人 promote 成 done 并补 verified 账本行。"
+  ],
+  "humanObligations": [
+    "promote 判据草案 candidates/project-instructions.candidate.ts → tests/self-upgrade/project-instructions.test.ts（D4 写，attribution=human），随后重锚 .self-upgrade/baseline.json。",
+    "promote 后立刻取红基线读数（npx vitest run tests/self-upgrade/project-instructions.test.ts --reporter=dot），确认整体红的原因是模块不存在（真 unexec），而不是夹具写错。",
+    "本题是 D2：派单必须 trigger=manual + humanApproved=true；auto-adopt 的 A4 闸会拒绝，采纳只能由人做。",
+    "promote 成 done 时补 verified 账本行，并把「Memory 维破零」写进 CODELENS-MANUAL §7 的四维读数。",
+    "派单前确认 tests/workspace-context.test.ts 与 tests/kernel-centricity.test.ts 仍绿（前者钉 buildWorkspaceSection 输出，后者钉 src/ 每个 .ts 的文件级注释块）。"
+  ]
+}

@@ -85,6 +85,43 @@ describe('fsWriteTool delete operation recursive parameter defect', () => {
   });
 });
 
+/**
+ * 题面缺口本体：schema 里必须声明 recursive。
+ *
+ * 为什么单独立一组：上面三组测的是 handler 行为，而 handler 早就对了。
+ * 变异探针实测——把 inputSchema.properties.recursive 整条删掉，上面三组全绿，
+ * 因为模型「看不到这个参数」这件事根本不在它们的断言面里。判据名写着
+ * missing-schema 却不守 schema，就是 C3 说的假绿。
+ */
+describe('inputSchema 必须声明 recursive（缺了模型就不知道要传）', () => {
+  const schema = () =>
+    fsWriteTool.inputSchema as {
+      properties?: Record<string, { type?: string; enum?: string[] }>;
+      required?: string[];
+    };
+
+  it('properties.recursive 存在且为 boolean', () => {
+    const props = schema().properties ?? {};
+    expect(props.recursive, 'schema 缺 recursive：模型看不到它，运行时拒绝也救不回来').toBeTruthy();
+    expect(props.recursive?.type).toBe('boolean');
+  });
+
+  it('operation 枚举含 delete，recursive 才有触发场景', () => {
+    expect(schema().properties?.operation?.enum ?? []).toContain('delete');
+  });
+
+  it('recursive 不得进 required（删文件不需要它，必填会逼模型乱传）', () => {
+    expect((schema().required ?? []).includes('recursive')).toBe(false);
+  });
+
+  it('path/operation 仍是必填，加参数不得松动既有契约', () => {
+    const required = schema().required ?? [];
+    expect(required).toContain('path');
+    expect(required).toContain('operation');
+    expect(required.includes('oldText')).toBe(false);
+  });
+});
+
 describe('通用安全断言（模板生成，不经模型）', () => {
   it('必须导出命名约定的对象', async () => {
     const mod = (await import('../../src/tools/builtin/fs-write.tool.js')) as Record<string, unknown>;

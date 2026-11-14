@@ -18,6 +18,8 @@ import { evalProposeTool } from './eval-propose.tool.js';
 import { codeCheckTool } from './code-check.tool.js';
 import { testRunTool } from './test-run.tool.js';
 import { typeCheckTool } from './type-check.tool.js';
+import { fsGlobTool } from './fs-glob.tool.js';
+import { codeSearchTool } from './code-search.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -37,4 +39,6 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   codeCheckTool,
   testRunTool,
   typeCheckTool,
+  fsGlobTool,
+  codeSearchTool,
 ];

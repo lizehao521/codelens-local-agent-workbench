@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { computeLedgerCoverage } from './lib/ledger-coverage.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TASKS = join(ROOT, 'server', 'self-upgrade', 'tasks.json');
@@ -60,19 +61,10 @@ for (const t of tasks) {
 
 let coverage = null;
 if (existsSync(LEDGER)) {
-  const verified = new Set();
-  for (const line of readFileSync(LEDGER, 'utf8').split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    try {
-      const e = JSON.parse(line);
-      if (e.task && e.verdict === 'verified') verified.add(e.task);
-    } catch {
-      notes.push('账本存在无法解析的行（已跳过）');
-    }
-  }
-  const done = tasks.filter((t) => t.status === 'done').map((t) => t.id);
-  const covered = done.filter((id) => verified.has(id));
-  coverage = { done: done.length, covered: covered.length, missing: done.filter((id) => !verified.has(id)) };
+  // 与 rsi-tick 共用同一口径（lib/ledger-coverage.mjs），两处读数不可能再分叉。
+  const r = computeLedgerCoverage(tasks, readFileSync(LEDGER, 'utf8'));
+  if (r.badLines > 0) notes.push('账本存在无法解析的行（已跳过）');
+  coverage = { done: r.doneCount, covered: r.covered, missing: r.missing };
 }
 
 const byDim = {};

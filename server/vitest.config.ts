@@ -14,6 +14,11 @@ import { configDefaults, defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // 判据必须跑在确定环境里。派单循环 loadEnvFile(server/.env) 后把整个 env
+    // 传给围栏子进程，一批断言「默认关闭」的用例于是只在派单里红、人工直跑全绿，
+    // 围栏据此反复判「可复现真回归」。setupFiles 在每个 worker 加载测试模块之前
+    // 执行 —— config 是模块级单例，放到 beforeEach 里改 env 已经太晚。
+    setupFiles: ['tests/setup-hermetic-env.ts'],
     // tsc 会把 src 下的 *.test.ts 一并编译进 dist/；不排除的话 vitest 会把
     // 同一批用例按 src 和 dist 各跑一遍（文件数虚增、耗时翻倍，且 dist 还是
     // 旧构建时会给出误导性结论）。在默认排除项之上显式追加 dist。

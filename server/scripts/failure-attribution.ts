@@ -43,6 +43,7 @@ export type NextAction =
   | 'retry_with_diagnosis' // 带诊断重派（实现层）
   | 'regenerate_taskbook' // 重新出题（规格层）
   | 'split_task' // 拆成更小的步（资源/行为层）
+  | 'raise_budget' // 天花板是配置旋钮（token/墙钟/工具调用上限），调大再派，别拆题也别换模型
   | 'switch_model' // 换模型（行为层）
   | 'skip_task' // 这题在 Agent 能力范围内无解（尺子/夹具坏），本轮跳过，不烧墙钟
   | 'halt_manual'; // 停机等人工（判据层、环境层修不好时）
@@ -102,6 +103,9 @@ interface RunFacts {
   fileChangeCount: number | null;
   promptTokens: number | null;
   tokenBudget: number | null;
+  /** 触发时已完成的轮次。与 maxIterations 一起才能判断「是不是还没轮到迭代上限就先撞了别的顶」。 */
+  iteration: number | null;
+  maxIterations: number | null;
 }
 
 function readRunFacts(output: string): RunFacts {
@@ -121,8 +125,21 @@ function readRunFacts(output: string): RunFacts {
     fileChangeCount: num(/"fileChangeCount":(\d+)/g),
     promptTokens: num(/"promptTokens":(\d+)/g),
     tokenBudget: num(/"tokenBudget":(\d+)/g),
+    iteration: num(/"iteration":(\d+)/g),
+    maxIterations: num(/"maxIterations":(\d+)/g),
   };
 }
+
+/**
+ * 三道「非迭代」天花板。识别串取自 loop-budget.ts 的 detail 原文，不是猜的：
+ * checkTermination 对 tool_calls / tokens / wall_clock 都返回同一个
+ * finishReason=budget_exhausted，光看 finishReason 分不出撞的是哪一道。
+ */
+const CEILINGS = [
+  { kind: 'tokens', re: /任务 token 预算已用尽/, code: 'TOKEN_CEILING_BELOW_ITERATIONS', knob: 'AGENT_TOKEN_BUDGET_FACTOR', label: '累计 token' },
+  { kind: 'wall_clock', re: /墙钟预算/, code: 'WALL_CLOCK_CEILING', knob: 'AGENT_TASK_BUDGET_MS', label: '任务墙钟' },
+  { kind: 'tool_calls', re: /工具调用预算/, code: 'TOOL_CALL_CEILING', knob: 'AGENT_MAX_TOOL_CALLS', label: '工具调用总次数' },
+] as const;
 
 /** 工具调用的名字序列，用来判断「它在探索还是在实现」。 */
 function toolNameSequence(output: string): string[] {
@@ -244,6 +261,44 @@ export function attributeFailure(input: AttributionInput): Attribution {
     };
   }
 
+  // ── L0a4 全量回归取证缺失 ──────────────────────────────────────────────
+  // 围栏的全量回归超时被杀时 stdout 可能为空，那时它判不了是否真回归。
+  // 这不是 Agent 的实现失败：尺子自己没量到。必须归 infra 且不计入能力账。
+  if (/全量回归取证缺失|REGRESSION_VERDICT=unexec/.test(`${input.dispatch.output}\n${input.diagnosis}`)) {
+    return {
+      layer: 'infra',
+      code: 'REGRESSION_EVIDENCE_MISSING',
+      evidence: ['围栏全量回归无输出（超时被杀或空 stdout），判不了是否真回归'],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: 'retry_same',
+      note: '尺子没量到，不是模型做错了。人工复跑全量套件取证后再判；不计入 Agent。',
+    };
+  }
+
+  // ── L0a3 上游不认这个模型 ──────────────────────────────────────────────
+  // 与「连不上」不同：连接是通的，2 秒内就回了 HTTP 404。Agent 一步都没跑，
+  // 却因为没有 run_report 而一路落到 implementation 并计入能力账。
+  // 实测 2026-11-14：MODEL_ROTATION 的后备全是裸名，上游 83 个模型全带厂商前缀，
+  // 换模型必然 404 —— 这是出题方的配置错，不是模型不会做。
+  const modelUnknownSig = /不认识这个模型|"code":"UPSTREAM_ERROR"/i.exec(
+    `${input.dispatch.output}\n${input.diagnosis}`,
+  );
+  if (modelUnknownSig) {
+    const is404 = /不认识这个模型|HTTP 404|model not found/i.test(`${input.dispatch.output}\n${input.diagnosis}`);
+    return {
+      layer: 'infra',
+      code: is404 ? 'UPSTREAM_MODEL_UNKNOWN' : 'UPSTREAM_ERROR',
+      evidence: [modelUnknownSig[0]],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: is404 ? 'switch_model' : 'retry_same',
+      note: is404
+        ? '上游不认这个模型名（HTTP 404），Agent 根本没被派出去。核对 /models 的真实 ID（通常带厂商前缀）后再换；不计入 Agent。'
+        : '上游报错中断，Agent 没跑完。先恢复上游再重派；不计入 Agent。',
+    };
+  }
+
   // ── L0a2 LLM 上游不可达 ────────────────────────────────────────────────
   //
   // 与「本地服务没起来」是两回事：8099 的 health 可以是 ok，服务也正常派单，
@@ -287,19 +342,79 @@ export function attributeFailure(input: AttributionInput): Attribution {
     };
   }
 
+  // ── L0a5 外层派单超时掐断，run_report 没写出来 ──────────────────────────
+  // 与「跑完了但做错」必须分开：进程被外层超时杀掉时，磁盘上的代码是半成品，
+  // 围栏当然红，但红的原因是「没让它做完」，不是「它不会做」。
+  // 实测 2026-11-14：墙钟 660s 在第 20 轮触发（701723ms），外层写死的 700s
+  // 同时掐断，budget 事件在 SSE 里、run_report 没落地，两轮被记成
+  // implementation/BEHAVIOR_WRONG 并计入 Agent。缺证据 ≠ 反证（C4）。
+  const timeoutSig = /DISPATCH_TIMEOUT=(\d+)ms/.exec(input.dispatch.output);
+  if (timeoutSig && facts.finishReason === null && facts.outcome === null) {
+    const wall = /墙钟预算在第 \d+ 步触发（(\d+)\/(\d+) ms）/.exec(input.dispatch.output);
+    return {
+      layer: 'infra',
+      code: 'DISPATCH_TIMEOUT_NO_REPORT',
+      evidence: [
+        `DISPATCH_TIMEOUT=${timeoutSig[1]}ms`,
+        'run_report 缺失：finishReason / outcome 都取不到',
+        ...(wall ? [`服务端墙钟已触发：${wall[1]}/${wall[2]} ms`] : []),
+      ],
+      owner: 'scheduler',
+      countsAgainstAgent: false,
+      nextAction: 'retry_same',
+      note:
+        `派单子进程在 ${timeoutSig[1]}ms 被外层掐断，run_report 没写出来 —— 磁盘上的代码是半成品，` +
+        '围栏红不代表模型做错了。外层超时必须 = AGENT_TASK_BUDGET_MS + 过冲余量（预算检查在每轮调用前，单轮会整体过冲）；' +
+        '两者写死成互相不知情的常数就会这样。不计入 Agent。',
+    };
+  }
+
   // ── L1 资源层：预算/迭代/墙钟掐断 —— 任务没走完，不是做错了 ────────────
   // 「输出被 max_tokens 截断」也算这一层：它和预算耗尽同因（输出空间不够），
   // 只是发生在单轮而不是整个任务。之前截断被记成 'stop'，于是「写了一半」和
   // 「写完收工」在账本里没有区别。
   const truncated = /max_tokens 上限被截断|finish_reason=length/.test(`${input.dispatch.output}\n${input.diagnosis}`);
-  if (truncated || facts.outcome === 'budget_exhausted' || facts.finishReason === 'max_iterations') {
+  // run_report 与 done 两个事件都可能单独送达：run_report 写 outcome，done 只写 finishReason。
+  // 取证尾部一旦截断，活下来的往往只有 done —— 只认 outcome 就会把预算耗尽漏成实现层。
+  const budgetStopped = facts.outcome === 'budget_exhausted' || facts.finishReason === 'budget_exhausted';
+
+  // 天花板低于任务规模：迭代上限还没用到，先撞了 token / 墙钟 / 工具调用中的一道。
+  // 这时喊「拆题」是错方向 —— 拆完每题仍撞同一道顶。实测 2026-11-14：
+  // fs-glob-shared 已从六靶子拆到五靶子，仍在 iteration 14/25 处 token 耗尽
+  // （267198/256000）；另一次在 iteration 7/25 处墙钟耗尽（400784/180000 ms）。
+  // 三道顶各自对应一个 env 旋钮，只有人拧得动，换模型绕不开。
+  const hit = budgetStopped && !truncated
+    ? CEILINGS.find((c) => c.re.test(input.dispatch.output))
+    : undefined;
+  if (hit && facts.iteration !== null && facts.maxIterations !== null && facts.iteration < facts.maxIterations) {
+    const n = (v: number | null): string => (v === null ? '?' : String(v));
+    const wall = /(\d+)\/(\d+) ms/.exec(input.dispatch.output);
+    const used =
+      hit.kind === 'tokens'
+        ? `${n(facts.promptTokens)}/${n(facts.tokenBudget)} token`
+        : hit.kind === 'wall_clock'
+          ? `${wall?.[1] ?? '?'}/${wall?.[2] ?? '?'} ms`
+          : `${n(facts.toolCallCount)} 次工具调用`;
+    return {
+      layer: 'budget',
+      code: hit.code,
+      evidence: [
+        `finishReason=budget_exhausted iteration=${facts.iteration}/${facts.maxIterations} ${used}`,
+        hit.re.exec(input.dispatch.output)?.[0] ?? hit.label,
+      ],
+      owner: 'author',
+      countsAgainstAgent: false,
+      nextAction: 'raise_budget',
+      note:
+        `迭代上限 ${facts.maxIterations} 还没用到（停在第 ${facts.iteration} 轮），先撞的是${hit.label}天花板（${used}）。` +
+        `调大 ${hit.knob} 再派同一题；拆题和换模型都绕不开这道顶。不要记成模型失败。`,
+    };
+  }
+
+  if (truncated || budgetStopped || facts.finishReason === 'max_iterations') {
     const ratio =
       facts.promptTokens !== null && facts.tokenBudget ? `（${facts.promptTokens}/${facts.tokenBudget} token）` : '';
-    const code = truncated
-      ? 'OUTPUT_TRUNCATED'
-      : facts.outcome === 'budget_exhausted'
-        ? 'BUDGET_EXHAUSTED'
-        : 'MAX_ITERATIONS';
+    const code = truncated ? 'OUTPUT_TRUNCATED' : budgetStopped ? 'BUDGET_EXHAUSTED' : 'MAX_ITERATIONS';
     return {
       layer: 'budget',
       code,

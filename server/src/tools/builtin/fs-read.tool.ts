@@ -3,6 +3,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import type { ToolDefinition } from '../../types/tool.js';
 import { resolveInSandboxAsync } from './path-jail.js';
+import { globToRegExp } from './glob.js';
 
 /**
  * 默认读取上限：16 KiB。
@@ -23,17 +24,6 @@ const DEFAULT_MAX_BYTES = 16384;
  * 更多用 lineStart/lineEnd 分段取。
  */
 const MAX_LINES_RETURNED = 800;
-
-/** Minimal glob: `*` (no separator), `**` (any depth), `?` (one char). */
-function globToRegExp(glob: string): RegExp {
-  const escaped = glob
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '::DOUBLE_STAR::')
-    .replace(/\*/g, '[^/\\\\]*')
-    .replace(/::DOUBLE_STAR::/g, '.*')
-    .replace(/\?/g, '[^/\\\\]');
-  return new RegExp(`^${escaped}$`);
-}
 
 export const fsReadTool: ToolDefinition = {
   name: 'fs.read',
@@ -123,54 +113,90 @@ export const fsReadTool: ToolDefinition = {
 
     ctx.reportProgress('reading', `读取 ${jail.sandboxRelative}`);
     const buffer = await readFile(jail.absolutePath);
-    const truncatedBytes = buffer.byteLength > maxBytes;
-    const slice = truncatedBytes ? buffer.subarray(0, maxBytes) : buffer;
-    const raw = encoding === 'base64' ? slice.toString('base64') : slice.toString('utf8');
 
-    let content = raw;
+    let content = '';
     let lineInfo: { returned: number; total: number | null } | null = null;
     let overLimit = false;
+    let truncatedBytes = false;
     const userRequestedLineStart = args.lineStart !== undefined;
     const userRequestedLineEnd = args.lineEnd !== undefined;
+
     if (encoding === 'utf8') {
-      const allLines = raw.split('\n');
-      let lines = allLines;
-      const lineStart = userRequestedLineStart ? Number(args.lineStart) : 1;
-      const lineEnd = userRequestedLineEnd ? Number(args.lineEnd) : allLines.length;
+      // 先用完整文件建立真实行号坐标系
+      const fullContent = buffer.toString('utf8');
+      const realAllLines = fullContent.split('\n');
+      const realTotal = realAllLines.length;
+
+      // 校验行窗口参数（基于真实总行数）
+      let lineStart = userRequestedLineStart ? Number(args.lineStart) : 1;
+      let lineEnd = userRequestedLineEnd ? Number(args.lineEnd) : realTotal;
       if (!Number.isInteger(lineStart) || !Number.isInteger(lineEnd) || lineStart < 1 || lineEnd < lineStart) {
         return {
           ok: false,
           summary: 'lineStart/lineEnd 不合法',
-          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'lineStart/lineEnd 必须为正整数且 start ≤ end' },
+          error: {
+            code: 'TOOL_INVALID_ARGS',
+            kind: 'invalid_args',
+            message: `lineStart/lineEnd 必须为正整数且 start ≤ end（文件共 ${realTotal} 行）`,
+          },
         };
       }
-      lines = allLines.slice(lineStart - 1, lineEnd);
+      // lineEnd 超出真实末尾时夹到末尾
+      if (lineEnd > realTotal) lineEnd = realTotal;
+
+      // 在真实行数组上切窗口
+      let lines = realAllLines.slice(lineStart - 1, lineEnd);
+
+      // keyword 过滤也在真实窗口上进行
       const keyword = args.keyword === undefined ? null : String(args.keyword);
       if (keyword) {
         lines = lines.filter((line) => line.includes(keyword));
       }
+
+      // 单次返回行数上限
       overLimit = lines.length > MAX_LINES_RETURNED;
       if (overLimit) lines = lines.slice(0, MAX_LINES_RETURNED);
+
+      // 拼接窗口内容
       content = lines.join('\n');
-      lineInfo = { returned: lines.length, total: allLines.length };
+
+      // 对输出内容应用字节上限（不改变行号坐标系）
+      const contentBytes = Buffer.from(content, 'utf8');
+      if (contentBytes.byteLength > maxBytes) {
+        truncatedBytes = true;
+        const truncatedContent = contentBytes.subarray(0, maxBytes);
+        content = truncatedContent.toString('utf8');
+      }
+
+      // 字节截断后重新计算实际返回的行数（total 保持真实总行数不变）
+      const actualReturnedLines = content.split('\n').length;
+      lineInfo = { returned: actualReturnedLines, total: realTotal };
+
+      // 截断提示
       if (overLimit || truncatedBytes) {
-        content += `\n…[截断：${overLimit ? `行数超过 ${MAX_LINES_RETURNED}（已返回 ${lineInfo?.returned ?? lines.length} 行）` : ''}${overLimit && truncatedBytes ? '，' : ''}${truncatedBytes ? `字节超过 ${maxBytes}` : ''}]`;
+        content += `\n…[截断：${overLimit ? `行数超过 ${MAX_LINES_RETURNED}（已返回 ${lineInfo.returned} 行）` : ''}${overLimit && truncatedBytes ? '，' : ''}${truncatedBytes ? `字节超过 ${maxBytes}` : ''}]`;
         content += '\n（继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes）';
       }
-    } else if (truncatedBytes) {
-      content += `…[截断：字节超过 ${maxBytes}]`;
-      content += '\n（继续读取请调大 maxBytes，或改用 encoding=utf8 配 lineStart/lineEnd 分段）';
+    } else {
+      // base64 分支：保持原有字节截断行为，不支持行窗口/keyword
+      truncatedBytes = buffer.byteLength > maxBytes;
+      const slice = truncatedBytes ? buffer.subarray(0, maxBytes) : buffer;
+      content = slice.toString('base64');
+      if (truncatedBytes) {
+        content += `…[截断：字节超过 ${maxBytes}]`;
+        content += '\n（继续读取请调大 maxBytes，或改用 encoding=utf8 配 lineStart/lineEnd 分段）';
+      }
     }
 
     return {
       ok: true,
-      summary: `已读取 ${jail.sandboxRelative}（${stats.size} 字节${lineInfo ? `，${lineInfo.total} 行` : ''}${truncatedBytes ? '，已截断' : ''}）`,
+      summary: `已读取 ${jail.sandboxRelative}（${stats.size} 字节${lineInfo ? `，${lineInfo.total} 行` : ''}${truncatedBytes || overLimit ? '，已截断' : ''}）`,
       data: {
         kind: 'file',
         path: jail.sandboxRelative,
         encoding,
         sizeBytes: stats.size,
-        // 用户显式请求行窗口且未被 MAX_LINES_RETURNED 进一步截断时，不视为 truncated
+        // 显式请求行窗口且未被 MAX_LINES_RETURNED/字节上限进一步截断时，不视为 truncated
         truncated: truncatedBytes || overLimit || (lineInfo ? (lineInfo.returned < (lineInfo.total ?? 0) && !(userRequestedLineStart || userRequestedLineEnd)) : false),
         lines: lineInfo,
         content,

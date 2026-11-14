@@ -1,0 +1,19 @@
+{
+  "_why": "局部地板，不是全仓库一个数。定在实测值上=每次加新代码必红、闸会被关掉；定在 0 上=没有闸。所以每条地板取「实测值下方留 1~2 个点余量」，语义是不许退步，而不是要求立刻补测。",
+  "_measuredAt": "2026-11-14 @ 2.14.0，server 163 文件/1543 passed，client 18 文件/183 passed，v8 provider，include=src/**",
+  "_metric": "统一用 lines：v8 的 branches 计数随插桩版本波动大，拿它当地板会把「工具升级」误判成「质量退步」。branches 仍在报告里可看，只是不作闸。",
+  "rules": [
+    { "package": "server", "prefix": "src/utils", "metric": "lines", "min": 95, "measured": 96.08, "why": "路径闸/HMAC/SSRF 守卫都在这层，判据最密集，退步必须立刻红" },
+    { "package": "server", "prefix": "src/validators", "metric": "lines", "min": 94, "measured": 94.74, "why": "入参 schema 是外部边界，漏一条就是注入面" },
+    { "package": "server", "prefix": "src/services/eval", "metric": "lines", "min": 97, "measured": 97.81, "why": "评测口径本身要可核实，否则分数不可信" },
+    { "package": "server", "prefix": "src/services/judge", "metric": "lines", "min": 92, "measured": 93.3, "why": "Judge 维是产品宪法的中心，判据引擎自己不能被测得比工具还松" },
+    { "package": "server", "prefix": "src/tools", "metric": "lines", "min": 80, "measured": 81.64, "why": "Act 维主体；含 time-now/code-generate 等低覆盖工具，先钉住不退步" },
+    { "package": "server", "prefix": "src/services/rsi", "metric": "lines", "min": 58, "measured": 59.86, "why": "已知薄弱面：自演进循环本身覆盖不足。地板只保证不再往下掉，补齐是后续任务" },
+    { "package": "server", "prefix": "", "metric": "lines", "min": 82, "measured": 83.58, "why": "整体兜底，防止「把代码挪出被测前缀」绕过上面的局部闸" },
+    { "package": "client", "prefix": "src/services", "metric": "lines", "min": 54, "measured": 54.92, "why": "API/SSE 客户端层，协议解析错了整条流都错" },
+    { "package": "client", "prefix": "src/lib", "metric": "lines", "min": 51, "measured": 52.29, "why": "审批回执等纯逻辑在这层，已有判据家族守着" },
+    { "package": "client", "prefix": "src/components", "metric": "lines", "min": 48, "measured": 49.03, "why": "前端交互判据家族本轮破零（47 条），先钉住这个起点" },
+    { "package": "client", "prefix": "src/store", "metric": "lines", "min": 35, "measured": 36.54, "why": "已知薄弱面：zustand store 大量分支未测。地板只防退步" },
+    { "package": "client", "prefix": "", "metric": "lines", "min": 46, "measured": 47.47, "why": "整体兜底，同上" }
+  ]
+}

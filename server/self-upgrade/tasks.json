@@ -222,6 +222,382 @@
         "fs-read.tool.ts:153 lineInfo.total 取 allLines.length（原始全量行数），而 returned 仅为窗口内行数",
         "fs-read.tool.ts:171 truncated 判定用 returned < total，未排除「用户主动请求窗口」的情况"
       ]
+    },
+    {
+      "id": "rsi-tick-ledger-coverage-single-ruler",
+      "title": "账本覆盖率两把尺子打架：rsi-tick 报 13/13，C1 闸报 1/13",
+      "strengthens": "Judge",
+      "attribution": "human",
+      "allowed": [
+        "../scripts/lib/ledger-coverage.mjs",
+        "../scripts/rsi-tick.mjs",
+        "../scripts/check-task-metadata.mjs"
+      ],
+      "judge": "tests/self-upgrade/rsi-tick-coverage.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "releasedIn": "2.12.0",
+      "boundary": "只统一覆盖率口径（verified ∩ done），不改账本内容、不把 adopted 升格为 verified",
+      "adoptedBy": "human",
+      "gap": "rsi-tick 把「账本里提到过的题」当成「已验证的题」，于是 13 道 done 题报成 13/13 覆盖；C1 闸只认 verdict==='verified'，同一份账本报 1/13。迭代计划里「覆盖率 ≥8/13」这条 P0 是被这把说谎的尺子判过的。",
+      "observable": "同一份 .self-upgrade/ledger.jsonl（19 行，其中 12 行 reconstructed adopted、1 行 verified）→ rsi-tick 与 C1 闸必须报同一个 covered/missing；当前 rsi-tick 报 13/13、C1 报 1/13",
+      "evidence": [
+        "红基线实跑：先按旧语义建 lib/ledger-coverage.mjs，判据 12 failed | 10 passed (22)",
+        "修口径后实跑：26 passed (26)，反向占比 50%，judge-audit 14/14 OK",
+        "修后两闸读数一致：verified 覆盖 1/13，提到过 13 题，未验证 12 题清单逐字相同"
+      ]
+    },
+    {
+      "id": "mutation-probe-per-task-coverage",
+      "title": "变异探针只覆盖 2 处且够不到前端；抓出 fs-write-delete-recursive-missing-schema 判据假绿",
+      "strengthens": "Judge",
+      "attribution": "human",
+      "allowed": [
+        "../scripts/mutation-probe.mjs",
+        "../scripts/lib/mutations.mjs",
+        "tests/self-upgrade/fs-write-delete-recursive-missing-schema.test.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-write-delete-recursive-missing-schema.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "releasedIn": "2.13.0",
+      "boundary": "只加变异体与包根支持、只给判据补 schema 断言；不改任何工具实现，不放宽探针的脏文件/唯一源串/还原校验约束",
+      "adoptedBy": "human",
+      "gap": "探针写死 SERVER 根，前端题与仓库根尺子脚本都无法变异；逐题覆盖只有 2 处（计划 P1 要求 ≥13）。补到 16 个变异体后立刻抓到一个真缺陷：把 inputSchema.properties.recursive 整条删掉，fs-write-delete-recursive-missing-schema 判据仍全绿——它名叫 missing-schema 却从不守 schema，题面缺口本体没被任何断言覆盖。",
+      "observable": "删掉 fs-write.tool.ts 的 recursive schema 声明 → 该判据必须红；当前它绿",
+      "evidence": [
+        "红基线实跑：16 个变异体中 fs-write-recursive-schema 报 [SURVIVED]，其余 14 个 [KILLED]，1 个因靶子未提交被 [SKIP]",
+        "补 4 条 schema 断言后：判据 10 passed (10)，反向占比 55%，judge-audit 14/14 OK",
+        "重放同一变异体：[KILLED]，退出码 0",
+        "逐题变异覆盖 13/14 题（第 14 题靶子 scripts/lib/ledger-coverage.mjs 尚未提交，探针按设计拒绝在脏文件上变异）",
+        "还原核验：跑完 git diff -- server/src client/src 为空，全部靶子按 sha256 字节还原"
+      ]
+    },
+    {
+      "id": "frontend-interaction-judge-family",
+      "title": "判据塔 14 份全在 server 工具层，前端交互零判据（审批条 / 占用条 / 后果预览）",
+      "strengthens": "Judge",
+      "attribution": "human",
+      "package": "client",
+      "allowed": [
+        "tests/tool-approval-bar.test.ts",
+        "tests/tool-approval-effect.test.ts",
+        "tests/context-occupancy-bar.test.ts"
+      ],
+      "judge": "tests/tool-approval-bar.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "releasedIn": "2.14.0",
+      "boundary": "只加判据与变异体，不改任何组件实现；不引第三方 UI 测试库或组件库",
+      "adoptedBy": "human",
+      "gap": "审批条是人唯一能拦住 Agent 的地方，但它的禁用态、改参数校验、后果预览此前没有任何交互判据；前端只有纯函数与 mount 冒烟。这类坏法坏的是安全边界而不是显示效果，冒烟测不出来。",
+      "observable": "把过期判断从按钮 disabled 条件里摘掉 / 把 revise 的对象形状守卫短路 / 把后果预览的「…共 N 项」省略行去掉 / 给未知窗口编一个 128k —— 四条都必须让对应判据红",
+      "evidence": [
+        "新增 3 份判据共 47 用例：tool-approval-bar 17、tool-approval-effect 15、context-occupancy-bar 15",
+        "C3 自证实跑：4 个前端变异体全部 [KILLED]（过期可点 / 形状守卫短路 / 静默截断 / 编造窗口）",
+        "前端全量：18 文件 183 passed（新增前 15 文件），零 act 警告",
+        "夹具缺陷已修并留痕：React value tracker 会吞掉直接 ta.value= 赋值，必须走原型原生 setter，否则「非法 JSON 必须被拒」四条会假失败",
+        "还原核验：git diff -- client/src server/src 为空"
+      ]
+    },
+    {
+      "id": "coverage-floor-local-gate",
+      "title": "仓库此前没有任何覆盖率读数；补 v8 插桩后还需一道「能红」的局部地板闸",
+      "strengthens": "Judge",
+      "attribution": "human",
+      "allowed": [
+        "tests/self-upgrade/coverage-floor.test.ts"
+      ],
+      "judge": "tests/self-upgrade/coverage-floor.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "releasedIn": "2.15.0",
+      "boundary": "只加测量与门禁，不改任何 src/ 实现、不放宽既有用例。地板取实测值下方 1~2 个点，语义是「禁退步」而非「立刻补测」；统一用 lines 作闸（v8 的 branches 计数随插桩版本波动，拿它当地板会把工具升级误判成质量退步）。",
+      "adoptedBy": "human",
+      "gap": "「代码质量和测试是重点」这句话此前没有可核实的衡量面：两个包都没有覆盖率报告，也没有任何地板。补上读数后立刻出现第二个风险——闸本身可能是装饰：缺报告时放行、按前缀聚合时对百分比求平均、分母为 0 当成满分，三种坏法都会让它长期绿。",
+      "observable": "把零分母改判成 100% pass / 把 covered 累加改成累加百分比 / 把 pct >= rule.min 改成 pct >= 0 —— 三条都必须让判据红；报告不可得时必须全记 UNEXEC 且 passed=0。",
+      "evidence": [
+        "测量面破零：server v8 插桩 include=src/**，总行覆盖 83.58%（7111/8508）；client 47.47%（1307/2753）",
+        "插桩未改变执行语义（同口径对照，加判据前）：server 插桩轮与非插桩轮同为 163 文件 / 1543 passed，两轮 exit 0；client 18 文件 / 183 passed 与既有读数一致",
+        "与 CI 锚点可对账：run #5 @ 4d6ed81 为 162 文件 / 1512 passed + 1 skipped；1513 + 26（rsi-tick 判据）+ 4（schema 判据）= 1543，162 + 1 = 163",
+        "局部地板 12 条全部达标：server 7/7（utils 96.08≥95、validators 94.74≥94、eval 97.81≥97、judge 93.3≥92、tools 81.64≥80、rsi 59.86≥58、total 83.58≥82）；client 5/5（services 54.92≥54、lib 52.29≥51、components 49.03≥48、store 36.54≥35、total 47.48≥46）",
+        "闸自证实跑：node scripts/check-coverage-floor.mjs --self-test → [PASS]，能红 / 能绿 / 缺报告记 UNEXEC / 零分母不判满分 / 平均口径陷阱被点名判红",
+        "新增判据 server/tests/self-upgrade/coverage-floor.test.ts：24 用例全绿；judge-audit 15/15 通过，本份反向占比 33%（14 正 / 7 反）",
+        "C3 红基线（人工注入，sha256 字节还原）：coverage-floor-zero-denominator-full-marks → KILLED（2 failed / 22 passed）；coverage-floor-sum-percentages → KILLED（6 failed / 18 passed）；coverage-floor-min-ignored → KILLED（3 failed / 21 passed）；还原后 24 passed，靶子 sha256 前后一致 a592e620b2ba7735…",
+        "变异探针如实记 SKIP：3 条新变异体的靶子 scripts/lib/coverage-floor.mjs 未受跟踪，探针拒绝在脏文件上做变异（与 ledger-coverage-verified-only 同一阻塞）。逐题变异覆盖因此为 14/17，不是 17/17",
+        "尺子侧改动清单（均在仓库根 scripts/，attribution=human）：lib/coverage-floor.mjs、check-coverage-floor.mjs、coverage-floors.json、fixtures/coverage-floor/summary.json、lib/mutations.mjs（+3 条）；另 server/vitest.coverage.config.ts（mergeConfig 继承受保护的 vitest.config.ts，不改尺子）、client/vite.config.ts、两个 package.json（+@vitest/coverage-v8@5.0.5 精确版本、+test:coverage、+check:coverage-floor）",
+        "已知缺口（本轮不修，留痕）：① 围栏 PROTECTED 只含 server/scripts/，仓库根 scripts/ 不在指纹面内——AGENTS.md 声明它人所有，围栏却量不到它；② --package=client 时 toRepoRel 会给 server 受保护件错贴 client/ 前缀（上一份基线 259 件全带 client/ 前缀，其中 177 件实为 server/tests），本轮已按 server 口径重锚",
+        "最终验收实跑：server npm run test:acceptance → 164 文件 / 1569 passed，exit 0（typecheck / vitest / krsi / 套件地板 / C1 / 工具契约 17 个全过）；client npm test → 18 文件 / 183 passed，exit 0；本份判据 26 用例全绿；覆盖率闸端到端 npm run check:coverage 两包均 exit 0（server 7/7、client 5/5 达标）",
+        "入口串联：两个包新增 check:coverage = test:coverage && check:coverage-floor（只测不判 = 有读数没有闸）。刻意不塞进 test:acceptance——验收不产覆盖率报告，塞进去只会恒 UNEXEC；判据里有两条断言钉住这个取舍",
+        "围栏口径发现（本轮不修，留痕）：check-self-upgrade.mjs 的 ALLOWED 只从 argv 取，baseline.allowed 写了但运行时不读——漏传 --allowed= 会静默回落到历史默认靶子 src/services/tools/observation-render.ts，并把本轮判据报成「正向清单之外的改动」。本轮已按显式传参重跑，WARN 消失"
+      ]
+    },
+    {
+      "id": "file-size-ratchet-gate",
+      "title": "单文件行数没有任何闸：49 个存量文件超 300 行（最大 1550 行），巨方法只能靠人眼发现",
+      "strengthens": "Judge",
+      "attribution": "human",
+      "allowed": [
+        "tests/self-upgrade/file-size-ratchet.test.ts"
+      ],
+      "judge": "tests/self-upgrade/file-size-ratchet.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "releasedIn": "2.16.0",
+      "boundary": "只加度量与门禁，不改任何 src/ 实现、不拆任何文件。存量 49 件按实测行数封顶（只许缩不许涨），增量一律 ≤300 行。行数口径为物理行（含空行与注释）——排除注释会让「删注释压行数」变成合规手段，正好绕过这道闸想防的事。",
+      "adoptedBy": "human",
+      "gap": "agent-loop.service.ts 1550 行、其中 run() 一个方法 851 行；checkpoint.service.ts 1437 行；前端 RsiDashboardModal.tsx 907 行。此前没有任何行数闸，这类结构退化只能靠人眼发现，而人眼在 164 个测试文件全绿时不会去看行数。一刀切 300 行会让闸从诞生起就红 49 处、结局是被人关掉，所以必须是棘轮。",
+      "observable": "空扫描判绿 / 清单孤儿被静默丢弃 / tighten 用 max 抬上限 / 缩到 300 以内不报可出清单 / 恰好 300 行被判越线 —— 五条都必须让判据红。",
+      "evidence": [
+        "实测存量：server/src 192 个 .ts/.tsx 中 34 个超 300 行，client/src 84 个中 15 个超；合计 49 件入豁免清单，最大 server/src/services/agent/agent-loop.service.ts 1550 行",
+        "闸自证实跑：node scripts/check-file-size.mjs --self-test → [PASS]（能红 / 能绿 / 空扫描记 UNEXEC / 孤儿判红 / 上限只降不升）",
+        "真实扫描实跑：276 个文件 / 276 达标 / 0 越线，存量豁免 49 件，exit 0",
+        "新增判据 server/tests/self-upgrade/file-size-ratchet.test.ts：33 用例全绿；judge-audit 16/16 通过，本份反向占比 29%（24 正 / 10 反）",
+        "C3 红基线（人工注入，sha256 字节还原）：5 条变异体全部 KILLED —— empty-scan-passes / orphan-silently-dropped / tighten-raises-ceiling / graduated-not-reported / limit-off-by-one；还原后 33 passed，靶子 sha256 前后一致 1d9c357c3b0e51dd…",
+        "变异探针如实记 SKIP：5 条的靶子 scripts/lib/file-size-ratchet.mjs 未受跟踪，探针拒绝在脏文件上做变异。逐题变异覆盖因此为 14/18，不是 18/18",
+        "已接进验收（与覆盖率闸取舍相反）：两个包 test:acceptance 末尾都串上 npm run check:file-size。它是纯静态扫描（276 文件，无需先测量），没有理由只选跑；覆盖率闸必须先产报告，塞进验收只会恒 UNEXEC，所以保持独立入口。判据里有三条断言钉住这个取舍",
+        "尺子侧改动清单（仓库根 scripts/，attribution=human）：lib/file-size-ratchet.mjs、check-file-size.mjs、file-size-baseline.json（49 条豁免）、fixtures/file-size-ratchet/cases.json、lib/mutations.mjs（+5 条）；两个 package.json（+check:file-size、验收串接）",
+        "夹具缺陷已修并留痕：初版夹具把「恰好 300 行」的条目排除在 graduated 之外，自证判红 2 处；修的是夹具期望而不是逻辑——≤300 本就该出清单",
+        "后续收紧路径：S6 拆完 agent-loop 后跑 node scripts/check-file-size.mjs --tighten 只下调上限；缩到 300 以内的文件应从豁免清单移除（判据「清单里不得混进已达标文件」会强制这件事）",
+        "最终验收实跑：server npm run test:acceptance → 165 文件 / 1602 passed，exit 0（typecheck / vitest / krsi / 套件地板 / C1 元数据 / 工具契约 17 个 / 行数棘轮 全过）；client npm run test:acceptance → 18 文件 / 183 passed，exit 0（typecheck / vitest / UI 静态卫生 / 行数棘轮 全过）；本份判据 33 用例全绿"
+      ]
+    },
+    {
+      "id": "fs-glob-shared",
+      "title": "G2-a 路径检索破零：fs.glob + 共用 matcher/遍历件抽取",
+      "strengthens": "Act",
+      "package": "server",
+      "allowed": [
+        "src/tools/builtin/glob.ts",
+        "src/tools/builtin/sandbox-walk.ts",
+        "src/tools/builtin/fs-glob.tool.ts",
+        "src/tools/builtin/index.ts",
+        "src/tools/builtin/fs-read.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-glob.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "requireAllTargets": false,
+      "attribution": "human",
+      "gap": "Agent 没有任何「按路径模式找」的手段：只有 fs.list 列目录、fs.read 读单文件，定位文件只能盲翻。本题新增 fs.glob，并把 fs.read 里私有的 globToRegExp 抽成共用件。拆题由来：原合并题 code-search-glob 一题六靶子，派单第 3 轮在 iteration 14 / 20 次工具调用处 token 预算耗尽（promptTokens 266827 / tokenBudget 256000），只落了 glob.ts 与 sandbox-walk.ts，归因 budget/split_task。磁盘现状（人核对）：glob.ts 已是 fs.read 私有实现的忠实抽取，语义一致，**可以不改**；sandbox-walk.ts 已存在但有真缺陷——walkFiles 与 walkFilesForGlob 是两份近乎逐字重复的遍历实现（139 行里约 45 行重复），正是边界禁止的「各写一套」，必须合并成一套；另 lstat 导入未使用、shouldSkipDir 导出但遍历里没用它。fs-glob.tool.ts 此刻不存在（fs.read 会报 not_found，这是预期的）。",
+      "observable": "判据 tests/self-upgrade/fs-glob.test.ts 共 28 个用例，实现前整体红（模块不存在，人已实跑 exit 1 / Tests no tests）。变绿必须同时成立：(1) fs.glob 进 BUILTIN_TOOLS，wireName=fs_glob、category=file、risk=low、approvalMode=none、source=builtin、idempotent=true，inputSchema.required=[pattern] 且 additionalProperties=false，注册表无重名、旧工具一个不少（≥18）；(2) 越界路径（含 .. 或沙箱外绝对路径）→ ok:false + error.code=TOOL_SECURITY_DENIED + kind=security，不抛原生异常；(3) 缺 pattern / 空 pattern / maxResults 越界（0、1001）→ invalid_args；根不存在 → not_found；根是文件 → invalid_args；(4) 无命中是 ok:true + 空数组 + total:0，**不是 error**；(5) data.matches 只含文件不含目录、按路径排序、* 不跨分隔符、** 跨任意深度、? 只吃一个字符；maxResults 截断时 total 仍是截断前真值、truncated=true；指定子目录为根时返回路径仍相对沙箱根；(6) 跳过 node_modules/dist/coverage/.git，且**不跟随符号链接**（判据在临时沙箱里放了真实软链诱饵指向沙箱外）；(7) 共用件：glob.ts 导出 globToRegExp 且正则元字符被转义；SKIP_DIRS 点名那四个目录；sandbox-walk.ts 的 readdir 调用点恰好 1 个；fs-read.tool.ts 里不得再有 function globToRegExp 且必须 import glob.js；(8) fs.read 的目录 glob / 行窗口 / keyword 行为不得因抽取而改变（判据里有回归断言）。",
+      "boundary": "只改 allowed 里那五个文件。glob.ts 已正确，允许不动（故 requireAllTargets=false，接线与去重由判据机械守住，不靠「文件被碰过」）。不改判据、不改其它工具的任何字段。不引入任何第三方依赖（server 没有 glob/fast-glob/ripgrep，用 node:fs 自己走）。globToRegExp 的语义必须与 fs.read 现有实现逐字一致——这是**纯抽取**，不是改匹配行为。sandbox-walk.ts 只许有一套遍历实现（判据机械断言 readdir 调用点恰好 1 个），两个工具共用同一套安全规则。工程约束：新工具文件 ≤300 行（行数棘轮闸已进两包验收）；遍历深度上限 8 层。已知局限本轮不修：现有 matcher 下 **/*.ts 要求至少一层分隔符，根层 a.ts 不命中——保持原样，不要顺手改语义。fs.glob maxResults 默认 200 上限 1000。code.search 不在本题范围，留给 G2-b。",
+      "evidence": [
+        "拆题依据（机械取证）：.self-upgrade/loop/sse-code-search-glob-3.txt 里 finishReason=budget_exhausted、iteration=14、toolCallCount=20、promptTokens=266827、tokenBudget=256000；diag-code-search-glob-3.txt 记「还差 code-search.tool.ts、fs-glob.tool.ts、index.ts、fs-read.tool.ts」",
+        "判据拆分保真核对（人实跑脚本）：原 50 用例 → G2-a 28 + G2-b 29；47 个标题逐字保留，3 个合并断言按工具拆开（两工具都注册 / 两工具都低风险 / 注册表≥19），拆后并集不弱于原判据（G2-b 的 ≥19 还把 fs.glob 加进旧名清单）",
+        "原合并判据已归档 .self-upgrade/loop/retired/code-search-glob.test.ts.txt（未提交过，git 无法恢复，故归档不删）",
+        "C3 红基线（人实跑）：npx vitest run tests/self-upgrade/fs-glob.test.ts → exit 1，Test Files 1 failed / Tests no tests（fs-glob.tool.ts 不存在，属真 unexec）",
+        "磁盘现状核对：glob.ts 与 fs-read.tool.ts:28-36 的私有实现逐行比对语义一致；sandbox-walk.ts 有 walkFiles / walkFilesForGlob 两份重复遍历（readdir 调用点 2 个），判据新增机械断言钉住「恰好 1 个」",
+        "src/tools/builtin/index.ts 是 BUILTIN_TOOLS 唯一注册点，只新建模块不在这里加一行，模型永远看不到它",
+        "path-jail.ts 的 resolveInSandboxAsync 是唯一沙箱入口，fs-read.tool.ts / fs-list.tool.ts 是标准拒绝写法，错误码照抄",
+        "题目与判据均由人撰写（attribution=human）；实现由 CodeLens 派单落地，围栏判绿后由人 promote 成 done 并补 verified 账本行",
+        "人工采纳（2026-11-14）：用仍然有效的派单前锚点跑真实围栏，实质项全绿（判据指纹未变 / 4-5 靶子 changed / 注释保留 / tsc / 判据自证 / 判据 28 用例 / 全量回归），JUDGE_VERDICT=pass。围栏整体 exit=1 的 13 条 FAIL 全是受保护路径改动，逐条对应本轮 6 条人工 D4 归因行，无一条来自 Agent。证据：.self-upgrade/loop/fence-only-fs-glob-shared-1794604174228.txt。",
+        "此前五次「可复现真回归」已证伪：根因是派单循环 loadEnvFile(server/.env) 把宿主 env 泄漏进围栏的 vitest 子进程，一批断言「默认关闭」态的用例只在派单里红。隔离件落地后同一套污染 env 下 172 文件 / 1758 passed / exit 0。"
+      ],
+      "releasedIn": "2.18.0"
+    },
+    {
+      "id": "code-search",
+      "title": "G2-b 内容检索破零：code.search（复用 G2-a 的遍历件）",
+      "strengthens": "Act",
+      "package": "server",
+      "allowed": [
+        "src/tools/builtin/code-search.tool.ts",
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/code-search.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "requireAllTargets": false,
+      "attribution": "human",
+      "gap": "Agent 没有任何「按内容找」的手段，定位一个符号定义在哪只能 list→read→list→read 盲翻，一个 200 文件的仓库就能烧光整轮迭代预算。本题新增 code.search。依赖 G2-a（fs-glob-shared）先落地：sandbox-walk.ts 与 glob.ts 由那一题产出，本题只复用，不许另写一套遍历。code-search.tool.ts 此刻不存在（fs.read 会报 not_found，这是预期的）。",
+      "observable": "判据 tests/self-upgrade/code-search.test.ts 共 29 个用例，实现前整体红（模块不存在，人已实跑 exit 1 / Tests no tests）。变绿必须同时成立：(1) code.search 进 BUILTIN_TOOLS，wireName=code_search、category=file、risk=low、approvalMode=none、source=builtin、idempotent=true，inputSchema.required=[pattern] 且 additionalProperties=false，注册表无重名、旧工具全在（≥19，含 fs.glob）；(2) 越界路径 → ok:false + TOOL_SECURITY_DENIED + kind=security + retryable:false，不抛原生异常；(3) 缺 pattern / 空白 pattern / maxResults 越界（0、501、非整数）/ 非法正则 → invalid_args；根不存在 → not_found；根是文件 → invalid_args；(4) 无命中是 ok:true + 空数组 + total:0 + truncated:false，**不是 error**；(5) data.hits 是 {file,line,text}：file 为沙箱相对路径且用正斜杠（即使 path 指到子目录也相对沙箱根）、line 从 1 起、text 是整行原文；默认大小写不敏感，caseSensitive=true 时区分；regex=true 才当正则解释，字面量模式下 function (alpha|beta) 不得命中；glob 按文件名（basename）过滤；maxResults 截断时 total 仍是截断前真值、truncated=true；data.filesScanned 必须是数字；summary 里要出现命中数；(6) 跳过 node_modules/dist/coverage/.git，**不跟随符号链接**，跳过含 0x00 字节的二进制文件与超过 1 MiB 的单文件。",
+      "boundary": "只改 allowed 里那两个文件；index.ts 的接线早已落地，允许不动（故 requireAllTargets=false），否则会强逼模型做无意义改动。遍历一律走 G2-a 的 sandbox-walk.ts，不许在本题里另写 readdir 循环。不改判据、不改其它工具的任何字段。不引入任何第三方依赖（server 没有 glob/fast-glob/ripgrep，用 node:fs 自己走）。globToRegExp 的语义必须与 fs.read 现有实现逐字一致——这是**纯抽取**，不是改匹配行为。sandbox-walk.ts 只许有一套遍历实现（判据机械断言 readdir 调用点恰好 1 个），两个工具共用同一套安全规则。工程约束：新工具文件 ≤300 行（行数棘轮闸已进两包验收）；遍历深度上限 8 层。已知局限本轮不修：现有 matcher 下 **/*.ts 要求至少一层分隔符，根层 a.ts 不命中——保持原样，不要顺手改语义。code.search 单文件上限 1 MiB、maxResults 默认 50 上限 500。",
+      "evidence": [
+        "拆题依据与保真核对同 G2-a（见 fs-glob-shared 的 evidence 前两条）",
+        "C3 红基线（人实跑）：npx vitest run tests/self-upgrade/code-search.test.ts → exit 1，Test Files 1 failed / Tests no tests（code-search.tool.ts 不存在，属真 unexec）",
+        "依赖关系：本题的遍历安全断言（跳过四目录 / 不跟随软链 / 二进制 / 1 MiB）全部由 G2-a 的 sandbox-walk.ts 承担，G2-a 未落地前本题不应开工",
+        "题目与判据均由人撰写（attribution=human）；实现由 CodeLens 派单落地，围栏判绿后由人 promote 成 done 并补 verified 账本行",
+        "判据草案位置（2026-11-14 起）：server/candidates/code-search.candidate.ts。未派单的判据不得留在 tests/ 下进全量回归——vitest.config.ts 已排除 candidates/。派单前由人 promote 回 judge 字段所指路径，promote 属 D4 写，必须 attribution=human。",
+        "排序教训（机械取证）：--only=fs-glob-shared 第 3 轮的 full-regression-1794602217105.txt 里出现本题判据失败，把 G2-a 的正确实现一起判死。两个原因叠加：(1) 本题判据提前放进 tests/；(2) 循环用被 --only 收窄的 pending 算 exclude-judges，单题派单时排除名单恒为空（已修，见 dispatch-channel-fidelity 判据）。",
+        "K16 陷阱与本轮处置（2026-11-14，人工）：code.search 带 path 参数且只读，落地后必然触发 capability-registry 的 K16「带 path 的新工具要么被自动捕获、要么显式登记」。登记名单在 tests/ 下属受保护路径，Agent 改不得 —— 不处理就是一条注定红、且会被记成实现失败的假红。反向校验又要求名单里的工具必须真实存在，所以也不能提前登记。处置：本题 excludeJudges 排除 tests/capability-registry.test.ts（该开关只作用于全量回归，不影响本题判据与受保护校验），注册表完整性仍由本题判据自身守（≥19 工具、无重名、旧工具全在）。人工 obligations：promote 时把 code.search 登记进 NOT_AUTO_CAPTURED、去掉本条 excludeJudges、重跑 capability-registry 确认绿。",
+        "草稿态不可原地执行：candidates/code-search.candidate.ts 的相对 import 按 promote 后的位置（tests/self-upgrade/）写成 ../../src/...，在 candidates/ 下深度不对。红基线读数必须在 promote 之后取，草稿态只作暂存。",
+        "requireAllTargets 由 true 改 false（2026-11-14，人工，attribution=human）：src/tools/builtin/index.ts 第 22 行早已 import、第 43 行早已注册 codeSearchTool，判据的注册断言全绿（三次派单的失败项无一与注册有关）。原值要求两个靶子都在本轮被改动，于是无论实现多完美都判「还差 src/tools/builtin/index.ts」——三次派单的围栏全部因此红，其中两次是假红。与 G2-a 把该值设为 false 的理由同源：已正确的不该被逼着重改。",
+        "G2-b 实现完成（2026-11-14 07:29:41，机械取证）：code-search.tool.ts 6233 字节 / 判据 29 passed / tsc --noEmit exit 0。第 3 次派单的围栏已打 PASS「判据通过：tests/self-upgrade/code-search.test.ts」，其余红项只有上面那条 requireAllTargets 假红与一次竞态造成的 tsc 假红——围栏那次 tsc 与判据分别跑在 07:29:3x，而文件最后一次写入是 07:29:41。",
+        "人工采纳（2026-11-14）：用重锚后的基线跑真实围栏，七项全 PASS、exit=0 —— 受保护路径零改动(278/278) / 判据指纹未变 / 人工确认放行 / tsc 通过 / 判据自证 / 判据 29 passed / 全量回归通过。证据取自围栏 stdout；实现由 CodeLens 第 3 次派单落盘，人未代写。"
+      ],
+      "releasedIn": "2.19.0"
+    },
+    {
+      "id": "dispatch-budget-attribution",
+      "title": "预算耗尽被记成 Agent 能力失败：取证尾部截断 + 归因只认 outcome",
+      "strengthens": "Judge",
+      "package": "server",
+      "allowed": [
+        "tests/self-upgrade/dispatch-budget-attribution.test.ts"
+      ],
+      "judge": "tests/self-upgrade/dispatch-budget-attribution.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "attribution": "human",
+      "adoptedBy": "human",
+      "releasedIn": "2.17.0",
+      "gap": "code-search-glob 首次真实派单的三次尝试全部死于 RUN_BUDGET_TOKENS，但账本记成 implementation/BEHAVIOR_WRONG 且计入 Agent 能力账。两处独立缺陷合成：生产者 task-self-upgrade.ts 只把 sse.slice(-900) 打进 stdout，run_report（576 字节）被其后的 delta/stage/done 挤出窗口；消费者 failure-attribution.ts 的资源层分支只认 outcome=budget_exhausted 或 finishReason=max_iterations，而幸存的 done 事件写的是 finishReason=budget_exhausted，不在名单里。",
+      "observable": "同一份 stdout 里 toolCallCount 到得了、outcome 到不了——截断式取证不是全盲而是选择性失明，所以循环照样报出正确的工具调用数，只有归因错了。修好后：只有 done 事件送达也必须归 budget/BUDGET_EXHAUSTED/countsAgainstAgent=false；run_report 完整送达时结论相同；取证尾部必须整条携带 run_report 与 done 且总额 ≤4000 字符；三条金丝雀（真实现层失败、NO_TOOL_CALL、上游额度耗尽）不得被资源层抢走。",
+      "boundary": "尺子侧改动（server/scripts/，attribution=human）：failure-attribution.ts、task-self-upgrade.ts、新增 lib/sse-tail.mjs。不改任何 src/ 实现。",
+      "evidence": [
+        "现场取证：.self-upgrade/loop/sse-code-search-glob-{1,2,3}.txt 的 run_report 均为 outcome=budget_exhausted / statusCode=RUN_BUDGET_TOKENS；按旧口径重放 sse.slice(-900) 得到 416 字符，其中 run_report 整条丢失、outcome=null、finishReason=budget_exhausted、toolCallCount=20 仍在",
+        "生产者修复：新增 server/scripts/lib/sse-tail.mjs 的 buildDispatchTail(sse)——关键事件（run_report/done）取最后一次出现、整条保留、不做 \\n 还原（还原会改坏 JSON），原始尾部用剩余额度，总额 ≤4000；task-self-upgrade.ts 改用它",
+        "消费者修复：failure-attribution.ts 资源层判据改为 budgetStopped = outcome===budget_exhausted || finishReason===budget_exhausted，两个事件任一单独送达都归资源层",
+        "C3 红基线（人实跑）：注入前实跑 exit 1（Cannot find module scripts/lib/sse-tail.mjs，Test Files 1 failed / Tests no tests）。缺陷现场取自 code-search-glob 第 1 次真实派单的 SSE 原文：三次尝试 outcome 均为 budget_exhausted（265k~274k / 256k token），账本三行却全记 implementation / BEHAVIOR_WRONG / countsAgainstAgent=true",
+        "变异体 5 条全部 KILLED（人工注入、字节还原）：attribution-budget-finishreason-ignored / attribution-budget-overmatch / sse-tail-key-events-dropped / sse-tail-byte-slice-only / sse-tail-unbounded。5 条均 [SKIP]：failure-attribution.ts 有本轮未提交改动、sse-tail.mjs 未受跟踪，探针拒绝在脏文件上做变异。红基线由人工注入取得（utf8 读盘、源串恰好命中 1 次、finally 还原原始 Buffer、sha256 对账 fb9910a4c594e5dc…），不冒充探针读数",
+        "变异体选点教训（留痕）：初版 sse-tail-unbounded 改的是 room 计算，但 RAW_TAIL=1200 仍然封顶，等于没改坏 → SURVIVED。修的是变异体不是判据，改成 return head + sse 后 KILLED",
+        "判据与回归实跑：还原后判据 17 passed（10 正 / 13 反 / 反向占比 57%）；既有归因判据回归 4 文件 32 passed 全绿；judge-audit 18/18 通过",
+        "附带发现（本轮不修，留痕）：server/tsconfig.json 的 include 只有 [\"src\"]，所以围栏的「类型检查通过」不覆盖 tests/ 与 scripts/——判据 import 不到模块时 tsc 照样绿，只在 vitest 加载期报 UNEXEC。这符合 C4（unexec≠pass），但诊断因此拿不到「模块不存在」这句话",
+        "账本纠错：本轮之前那三行 failed 是尺子误判，按「只追加」原则不改写历史，另追加一行 correction 说明真实归因应为 budget/BUDGET_EXHAUSTED/不计入 Agent"
+      ]
+    },
+    {
+      "id": "fs-read-line-window",
+      "title": "fs.read 行窗口必须寻址真实文件，而不是字节截断后的残片",
+      "strengthens": "Act",
+      "package": "server",
+      "allowed": [
+        "src/tools/builtin/fs-read.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-line-window.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "attribution": "human",
+      "gap": "fs.read 先按 maxBytes 截字节、再在残片上切行窗口：一个 470 行的文件默认只能看到前 368 行，lineStart=443 落在残片之外，返回 ok:true + 空内容；lines.total 报的也是残片行数 368 而不是真实 470，模型据此判断「文件只有 368 行」。更糟的是工具自己的截断提示把「继续读取请用 lineStart/lineEnd 分段」摆在第一位（maxBytes 只在句末附带一提）——照做必然撞墙，且没有任何信号告诉模型该调大 maxBytes。这不是理论风险：上一轮 code-search-glob 三次派单全部 budget_exhausted（3×256k token），SSE 逐字证据显示模型反复对 470 行判据做 lineStart 分段读、反复拿到空内容后重试，直到预算烧光。Act 层这一处缺陷直接让 Agent 无法读长文件。",
+      "observable": "判据 tests/self-upgrade/fs-read-line-window.test.ts 共 21 个用例，人已实跑红：9 failed / 12 passed（exit 1）。变绿必须同时成立：(1) lineStart=443 & lineEnd=445 能读到第 443 行原文；只给 lineStart=443 时返回到文件末尾（28 行）；(2) lines.total 恒等于真实行数 470，且在 maxBytes=16384 与 maxBytes=10485760 两种取值下完全一致——total 是文件事实，不能随读取上限漂移；(3) lineEnd 超出真实行数时夹到末尾，不报错；(4) 任何 ok:true 的文件读取都不得返回 0 行内容（宁可报错也不能静默给空）；(5) lineStart=471（越界）返回 kind=invalid_args，且 message 里出现真实行数 470、不出现残片行数；(6) keyword 命中第 460 行时，在默认 maxBytes 下就能命中；(7) 截断提示必须同时提到 maxBytes 与 lineStart（现有提示已满足，别改坏）；(8) 回归：显式小窗口 truncated:false；不指定窗口的默认读取仍受字节上限约束；maxBytes=1000 时返回行数明显小于 40；显式全量窗口 + maxBytes=2000 时 content 字节数 ≤2600（说明字节上限仍然生效，没有被绕过）；沙箱外 ../outside.txt 仍是 TOOL_SECURITY_DENIED。",
+      "boundary": "只改 src/tools/builtin/fs-read.tool.ts 这一个文件。不改判据、不改其它工具、不引入依赖、不动 inputSchema 的字段集合与默认值（maxBytes 默认仍 16384、上限仍 10485760、MAX_LINES_RETURNED 仍 800）。**字节上限不能被取消**：它管的是磁盘读放大、tool_results 归档体积与 SSE 推给前端的 data 体积（理由见文件头注释），本轮要修的是「行号寻址错位」，不是「把上限放开」。正确方向是让行窗口的坐标系建立在完整文件上（先确定真实总行数与请求窗口，再决定读多少字节 / 或对窗口内容单独应用上限），而不是简单调大 DEFAULT_MAX_BYTES。目录分支（glob 过滤）、base64 分支、path-jail 拒绝写法保持原样。文件行数仍受 ≤300 行棘轮闸约束。 【当前磁盘状态 · 2026-11-14 定稿】行窗口坐标系与 returned 重算都已落地：判据 21/21 绿、tsc exit 0、文件 207 行（≤300）。实现随 G2-a（fs-glob-shared）的围栏一起进 2.18.0，当时的 allowed 清单含本文件；本次由人在独立复跑判据的读数上补结题，不再重派——重打基线会把已修好的内容记成「改前」，靶子改动永远不成立。",
+      "evidence": [
+        "src/tools/builtin/fs-read.tool.ts:125-127 先 readFile 再 subarray(0, maxBytes)；:136 的 allLines = raw.split('\\n') 切的是残片；:139 lineEnd 缺省取 allLines.length（残片行数）；:155 lineInfo.total = allLines.length 于是把残片行数当成文件真实行数上报",
+        "src/tools/builtin/fs-read.tool.ts:158 截断提示原文「继续读取请用 lineStart/lineEnd 分段，或用 keyword 只取命中行；也可显式调大 maxBytes」——首推的手段恰恰是在残片上无效的，这是把模型推进死循环的直接诱因",
+        "真因取证：.self-upgrade/ledger.jsonl 中 code-search-glob 的 correction 行（rootCauseOfBudgetBurn）记录了三轮 budget_exhausted 的 SSE 证据；归因侧的两个复合缺陷已由 dispatch-budget-attribution 任务修好并 verified",
+        "C3 红基线（人实跑）：cd server && npx vitest run tests/self-upgrade/fs-read-line-window.test.ts --reporter=dot → exit 1，Test Files 1 failed / Tests 9 failed | 12 passed (21)",
+        "判据自证：node scripts/judge-audit.mjs → 19/19 通过，本份 21 用例 / 25 正 / 11 反 / 反向占比 31%",
+        "域判定实跑：checkDomain({files:[src/tools/builtin/fs-read.tool.ts], trigger:schedule, humanApproved:false}) → ok:true, domain D1「工具层（可全自动）」, fileCount 1 / maxFiles 6",
+        "excludeJudges 排掉 tests/self-upgrade/code-search-glob.test.ts：那道判据属于尚未落地的 code-search-glob 任务，按设计此刻整体红（模块不存在），不排除会污染本轮 --full 全量回归",
+        "题目与判据均由人撰写（attribution=human）；实现由 CodeLens 派单落地，围栏判绿后由人 promote 成 done 并补 verified 账本行",
+        "人工结题（2026-11-14）：npx vitest run tests/self-upgrade/fs-read-line-window.test.ts --reporter=dot → 21 passed（exit 0）；fs-read.tool.ts 207 行。实现在 2.18.0 随 G2-a 的围栏落地（该轮 allowed 含本文件），本行补的是账，不是代码。"
+      ],
+      "releasedIn": "2.18.0"
+    },
+    {
+      "id": "judge-run-ansi",
+      "title": "围栏解析 vitest 输出必须剥 ANSI：三态分类与失败文件提取两处失明",
+      "strengthens": "Judge",
+      "package": "server",
+      "allowed": [
+        "tests/self-upgrade/judge-run-ansi.test.ts"
+      ],
+      "judge": "tests/self-upgrade/judge-run-ansi.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "attribution": "human",
+      "adoptedBy": "human",
+      "releasedIn": "2.18.0",
+      "gap": "围栏用 execFileSync(stdio:pipe) 跑 vitest，vitest 仍然吐 ANSI 颜色码。汇总行实际是 \"Tests \\u001b[22m \\u001b[1m\\u001b[31m3 failed\"，而 classifyJudgeRun 的 /Tests\\s+(\\d+)\\s+failed/ 要求 Tests 与数字之间只有空白，夹着转义序列就匹配不上 → failed=0 passed=0 → ran=false → unexec。于是**每一次「跑了没过」都被报成「尺子没跑起来」**，正好抹掉这个三态分类器存在的全部理由。既有判据 tests/scripts/unexec-consumption.test.ts 的夹具全是干净文本，所以一路绿着漏掉了它。 同一处失明还有第三个消费者：围栏的 failedFilesOf（首次红 → 只串行复跑失败文件）。它的 /(?:FAIL|❯)\\s+(…\\.test\\.ts)/ 在带色输出上返回 []，因为真实行是 \"\\u001b[41m\\u001b[1m FAIL \\u001b[22m\\u001b[49m tests/…\"。于是 files.length===0，围栏走进 else 分支整轮并发重跑，通过后却打印「首次红在串行复跑中转绿 → 判为并发假红」——它宣称的方法根本没执行过，定向串行复跑在本机是死代码。",
+      "observable": "修好后：实跑捕获的带色失败汇总判 fail/ran=true；带色的模块加载失败仍判 unexec/ran=false（\"Test Files 1 failed\" 不得被当成跑过）；带色的 0 passed、纯转义噪声、空输出仍判 unexec；退出码 0 仍优先短路成 pass；干净文本行为不变。 追加：failedFilesOf 必须从带色 FAIL/❯ 行提出 tests/ 下的判据路径（同文件去重、反斜杠归一、非 tests/ 不收、无失败行返回空）；围栏的重跑结论必须如实说明用的是「串行复跑」还是「整轮并发重跑」，后者转绿只说明不可复现，不得声称已证实是并发假红。",
+      "boundary": "尺子侧改动（attribution=human）：server/scripts/lib/judge-run-classify.mjs 解析前剥 CSI 并导出 failedFilesOf；server/scripts/check-self-upgrade.mjs 改用该导出、重跑结论按实际方法措辞。不改任何 src/ 实现，不改判据。",
+      "evidence": [
+        "缺陷现场（机械取证）：fs-read-line-window 派单第 2/3 轮围栏报「判据未执行（unexec）」，人工直跑同一份判据得 3 failed / 18 passed (21)，exit 1 —— 尺子跑了，是分类器认不出",
+        "按围栏原样复现 execFileSync(npx vitest run, stdio:pipe)：HAS_ANSI=true，汇总行原字节 \"\\u001b[2m      Tests \\u001b[22m \\u001b[1m\\u001b[31m3 failed\\u001b[39m…\"，classifyJudgeRun 返回 {status:unexec, ran:false}",
+        "夹具全部取自实跑捕获，不是手编：失败侧取自 tests/self-upgrade/fs-read-line-window.test.ts，unexec 侧取自 tests/self-upgrade/code-search-glob.test.ts（模块不存在，Tests no tests）",
+        "C3 红基线（人实跑）：npx vitest run tests/self-upgrade/judge-run-ansi.test.ts → exit 1，6 failed / 11 passed (17)，红的恰好是「带 ANSI 的真实失败输出」整组，金丝雀与回归全绿",
+        "修复后：本份 17 passed；与既有 unexec-consumption 判据同跑 2 文件 29 passed 全绿",
+        "判据自证：node scripts/judge-audit.mjs → 20/20 通过，本份 17 用例 / 5 正 / 9 反 / 反向占比 64%",
+        "C3 破坏夹具：4 条变异体全部 KILLED（strip-removed 6 红 / strip-partial 6 红 / loose-count 3 红 / exitok-ignored 1 红），ALL_RESTORED=true，sha 08cd18ad9e588e05…",
+        "变异探针口径说明：靶子 judge-run-classify.mjs 有本轮未提交改动，自动探针会 SKIP；红基线由人工按同一份注册表注入取得（utf8 读盘、源串恰好命中 1 次、finally 还原原始 Buffer、sha256 对账），不冒充探针读数",
+        "第三处消费者机械取证：对实跑捕获的带色输出跑围栏原样的 failedFilesOf → RAW_ANSI_FILES=[]，剥色后 → [\"tests/self-upgrade/fs-read-line-window.test.ts\"]；原始 FAIL 行字节 \"\\u001b[41m\\u001b[1m FAIL \\u001b[22m\\u001b[49m tests/self-upgrade/fs-read-line-window.test.ts\\u001b[2m > …\"",
+        "扩展后判据 26 用例 / 11 正 / 10 反 / 反向占比 48%；与 unexec-consumption 同跑 2 文件 38 passed 全绿；judge-audit 21/21",
+        "C3 破坏夹具扩到 7 条，全部 KILLED，ALL_RESTORED=true，sha ff39cbb4e8ad3e3e…；其中 strip-removed 的源串在两个解析器里各出现一次，注册表按 hits=1 拒绝注入（护栏生效），改为显式 hits=2 后 7/7",
+        "排除口径实跑核对：npx vitest run --exclude code-search-glob --exclude fs-read-line-window → 168 文件 / 1666 passed / exit 0；不排除 → 170 文件 / 1684 passed / 3 failed（红的恰好是那两道按设计红的判据），确认本轮改动没有引入新回归",
+        "第三处后果（本轮新增）：围栏在 fs-read-line-window 三轮派单里都打印「全量回归红了且串行复跑仍红 —— 可复现，判为真回归」，而 diag 文件里只有这一句结论、没有任何失败用例名；人工直跑全量 169 文件 / 1687 passed / exit 0，直接复现围栏也 FENCE_EXIT=0。结论无证据支撑，原因未查明。",
+        "按 C4 改成「缺证据不下可复现结论」：新增 regressionRunEvidence(out, err) 返回 hasEvidence/timedOut/files/lines；围栏判 FAIL 前把原始输出整份落盘 .self-upgrade/loop/full-regression-<ts>.txt，无输出时打 REGRESSION_VERDICT=unexec 并明写「取证缺失…不计入 Agent；需人工复跑取证」，有输出才允许说「可复现」。",
+        "归因同步：failure-attribution.ts 增 L0a4 REGRESSION_EVIDENCE_MISSING（infra / countsAgainstAgent=false / retry_same），并加金丝雀确认真回归仍计入 Agent。",
+        "扩展后判据 36 用例 / 18 正 / 14 反 / 反向占比 44%；judge-run-ansi + dispatch-channel-fidelity + unexec-consumption 同跑 3 文件 71 passed；npx tsc --noEmit exit 0；judge-audit 21/21。",
+        "C3 破坏夹具扩到 10 条，全部 KILLED（新增 evidence-always-present 3 红 / lines-drop-summary 1 红 / timeout-blind 2 红），ALL_RESTORED=true，sha 77b1b69f29ba6001；仍为人工注入（靶子有未提交改动，自动探针会 SKIP）。"
+      ]
+    },
+    {
+      "id": "dispatch-channel-fidelity",
+      "title": "派单通道不得凭空捏造事实：上游 404 归 infra、缺证据不等于零、换模型候选必须真实存在",
+      "strengthens": "Judge",
+      "package": "server",
+      "allowed": [
+        "tests/self-upgrade/dispatch-channel-fidelity.test.ts"
+      ],
+      "judge": "tests/self-upgrade/dispatch-channel-fidelity.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 1,
+      "status": "done",
+      "attribution": "human",
+      "adoptedBy": "human",
+      "releasedIn": "2.18.0",
+      "gap": "fs-read-line-window 第 2/3 次尝试：循环在两次预算掐断后按 MODEL_ROTATION 换到 deepseek-v4-pro-0813，上游 2 秒内回 HTTP 404 —— 这个模型名根本不存在。SSE 全文只有 1583 字节，只有 stage/upstream_error 与 error/UPSTREAM_ERROR，没有 run_report、没有 done，Agent 一步都没跑。可是：(1) 循环用 `?? 0` 把「证据缺席」当成「计数为零」，打印「本轮 0 次工具调用（只回了文字，没有动文件）」，诊断书据此告诉模型「你只说不做」；(2) 归因 infra 层认得连接超时与额度耗尽，却不认得模型名无效，一路落到 implementation/BEHAVIOR_WRONG 并 countsAgainstAgent=true；(3) 根因是 MODEL_ROTATION 三个后备全是裸名——实跑 /models：上游 83 个模型全部带厂商前缀，四个候选里只有来自 .env 的全限定主模型可用。",
+      "observable": "修好后：真实 404 SSE → infra/UPSTREAM_MODEL_UNKNOWN/countsAgainstAgent=false/nextAction=switch_model，证据里留上游原话；只有 error 事件无中文提示时也归 infra；三条金丝雀不得被抢走（有 run_report 且 toolCallCount=0 仍 behavior/NO_TOOL_CALL、真正实现错仍计入 Agent、额度耗尽仍 UPSTREAM_QUOTA_EXCEEDED）；readToolCallEvidence 缺席时 known=false/count=null，明写 0 才是已知零，多次出现取最后一条；filterServableRotation 剔除裸名后备、保留已被 chat 探针实证的主模型、拿不到列表时一律放行；默认候选表的后备必须都带厂商前缀。",
+      "boundary": "尺子侧改动（attribution=human）：新增 server/scripts/lib/dispatch-fidelity.mjs；failure-attribution.ts 增 L0a3 上游模型不可用分支；self-upgrade-loop.ts 改用 readToolCallEvidence、默认候选换成真实 ID、preflight 顺带取 /models 列表并过滤候选。不改任何 src/ 实现。",
+      "evidence": [
+        "缺陷现场（机械取证）：.self-upgrade/loop/sse-fs-read-line-window-3.txt 全文 1583 字节，stage=upstream_error detail=\"上游（integrate.api.nvidia.com）不认识这个模型（HTTP 404）\"，event:error code=UPSTREAM_ERROR，无 run_report/done",
+        "两处默认值不一致（同一份证据、两种读法）：self-upgrade-loop.ts:757 用 `?? 0`（缺席→0），failure-attribution.ts:120 用 num() 返回 null（缺席→null），于是 null===0 为假、NO_TOOL_CALL 永不触发、落到 implementation",
+        "上游模型清单实跑：GET /models HTTP 200，83 个 ID 全部带厂商前缀；四个候选逐一核对 —— nvidia/nemotron-3-ultra-550b-a55b 存在（来自 .env 的全限定名），deepseek-v4-pro-0813 / deepseek-v4-flash / kimi-k3 三个后备全部 NOT_SERVED",
+        "真实可用的后备（取自同一份清单）：deepseek-ai/deepseek-v4.1-flash、moonshotai/kimi-k2.6、nvidia/nemotron-3-super-120b-a12b",
+        "C3 红基线（人实跑）：npx vitest run tests/self-upgrade/dispatch-channel-fidelity.test.ts → exit 1，Cannot find module scripts/lib/dispatch-fidelity.mjs，Test Files 1 failed / Tests no tests（新模块未建，属真 unexec）",
+        "修复后：本份与 dispatch-budget-attribution、unexec-consumption、judge-run-ansi 同跑 4 文件 67 passed 全绿；npx tsc --noEmit exit 0",
+        "C3 破坏夹具：6 条变异体全部 KILLED（toolcall-zero-default 3 红 / rotation-always-pass 2 红 / rotation-keeps-all 2 红 / upstream-branch-off 6 红 / upstream-overmatch 3 红 / rotation-bare-names 1 红），ALL_RESTORED=true，sha bd506f7ae8a0c6b5…",
+        "judge-audit 夹具修正一处：源码定位正则原写死 const MODEL_ROTATION，实现改成 let 后定位不到；改为 (?:const|let) —— 修的是定位串，断言意图（后备必须带厂商前缀）未放宽",
+        "变异探针口径说明：三个靶子均有本轮未提交改动，自动探针会 SKIP；红基线由人工按同一份注册表注入取得，不冒充探针读数",
+        "围栏证据链判据（本轮新增）：源码结构断言 —— 原始输出必须 persist(…, full.out) 整份落盘；REGRESSION_VERDICT=unexec 必须在 if (!ev.hasEvidence) 之后、「可复现，判为真回归」之前，且守卫之前不得出现该结论串。",
+        "本份扩到 25 用例（含 2 条取证缺失归因用例 + 2 条围栏结构用例）；C3 破坏夹具扩到 8 条全部 KILLED（新增 fence-persists-empty-evidence 1 红 / fence-unexec-marker-removed 1 红），ALL_RESTORED=true，sha bd506f7ae8a0c6b5。"
+      ]
+    },
+    {
+      "id": "project-instructions",
+      "title": "G1 仓库指令文件自动加载：AGENTS.md / CLAUDE.md 进系统提示词（Memory 维破零）",
+      "strengthens": "Memory",
+      "package": "server",
+      "allowed": [
+        "src/services/agent/project-instructions.ts",
+        "src/services/agent/system-prompt.ts",
+        "src/services/agent/agent-loop.service.ts"
+      ],
+      "judge": "tests/self-upgrade/project-instructions.test.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "requireAllTargets": true,
+      "attribution": "human",
+      "gap": "CodeLens 完全不读仓库自己的操作约定。本仓库根就摆着 AGENTS.md（「先读手册」「tests/ 是人所有，改动必须 attribution=human」「未执行写 UNEXEC」），Agent 一条都看不到，只能靠用户在每条消息里手贴。主流 Agent 都把这件事当默认能力：Claude Code 读 CLAUDE.md，Codex / Cursor 读 AGENTS.md。这与 buildWorkspaceSection 修的是同一类缺陷——不是工具实现错了，是**模型缺少一个事实**；那处缺陷的实测代价是 10 轮工具调用 / 68123 prompt token 一个文件都没读到（见 system-prompt.ts:56-67 的现场记录）。Memory 维此前只有 SQLite 轨迹与经验库（src/services/memory/ 是仓储层），没有任何「仓库级长期约定」的入口，本题为它破零。",
+      "observable": "判据 tests/self-upgrade/project-instructions.test.ts 共 30 个用例，实现前整体红（project-instructions.ts 不存在，属真 unexec）。变绿必须同时成立：(1) 新模块 src/services/agent/project-instructions.ts 导出 INSTRUCTION_FILENAMES=['AGENTS.md','CLAUDE.md']（顺序即优先级）、MAX_INSTRUCTION_CHARS=8000、loadProjectInstructions(sandboxRoot)；(2) AGENTS.md 内容逐字进入提示词，且注入块写明来源文件名与「仓库指令」标签；只有 CLAUDE.md 时同样加载；两个都在时 AGENTS.md 优先、CLAUDE.md 内容**不叠加**（两份约定可能互相矛盾，叠加等于让模型自己挑一条听）；(3) 无文件 / 空串根 / 根不存在 / AGENTS.md 是目录 / 文件只有空白 → 一律返回空串且**不抛**；(4) 超过 8000 字符按字符截断，注入块必须出现「截断」与「fs_read」指路，静默截断比不截断更坏；(5) **只读沙箱根那一层，不许向上找父目录**（判据在沙箱父目录放了诱饵 AGENTS.md）；(6) 注入块必须声明自己从属于基座「硬性规则」——AGENTS.md 可能来自 clone 下来的第三方仓库，把它抬到与硬性规则同级等于给提示词注入开门；(7) 合成器 buildRuntimeSections(sandboxRoot) = buildWorkspaceSection(sandboxRoot) + loadProjectInstructions(sandboxRoot)，**无指令文件时两者逐字相同**（向后兼容锚）；buildWorkspaceSection 与 buildSystemPrompt 的签名与输出不得改变；(8) 真实链路：经真 ContextManager.buildView 后 system 消息仍含指令；经真 buildReactSystemPrompt 降级到 ReAct 通道后指令不丢；200 条历史 + 4000 窗口触发压缩后 messages[0] 仍是 system 且指令仍在；(9) 接线机械断言：agent-loop.service.ts 必须 import buildRuntimeSections 且**不再出现 buildWorkspaceSection**，withWorkspace 体内调用 buildRuntimeSections(sandboxRoot) 并保留空根守卫；(10) 工程约束：agent-loop.service.ts 行数 ≤1550、新模块 ≤300 行、新模块以文件级注释块开头（C1 闸1）、新模块不得引入第三方依赖。",
+      "boundary": "只改 allowed 里那三个文件，三个都必须真的被改动（requireAllTargets）。**行数硬约束：agent-loop.service.ts 此刻在棘轮上是 1550/1550，零余量**（口径是 scripts/lib/file-size-ratchet.mjs 的 split('\\n').length，不是 wc -l 的 1549；判定是 lines > ceiling 才红）。所以本题对该文件只许做**净增 0 行**的标识符替换：第 45 行 import 里的 buildWorkspaceSection 换成 buildRuntimeSections，第 1202 行调用点同样换名。多写一行 import 就会把棘轮打红。新逻辑一律住进新模块 project-instructions.ts（≤300 行），合成器 buildRuntimeSections 放 system-prompt.ts（现 75 行，余量充足）。不改判据、不改其它服务、不动 inputSchema、不引入任何第三方依赖（只用 node:fs / node:path）。**不要改 buildWorkspaceSection 本身**：tests/workspace-context.test.ts 直接断言它的输出，污染它会把既有判据打红。**不要给 buildSystemPrompt 加参数**：它被多处测试直接调用，指令是运行时上下文，属于 loop 的职责（与 withWorkspace 的既有理由一致）。范围只到沙箱根那一层的 AGENTS.md / CLAUDE.md：不做子目录嵌套加载、不做 ~/.claude 全局约定、不做 .qoder/QODER.md、不做导入语法（@path）、不做缓存层——每轮读一次 ≤8KB 文件是亚毫秒级同步 I/O，为它加缓存属于超出本题需要的复杂度。文件读取失败一律降级为空串，不许抛断整个 run。",
+      "evidence": [
+        "注入缝已定位（人核对）：agent-loop.service.ts:1200-1203 的私有 withWorkspace 是唯一合成点，调用点在 :692-695，native 与 ReAct 两通道共用（ReAct 的 baseSystem 取自 buildView 产出的 system 消息，见 react-channel.ts:83-85），所以换这一个标识符即两通道同时生效。",
+        "棘轮零余量实测（人实跑 node 脚本，口径与 scripts/lib/file-size-ratchet.mjs 一致）：agent-loop.service.ts split('\\n').length = 1550，scripts/file-size-baseline.json 的 ceiling = 1550，判定式是 lines > ceiling（scripts/lib/file-size-ratchet.mjs:46）→ 恰好压线，多一行即红。system-prompt.ts = 75 行、不在清单里 → 受 300 行增量上限约束。",
+        "域判定实跑（人用真 checkDomain）：三个靶子 → D2「服务层（首次需人批）」，fileCount 3 / maxFiles 8。trigger=manual + humanApproved=true → ok:true；trigger=schedule + humanApproved=false → ok:false，两条拒绝理由（触发方式不允许 / 需要人工批准）。**这是 24 题里第一道 D2 题**：auto-adopt.ts:594 的 A4 闸用的正是 schedule+未人批口径，所以本题不可能被自动采纳，必须由人 promote。",
+        "C3 红基线前提已实测：src/services/agent/project-instructions.ts 不存在，system-prompt.ts 未导出 buildRuntimeSections（人用 tsx 直接 import 真模块核对，两项均为真）→ 判据 promote 后整体红属真 unexec，不是断言写错。",
+        "C 块夹具已在真模块上验过（人实跑 tsx 探针，20/20 OK）：真 ContextManager（createDb + SCHEMA_SQL + SessionRepository + MessageRepository）可构建；空历史时 system 消息逐字等于传入 prompt 且 compacted=false；200 条历史 + 4000 窗口时 compacted=true 且 compactionFailed=null（摘要用 SUMMARY_SECTIONS 九段 + 数字/路径证据地板，与 tests/context-manager.test.ts 的既有夹具同形）；压缩后 messages[0].role 仍是 system；buildReactSystemPrompt(renderToolCatalogue([]), base) 保留基座。",
+        "教训沿用（上一轮 dispatch-channel-fidelity / budget-ceiling-attribution）：**手工拼装生产者输出的夹具只测了消费者**——#19 的天花板修复因此在线上失效而判据全绿。所以本题 C 块一律走真生产者（buildRuntimeSections → 真 buildView → 真 buildReactSystemPrompt），D 块机械断言 loop 真的换了调用点，防「建了模块没人调用」。",
+        "判据自证体检口径已核对（scripts/judge-audit.mjs）：30 用例 / 反向 13 / 正向 6 / 反向占比 0.684（线是 ≥0.20 且至少 1 条反向），无 skip。",
+        "判据草案位置：server/candidates/project-instructions.candidate.ts。未派单的判据不得留在 tests/ 下进全量回归——vitest.config.ts 已排除 candidates/。派单前由人 promote 回 judge 字段所指路径，promote 属 D4 写，必须 attribution=human。",
+        "草稿态不可原地执行：candidate 的相对 import 按 promote 后的位置（tests/self-upgrade/）写成 ../../src/...，在 candidates/ 下深度不对。红基线读数必须在 promote 之后取，草稿态只作暂存。",
+        "TaskKind 合法值只有 analyze/explain/debug/optimize（task-prompts.ts:9 的 TASK_KINDS 是单一来源）；buildTaskSection 对未知 kind 会抛 TypeError。判据 B 块用 'debug'，不要用 'implement'——那是 N2 题要新增的模式，此刻不存在。",
+        "题目与判据均由人撰写（attribution=human）；实现由 CodeLens 派单落地，围栏判绿后由人 promote 成 done 并补 verified 账本行。",
+        "人工采纳（2026-11-14）：派单第 1 次即过，sendSec=2058（未触 2700s 墙钟），进程正常退出。围栏 10 项全 PASS：受保护 279/279 / 判据指纹未变 / 三个靶子都被改动 / 注释保留 / tsc / 判据自证 / 判据 30 用例 / 全量回归。实现审查：project-instructions.ts 77 行、只读根层不向上找、AGENTS.md 优先不叠加、截断标注 fs_read、注入块声明从属于硬性规则；agent-loop.service.ts 1550→1550 行（净增 0），buildWorkspaceSection 零残留，两通道同源。版本 2.20.0。"
+      ],
+      "releasedIn": "2.20.0"
     }
   ]
 }

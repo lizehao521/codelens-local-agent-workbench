@@ -15,6 +15,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { computeLedgerCoverage } from './lib/ledger-coverage.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TASKS = join(ROOT, 'server', 'self-upgrade', 'tasks.json');
@@ -36,22 +37,9 @@ for (const t of tasks) {
   byStrengthen[k] = (byStrengthen[k] ?? 0) + 1;
 }
 
-let ledgerLines = 0;
-let ledgerTasks = new Set();
-let lastLedgerAt = null;
-if (existsSync(LEDGER)) {
-  for (const line of readFileSync(LEDGER, 'utf8').split('\n')) {
-    if (!line.trim()) continue;
-    ledgerLines += 1;
-    try {
-      const row = JSON.parse(line);
-      if (typeof row.task === 'string') ledgerTasks.add(row.task);
-      if (typeof row.at === 'string' && (!lastLedgerAt || row.at > lastLedgerAt)) lastLedgerAt = row.at;
-    } catch {
-      /* 坏行计入行数，但不参与覆盖统计 */
-    }
-  }
-}
+// 覆盖口径与 C1 闸共用 lib/ledger-coverage.mjs：只认 verdict==='verified' ∩ done 题。
+// 「提到过」单独报 mentionedTasks，修口径不丢信息。
+const ledger = computeLedgerCoverage(tasks, existsSync(LEDGER) ? readFileSync(LEDGER, 'utf8') : null);
 
 const candidateCount = existsSync(CANDIDATES)
   ? readdirSync(CANDIDATES).filter((f) => f.endsWith('.spec.json')).length
@@ -65,10 +53,14 @@ const report = {
     byStrengthen,
   },
   ledger: {
-    lines: ledgerLines,
-    coveredTasks: ledgerTasks.size,
-    coverage: tasks.length ? Number((ledgerTasks.size / tasks.length).toFixed(3)) : 0,
-    lastAt: lastLedgerAt,
+    lines: ledger.lines,
+    badLines: ledger.badLines,
+    mentionedTasks: ledger.mentionedTasks,
+    doneCount: ledger.doneCount,
+    coveredTasks: ledger.covered,
+    coverage: ledger.coverage,
+    missing: ledger.missing,
+    lastAt: ledger.lastAt,
   },
   exemplars: existsSync(EXEMPLARS) ? 'present' : 'missing',
   candidates: candidateCount,
@@ -80,7 +72,8 @@ if (process.argv.includes('--json')) {
 } else {
   console.log(`题集：${report.tasks.total}（done ${report.tasks.done} / pending ${report.tasks.pending}）`);
   console.log(`归属：${Object.entries(byStrengthen).map(([k, v]) => `${k}=${v}`).join(' / ')}`);
-  console.log(`账本：${ledgerLines} 行，覆盖 ${ledgerTasks.size}/${tasks.length}，最后一条 ${lastLedgerAt ?? '(无)'}`);
+  console.log(`账本：${ledger.lines} 行，verified 覆盖 ${ledger.covered}/${ledger.doneCount}（提到过 ${ledger.mentionedTasks} 题），最后一条 ${ledger.lastAt ?? '(无)'}`);
+  if (ledger.missing.length) console.log(`  未验证：${ledger.missing.join(', ')}`);
   console.log(`正例库：${report.exemplars}；待采纳候选：${candidateCount}`);
   console.log('（只读体检：不采纳、不写盘）');
 }

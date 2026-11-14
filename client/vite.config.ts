@@ -208,6 +208,15 @@ export default defineConfig(({ mode }) => {
       maxWorkers: 2,
       testTimeout: 30_000,
       hookTimeout: 30_000,
+      // 覆盖率只在 `npm run test:coverage` 时启用（CLI 传 --coverage）。
+      // include 显式给 src/**：默认口径只统计「被测试碰过的文件」，那会让
+      // 一个从没被测过的模块凭空消失，分母缩小后百分比虚高。
+      coverage: {
+        provider: 'v8',
+        include: ['src/**'],
+        reporter: ['text', 'json-summary'],
+        reportsDirectory: 'coverage',
+      },
     },
   };
 });
