@@ -6,6 +6,7 @@ export const TASK_MODES: Array<{ value: Task; label: string }> = [
   { value: 'explain', label: '解释' },
   { value: 'debug', label: '调试' },
   { value: 'optimize', label: '优化' },
+  { value: 'verify', label: '验证' },
 ];
 
 export function buildAgentStreamRequest(

@@ -28,7 +28,7 @@ export interface ToolCallState {
   /** E：可逆写入沿用上次授权，卡片上只追加一行提示（不弹审批卡）。 */
   applyDedup: (payload: AgentApprovalDedupPayload) => void;
   /** R6：可逆调用已执行，先标「复核中」，结论稍后并行回填。 */
-  markReviewPending: (callId: string) => void;
+  markReviewPending: (callId: string, diff?: ToolCallVM['diff']) => void;
   /** R6：复核结论回填（只展示事实指摘，不展示主脑推理）。 */
   setReview: (callId: string, review: ReviewResult) => void;
   /**
@@ -211,7 +211,7 @@ export const useToolCallStore = create<ToolCallState>((set, get) => ({
             risk: payload.risk,
             arguments: payload.arguments,
             status: 'pending',
-            ...(payload.displayName ? { displayName: payload.displayName } : {}),
+            ...(payload.displayName ? { displayName: payload.displayName } : {}), ...(payload.effect ? { effect: payload.effect } : {}),
           },
         },
       };
@@ -237,11 +237,11 @@ export const useToolCallStore = create<ToolCallState>((set, get) => ({
       };
     }),
 
-  markReviewPending: (callId) =>
+  markReviewPending: (callId, diff) =>
     set((state) => {
       const prev = state.byId[callId];
       if (!prev) return state;
-      return { byId: { ...state.byId, [callId]: { ...prev, reviewPending: true } } };
+      return { byId: { ...state.byId, [callId]: { ...prev, reviewPending: true, ...(diff && diff.length > 0 ? { diff } : {}) } } };
     }),
 
   setReview: (callId, review) =>

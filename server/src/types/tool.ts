@@ -119,6 +119,16 @@ export interface EffectPreview {
   recoveryNote: string | null;
   /** 目标在工作区外、尚未授权时，由调用方填充待授权目录。 */
   grantDir?: string | null;
+  /** 审批内 diff：执行前就能看到将改哪些行（不依赖 checkpoint 是否开启）。 */
+  diff?: ApprovalDiffItem[];
+}
+
+export interface ApprovalDiffItem {
+  path: string;
+  added: number;
+  removed: number;
+  /** unified diff 文本（已截断）。 */
+  preview: string;
 }
 
 export type ReviewStatus = 'confirmed' | 'underestimated' | 'unexec';

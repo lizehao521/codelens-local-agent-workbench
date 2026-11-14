@@ -61,6 +61,11 @@ interface Proposal {
   observable: string;
   boundary: string;
   /**
+   * 靶子落在某道 done 题的 allowed 里时必填：说清「现有判据为什么没覆盖这个新输入」。
+   * 空着会被机械筛拒——这是为了防止把已经修好的缺陷再提名一遍。
+   */
+  notCoveredReason?: string;
+  /**
    * 缺口类型，决定后续出题/采纳走哪条管线：
    *   defect     —— 现有能力在部分输入下行为错误/不安全/不符合预期，能用**现有**公开 API 复现验证。
    *                这类最优先，判据走 red-baseline：在现状上必须红，采纳后成为回归尺。
@@ -144,11 +149,77 @@ function backlogDigest(): string {
   }
 }
 
-/** 已做过的题：避免重复提议同一件事。 */
+interface DoneTask {
+  id: string;
+  title: string;
+  strengthens: string;
+  allowed: string[];
+  judge: string;
+}
+
+/** 读已经结题的题目（真实真源：tasks.json）。读不到时返回空表，不让提议流程崩掉。 */
+export function loadDoneTasks(file: string = TASKS): DoneTask[] {
+  if (!existsSync(file)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as {
+      tasks?: { id?: string; title?: string; strengthens?: string; allowed?: string[]; judge?: string; status?: string }[];
+    };
+    return (raw.tasks ?? [])
+      .filter((t) => t.status === 'done' && Array.isArray(t.allowed) && t.allowed.length > 0)
+      .map((t) => ({
+        id: String(t.id ?? ''),
+        title: String(t.title ?? ''),
+        strengthens: String(t.strengthens ?? ''),
+        allowed: t.allowed!.map(String),
+        judge: String(t.judge ?? ''),
+      }))
+      .filter((t) => t.id);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 从判据文件里抽 `it('…')` 标题。
+ * 这是「判据到底断言了什么」唯一可机械提取的摘要——比只给文件名更能挡住重复提名。
+ */
+export function judgeCaseTitles(judge: string, max = 3, serverRoot: string = SERVER): string[] {
+  if (!judge) return [];
+  const file = path.join(serverRoot, judge);
+  if (!existsSync(file)) return [];
+  let src = '';
+  try {
+    src = readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const re = /\b(?:it|test)\s*\(\s*(['"`])([^'"`\n]{4,160})\1/g;
+  for (const m of src.matchAll(re)) {
+    const title = m[2].replace(/\s+/g, ' ').trim();
+    if (title && !out.includes(title)) out.push(title);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/** 某靶子被哪些 done 题覆盖（按 allowed 精确匹配）。 */
+export function coveringDoneTasks(targetFile: string, file: string = TASKS): DoneTask[] {
+  return loadDoneTasks(file).filter((t) => t.allowed.includes(targetFile));
+}
+
+/** 已做过的题 + 它们的靶子与判据断言：避免「已修好的缺陷」再被提名。 */
 function doneTasks(): string {
-  if (!existsSync(TASKS)) return '（无）';
-  const raw = JSON.parse(readFileSync(TASKS, 'utf8')) as { tasks?: { id: string; title?: string }[] };
-  return (raw.tasks ?? []).map((t) => `${t.id}｜${t.title ?? ''}`).join('\n');
+  const tasks = loadDoneTasks();
+  if (tasks.length === 0) return '（无）';
+  return tasks
+    .map((t) => {
+      const titles = judgeCaseTitles(t.judge, 3);
+      const judgeNote = t.judge ? `判据 ${t.judge}` : '判据（未登记）';
+      const assertNote = titles.length ? `｜已断言：${titles.join('；')}` : '';
+      return `· ${t.id}｜${t.title}（${t.strengthens}）\n  靶子 ${t.allowed.join('、')}\n  ${judgeNote}${assertNote}`;
+    })
+    .join('\n');
 }
 
 /**
@@ -171,7 +242,7 @@ export function isAdoptableTarget(file: string): boolean {
  *   · 靶子不在可自动采纳的 D1 域（D2/D3 需人批，自动管线收不了）
  *   · 已经有同 id 的提议（重复）
  */
-export function screen(p: Proposal): { ok: boolean; reason?: string } {
+export function screen(p: Proposal): { ok: boolean; reason?: string; code?: string } {
   if (!p.id || !/^[a-z0-9][a-z0-9-]{2,40}$/.test(p.id)) return { ok: false, reason: 'id 必须是 kebab-case' };
   if (!p.title || p.title.length < 4) return { ok: false, reason: 'title 太短' };
   if (!p.gap || p.gap.length < 10) return { ok: false, reason: 'gap 说清楚缺什么（≥10 字）' };
@@ -186,6 +257,21 @@ export function screen(p: Proposal): { ok: boolean; reason?: string } {
   if (!p.observable || p.observable.length < 8) return { ok: false, reason: 'observable 说清楚「怎么看出修好了」' };
   if (!p.boundary || p.boundary.length < 4) return { ok: false, reason: 'boundary 说清楚这条不能碰什么' };
   if (p.gapType !== 'defect' && p.gapType !== 'capability') return { ok: false, reason: 'gapType 必须是 defect 或 capability' };
+  // 判据感知：靶子已被某道 done 题的 allowed 覆盖时，必须先证明「现有断言没覆盖这个新输入」。
+  // 否则模型会反复提名已经修好的缺陷（实测 code-check-column-defect 是假阳性）。
+  const covered = coveringDoneTasks(p.targetFile);
+  if (covered.length > 0) {
+    const why = (p.notCoveredReason ?? '').trim();
+    if (why.length < 10) {
+      return {
+        ok: false,
+        code: 'DONE_TASK_COVERED',
+        reason:
+          `targetFile 已被已结题任务覆盖（${covered.map((t) => t.id).join('、')}）——` +
+          '必须用 notCoveredReason 说明现有判据为什么没覆盖这个新输入（≥10 字），否则判为重复提名',
+      };
+    }
+  }
   // defect 必须引用**具体行号**：这是「真的读过实现」与「凭想象编缺口」之间唯一可机械判定的差别。
   // 编出来的字段（error.matches）就是没读代码的产物，这一闸专治它。
   if (p.gapType === 'defect') {
@@ -263,8 +349,12 @@ ${files.join('\n')}
 最近的失败归因（按层聚合）：
 ${digest}
 
-已经做过的题（别重复提）：
+已经做过且已结题的题（含它们的可改靶子、判据文件与已有断言——**这些缺陷已经修好，别再提名**）：
 ${done}
+
+⚠ 上面的列表是「已覆盖」的硬事实。选靶子前先对照：如果 targetFile 已经在某道 done 题的靶子里，
+你必须写「notCoveredReason」，说清「现有判据的哪条 it 标题没覆盖你发现的这个新输入」。
+写不出来就换一个靶子——重复提名已修好的缺陷会被机械筛直接拒。
 
 ──── 已知缺口池（优先从这里挑，也可以提池子之外的）────
 ${backlogDigest()}
@@ -335,7 +425,8 @@ capability 也接受，但会走「先实现后采纳」管线（见 boundary）
   "evidence": ["支撑现象，最多 2 条，每条 ≤60 字；**第 1 条必须带行号**，如 fs-write.tool.ts:118"],
   "targetFile": "src/ 下真实存在的文件路径",
   "observable": "怎么看出修好了：哪个输入、期望什么结果（≤60 字）",
-  "boundary": "这条不能碰什么（≤40 字）"
+  "boundary": "这条不能碰什么（≤40 字）",
+  "notCoveredReason": "仅当 targetFile 出现在上面 done 题的靶子里时必填：现有判据没覆盖这个新输入的具体理由（≥10 字）"
 }
 
 **篇幅是硬约束**：整个 JSON 必须在一屏内写完。输出上限是 8192 token，
@@ -403,6 +494,7 @@ function extractJson(text: string): Proposal | null {
         targetFile: String(obj.targetFile ?? ''),
         observable: String(obj.observable ?? ''),
         boundary: String(obj.boundary ?? ''),
+        notCoveredReason: typeof obj.notCoveredReason === 'string' ? obj.notCoveredReason : undefined,
         gapType,
       };
     } catch {
@@ -522,13 +614,17 @@ async function main(): Promise<void> {
   if (!v.ok) {
     console.log(`  ✗ 提议被机械筛掉：${v.reason}`);
     console.log(`     ${JSON.stringify(proposal, null, 2)}`);
+    const code = v.code ?? 'SCREEN_REJECTED';
     // 落进错题本：下一轮原样回灌「你上次因为什么被拒」，否则它会一直重复同一种错法。
     appendRejection({
       id: String(proposal.id ?? 'unknown'),
       stage: 'propose',
-      code: 'SCREEN_REJECTED',
-      detail: `${v.reason ?? ''}｜原文：${JSON.stringify({ evidence: proposal.evidence, observable: proposal.observable, targetFile: proposal.targetFile }).slice(0, 240)}`,
-      fix: '按拒绝理由修正后重提：defect 必须先在源码里定位到出错行，evidence 带行号；要新增字段就改标 capability',
+      code,
+      detail: `${v.reason ?? ''}｜原文：${JSON.stringify({ evidence: proposal.evidence, observable: proposal.observable, targetFile: proposal.targetFile, notCoveredReason: proposal.notCoveredReason }).slice(0, 240)}`,
+      fix:
+        code === 'DONE_TASK_COVERED'
+          ? '换一个未被 done 题 allowed 覆盖的 D1 靶子；确实同一文件有判据未覆盖的新输入时，写 notCoveredReason 指出缺口与现有 it 标题的差别'
+          : '按拒绝理由修正后重提：defect 必须先在源码里定位到出错行，evidence 带行号；要新增字段就改标 capability',
     });
     console.log(formatResult({ status: 'rejected', reason: v.reason, targetFile: proposal.targetFile, id: proposal.id }));
     stop?.();

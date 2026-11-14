@@ -65,6 +65,46 @@
       "ceiling": 772
     },
     {
+      "file": "client/tests/layout-states.test.ts",
+      "ceiling": 327
+    },
+    {
+      "file": "client/tests/rsi-dashboard.test.ts",
+      "ceiling": 539
+    },
+    {
+      "file": "server/scripts/author-task.ts",
+      "ceiling": 843
+    },
+    {
+      "file": "server/scripts/auto-adopt.ts",
+      "ceiling": 712
+    },
+    {
+      "file": "server/scripts/failure-attribution.ts",
+      "ceiling": 586
+    },
+    {
+      "file": "server/scripts/loop-service.ts",
+      "ceiling": 371
+    },
+    {
+      "file": "server/scripts/propose-gaps.ts",
+      "ceiling": 662
+    },
+    {
+      "file": "server/scripts/seed-agent-loop.ts",
+      "ceiling": 1139
+    },
+    {
+      "file": "server/scripts/self-upgrade-loop.ts",
+      "ceiling": 977
+    },
+    {
+      "file": "server/scripts/task-self-upgrade.ts",
+      "ceiling": 937
+    },
+    {
       "file": "server/src/config/env.ts",
       "ceiling": 399
     },
@@ -199,6 +239,95 @@
     {
       "file": "server/src/tools/builtin/tool-forge.tool.ts",
       "ceiling": 393
+    },
+    {
+      "file": "server/tests/accounting-integrity.test.ts",
+      "ceiling": 353
+    },
+    {
+      "file": "server/tests/agent-loop-e2e.test.ts",
+      "ceiling": 485
+    },
+    {
+      "file": "server/tests/approval-service.test.ts",
+      "ceiling": 380
+    },
+    {
+      "file": "server/tests/cancel-signal.test.ts",
+      "ceiling": 356
+    },
+    {
+      "file": "server/tests/capability-registry.test.ts",
+      "ceiling": 400
+    },
+    {
+      "file": "server/tests/checkpoint.service.test.ts",
+      "ceiling": 573
+    },
+    {
+      "file": "server/tests/context-manager.test.ts",
+      "ceiling": 410
+    },
+    {
+      "file": "server/tests/eval-suite.test.ts",
+      "ceiling": 835
+    },
+    {
+      "file": "server/tests/executor.service.test.ts",
+      "ceiling": 368
+    },
+    {
+      "file": "server/tests/judge-replay.test.ts",
+      "ceiling": 346
+    },
+    {
+      "file": "server/tests/judge-semantic.test.ts",
+      "ceiling": 422
+    },
+    {
+      "file": "server/tests/lesson-budget.test.ts",
+      "ceiling": 508
+    },
+    {
+      "file": "server/tests/mcp-connector.test.ts",
+      "ceiling": 431
+    },
+    {
+      "file": "server/tests/output-governance.test.ts",
+      "ceiling": 317
+    },
+    {
+      "file": "server/tests/review-facts-projection.test.ts",
+      "ceiling": 334
+    },
+    {
+      "file": "server/tests/self-upgrade/dispatch-channel-fidelity.test.ts",
+      "ceiling": 331
+    },
+    {
+      "file": "server/tests/self-upgrade/project-instructions.test.ts",
+      "ceiling": 385
+    },
+    {
+      "file": "server/tests/skill-library.service.test.ts",
+      "ceiling": 399
+    },
+    {
+      "file": "server/tests/sys-exec.test.ts",
+      "ceiling": 724
+    },
+    {
+      "file": "server/tests/tool-forge.test.ts",
+      "ceiling": 306
+    },
+    {
+      "file": "server/tests/trace.service.test.ts",
+      "ceiling": 363
+    },
+    {
+      "file": "server/tests/trial-resilience.test.ts",
+      "ceiling": 369
     }
-  ]
+  ],
+  "_tightenedAt": "2026-11-14T02:19:16.830Z"
 }

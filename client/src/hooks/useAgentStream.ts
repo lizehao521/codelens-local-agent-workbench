@@ -21,6 +21,7 @@ import type {
   RunReport,
   SandboxGrantRequest,
   SessionMessageRow,
+  ToolCallVM,
 } from '../types';
 import { openAgentStream, parseAgentSSE } from '../services/stream';
 import { useServerSessionStore } from '../stores/serverSessionStore';
@@ -204,9 +205,9 @@ export function useAgentStream() {
             if (settledRef.current) return;
             useToolCallStore.getState().applyDedup(data);
           },
-          onResultReview: (data: { callId: string; reviewPending: boolean }) => {
+          onResultReview: (data: { callId: string; reviewPending: boolean; diff?: ToolCallVM['diff'] }) => {
             if (settledRef.current) return;
-            if (data.reviewPending) useToolCallStore.getState().markReviewPending(data.callId);
+            if (data.reviewPending) useToolCallStore.getState().markReviewPending(data.callId, data.diff);
           },
           onReviewResult: (data: { callId: string; result: ReviewResult }) => {
             if (settledRef.current) return;

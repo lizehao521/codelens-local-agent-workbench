@@ -1,6 +1,6 @@
 {
   "note": "已知缺口池。来源：server/docs/rsi-kernel-charter.md 第 10 节 UNEXEC 清单 + 各文档边界。propose-gaps.ts 只把 agentActionable=true 的条目交给 Agent——因为靶子在 scripts/ 或 src/services/{judge,rsi,eval}/ 下的缺口，改它等于改尺子，只能人做。人维护此文件，Agent 够不到。 已完成的缺口保留在池里作留痕，但 status=done 且 agentActionable=false，不会再喂给提议模型。",
-  "updatedAt": "2026-11-12",
+  "updatedAt": "2026-11-14",
   "items": [
     {
       "id": "orphan-tool-gate",
@@ -76,6 +76,39 @@
       "size": "大",
       "agentActionable": false,
       "blockedBy": "靶子在 src/services/judge/（受保护：那是判据计算层）"
+    },
+    {
+      "id": "agent-loop-run-loop",
+      "title": "run() 仍保留主循环骨架，尚未抽成 runLoop()",
+      "why": "run() 已从 851 行降到 261 行，但 checkTermination、contextManager.buildView/压缩失败分支、迭代推进与最终答案/工具分发仍在 run() 内；下一步应抽 runLoop()，让 run() 只做 prepareSession → runLoop → finalizeRun。",
+      "targetHint": "src/services/agent/agent-loop.service.ts",
+      "size": "中",
+      "agentActionable": false,
+      "source": "S6 交接 2026-11-14",
+      "status": "drafted",
+      "taskId": "agent-loop-run-loop",
+      "draftedAt": "2026-11-14",
+      "blockedBy": "靶子在 src/services/agent（D2，首次需人批）且判据在 tests/self-upgrade（D4）"
+    },
+    {
+      "id": "agent-loop-e2e-unexec",
+      "title": "S6 拆分后 e2e 仍是 UNEXEC",
+      "why": "本轮只跑了 typecheck/全量 vitest/acceptance；bash scripts/e2e.sh 未执行。拆分涉及 SSE、审批、恢复、取消等跨组件路径，需要一次真实 e2e 才能把「行为未变」从单测提升到端到端读数。",
+      "targetHint": "scripts/e2e.sh",
+      "size": "小",
+      "agentActionable": false,
+      "source": "S6 交接 2026-11-14",
+      "blockedBy": "需要真实上游与浏览器环境，当前不在 CI"
+    },
+    {
+      "id": "ledger-verify-agent-loop-split",
+      "title": "新增的 S6 题目尚未进入 verified 账本",
+      "why": "tasks.json 已有 35 题，但 .self-upgrade/ledger.jsonl 的 verified 覆盖只有 13/35；agent-loop-split-facts/round/turn/prepare/session 五题都还没有 verified 记录，跨代对账会把它们当成未验证。",
+      "targetHint": ".self-upgrade/ledger.jsonl",
+      "size": "小",
+      "agentActionable": false,
+      "source": "S6 交接 2026-11-14",
+      "blockedBy": "账本是外部人工/采纳流程，Agent 写不到"
     }
   ]
 }

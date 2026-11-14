@@ -418,7 +418,7 @@ describe('T12 agent loop end-to-end (fake LLM)', () => {
     expect(system?.content).toContain('CodeLens Agent');
     expect(system?.content).toContain('【任务模式：调试】');
     expect(system?.content).toContain('根因分析');
-    expect(system?.content).toContain('3. 遗留项');
+    expect(system?.content).toContain('【表达与版式】');
   }, 25_000);
   it('推理吃满预算：只重试一次并抬到 2048', { timeout: 60_000 }, async () => {
     fake.script([

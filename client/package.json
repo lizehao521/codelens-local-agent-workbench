@@ -1,7 +1,11 @@
 {
   "name": "codelens-client",
   "private": true,
-  "version": "2.20.0",
+  "version": "2.21.0",
+  "verify": [
+    "typecheck",
+    "test"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22.5.0"

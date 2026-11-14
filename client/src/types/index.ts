@@ -2,7 +2,7 @@
 // v2.0：CodeLens 由「代码分析应用」演进为「通用 Agent 工具调用平台」
 
 /** 四类核心能力（v1.0 遗留 task 字段，保留以兼容旧落盘数据） */
-export type Task = 'analyze' | 'explain' | 'debug' | 'optimize';
+export type Task = 'analyze' | 'explain' | 'debug' | 'optimize' | 'verify';
 
 export type Role = 'user' | 'assistant';
 
@@ -185,14 +185,13 @@ export interface ToolCallVM {
   approvalId?: string;
   /** R6：可逆调用的执行后独立复核（并行回填） */
   review?: ReviewResult;
+  effect?: EffectPreview | null;
+  diff?: EffectPreview['diff'];
   /** 可逆调用已执行、复核尚未回填 */
   reviewPending?: boolean;
   /** E：本次沿用了同一 run 内上一次可逆授权（不弹卡，仅一行提示） */
   dedupNote?: { grantId: string; step: number; text: string };
 }
-
-// ── R6：后果预览 / 独立复核 / RunState 汇报卡 / 目录授权 ─────
-
 export interface EffectItem {
   path: string;
   kind: 'file' | 'dir' | 'command' | 'url';
@@ -209,6 +208,7 @@ export interface EffectPreview {
   recoverable: boolean;
   recoveryNote: string | null;
   grantDir?: string | null;
+  diff?: { path: string; added: number; removed: number; preview: string }[];
 }
 
 export interface ReviewFinding {

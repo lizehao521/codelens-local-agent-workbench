@@ -1,5 +1,5 @@
 /**
- * 四类任务提示词闭环测试（C3 自证：删掉任一环接线，这里必红）。
+ * 任务提示词闭环测试（C3 自证：删掉任一环接线，这里必红）。
  * 覆盖：模板完备性、buildSystemPrompt 合成、schema 校验、react 通道叠加。
  * 全链路接线（HTTP → loop → 上游 system 消息）由 agent-loop-e2e.test.ts 的
  * taskKind 用例守卫。
@@ -14,8 +14,8 @@ import { AgentRequestSchema } from '../src/validators/agent.schema.js';
 const MINIMAL_BODY = { provider: 'custom', model: 'm', message: 'hi' };
 
 describe('task prompt templates', () => {
-  it('covers exactly the four README task kinds with label/sections/rules', () => {
-    expect([...TASK_KINDS]).toEqual(['analyze', 'explain', 'debug', 'optimize']);
+  it('covers the README task kinds plus verify with label/sections/rules', () => {
+    expect([...TASK_KINDS]).toEqual(['analyze', 'explain', 'debug', 'optimize', 'verify']);
     for (const kind of TASK_KINDS) {
       const spec = TASK_PROMPTS[kind];
       expect(spec.label.length, `${kind} label`).toBeGreaterThan(0);
@@ -33,12 +33,12 @@ describe('task prompt templates', () => {
     const section = buildTaskSection('debug');
     expect(section).toContain('【任务模式：调试】');
     expect(section).toContain('任务目标：');
-    expect(section).toContain('【最终答案结构】');
+    expect(section).toContain('【建议结构】');
     expect(section).toContain('1. 问题定位；2. 根因分析；3. 修复建议；4. 修复后代码');
     expect(section).toContain('【任务规则】');
   });
 
-  it('isTaskKind accepts the four kinds and rejects anything else', () => {
+  it('isTaskKind accepts every declared kind and rejects anything else', () => {
     for (const kind of TASK_KINDS) expect(isTaskKind(kind)).toBe(true);
     expect(isTaskKind(' Analyse')).toBe(false);
     expect(isTaskKind(undefined)).toBe(false);
@@ -47,10 +47,11 @@ describe('task prompt templates', () => {
 });
 
 describe('buildSystemPrompt composition', () => {
-  it('base prompt carries the final-answer contract sections (S2)', () => {
-    for (const marker of ['1. 结论', '2. 执行过程', '3. 遗留项', '禁止编造工具结果']) {
+  it('base prompt carries adaptive presentation rules instead of a fixed template', () => {
+    for (const marker of ['【表达与版式】', '不要每轮套用同一个版式', '不使用一级标题', '禁止编造工具结果']) {
       expect(AGENT_BASE_PROMPT).toContain(marker);
     }
+    expect(AGENT_BASE_PROMPT).not.toContain('【最终答案】');
   });
 
   it('without taskKind returns the base prompt unchanged (free chat)', () => {
@@ -91,7 +92,7 @@ describe('buildReactSystemPrompt composition (degraded channel keeps the loop cl
     const react = buildReactSystemPrompt(catalogue, base);
     expect(react).toContain('CodeLens Agent'); // 基座身份保留
     expect(react).toContain('【任务模式：调试】'); // 任务段保留
-    expect(react).toContain('1. 结论'); // 最终答案契约保留
+    expect(react).toContain('【表达与版式】'); // 自适应版式契约保留
     expect(react).toContain('【文本协议】');
     expect(react).toContain('- fs.read（读取文件）：读取沙箱内文件');
     expect(react.indexOf('CodeLens Agent')).toBeLessThan(react.indexOf('【文本协议】'));

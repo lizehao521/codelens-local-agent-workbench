@@ -1,6 +1,9 @@
 {
   "name": "codelens",
-  "version": "2.20.0",
+  "version": "2.21.0",
+  "verify": [
+    "check:config"
+  ],
   "private": true,
   "description": "CodeLens - 编程 Agent Web 应用（React + Express 全栈）",
   "scripts": {

@@ -3,7 +3,7 @@
  * 单文件行数棘轮闸：存量按现状封顶只许缩，增量一律 ≤300 行。
  *
  * 用法：
- *   node scripts/check-file-size.mjs              # 扫 server/src + client/src 并判定
+ *   node scripts/check-file-size.mjs              # 扫 server/src + client/src + scripts/tests 并判定
  *   node scripts/check-file-size.mjs --self-test  # 用受跟踪夹具自证（不扫盘）
  *   node scripts/check-file-size.mjs --tighten    # 把清单上限下调到实测值（人工改尺子）
  * 退出码：0 达标 / 1 有文件越线或清单有孤儿 / 2 扫描为空、清单不可得或自证失败（UNEXEC）
@@ -20,7 +20,7 @@ import { DEFAULT_LIMIT, evaluate, tighten } from './lib/file-size-ratchet.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = join(ROOT, 'scripts', 'file-size-baseline.json');
 const FIXTURE = join(ROOT, 'scripts', 'fixtures', 'file-size-ratchet', 'cases.json');
-const SCAN_ROOTS = ['server/src', 'client/src'];
+const SCAN_ROOTS = ['server/src', 'client/src', 'server/scripts', 'server/tests', 'client/tests'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.git']);
 
 function readJson(file) {

@@ -598,6 +598,158 @@
         "人工采纳（2026-11-14）：派单第 1 次即过，sendSec=2058（未触 2700s 墙钟），进程正常退出。围栏 10 项全 PASS：受保护 279/279 / 判据指纹未变 / 三个靶子都被改动 / 注释保留 / tsc / 判据自证 / 判据 30 用例 / 全量回归。实现审查：project-instructions.ts 77 行、只读根层不向上找、AGENTS.md 优先不叠加、截断标注 fs_read、注入块声明从属于硬性规则；agent-loop.service.ts 1550→1550 行（净增 0），buildWorkspaceSection 零残留，两通道同源。版本 2.20.0。"
       ],
       "releasedIn": "2.20.0"
+    },
+    {
+      "id": "propose-gaps-done-coverage",
+      "title": "提议通道看不到已结题判据，反复提名已修好的缺陷",
+      "strengthens": "Judge",
+      "allowed": [
+        "scripts/propose-gaps.ts"
+      ],
+      "judge": "tests/scripts/propose-guard.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-verify",
+      "title": "「改完必须验」只有提示词，模型可以自述通过",
+      "strengthens": "Update",
+      "allowed": [
+        "src/tools/builtin/agent-verify.tool.ts",
+        "src/tools/builtin/index.ts",
+        "src/services/agent/task-prompts.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-verify.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "file-size-ratchet-covers-scripts",
+      "title": "行数棘轮只盯 src，scripts/ 与 tests/ 是盲区",
+      "strengthens": "Judge",
+      "allowed": [
+        "../scripts/check-file-size.mjs",
+        "../scripts/file-size-baseline.json",
+        "tests/self-upgrade/file-size-ratchet.test.ts"
+      ],
+      "judge": "tests/self-upgrade/file-size-ratchet.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "approval-inline-diff",
+      "title": "审批卡看不到将改哪些行，G3 只有后果清单",
+      "strengthens": "Act",
+      "allowed": [
+        "src/services/tools/effect-preview.ts",
+        "src/types/tool.ts",
+        "../client/src/components/agent/ToolCallDiff.tsx",
+        "../client/src/components/agent/ToolCallCard.tsx",
+        "../client/src/components/agent/ToolApprovalBar.tsx",
+        "../client/src/stores/toolCallStore.ts",
+        "../client/src/types/index.ts",
+        "../client/src/hooks/useAgentStream.ts"
+      ],
+      "judge": "tests/self-upgrade/approval-diff.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-split-facts",
+      "title": "run() 836 行，先抽出复核事实投影",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/review-facts.ts",
+        "src/services/agent/agent-loop.service.ts",
+        "src/services/agent/run-services.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "mutation-dirty",
+      "title": "脏工作区里变异探针整批 SKIP，C3 自证靠人肉注入",
+      "strengthens": "Judge",
+      "allowed": [
+        "../scripts/mutation-probe.mjs"
+      ],
+      "judge": "tests/self-upgrade/mutation-dirty.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-split-round",
+      "title": "run() 工具执行循环抽成 executeToolRound()，压到 500 行内",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/agent-loop.service.ts",
+        "src/services/agent/run-services.ts",
+        "src/services/agent/review-facts.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-split-turn",
+      "title": "run() 上游 turn 调用抽成 runTurn()，保留降级与空响应重试",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/agent-loop.service.ts",
+        "tests/self-upgrade/agent-loop-split.test.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-split-prepare",
+      "title": "run() 前置装配抽成 prepareRun()，收尾抽成 finalizeRun()",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/agent-loop.service.ts",
+        "src/services/agent/run-assembly.ts",
+        "src/services/agent/run-services.ts",
+        "tests/self-upgrade/agent-loop-split.test.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-split-session",
+      "title": "run() 会话/预算/轨迹/RunState 前置抽成 prepareSession()",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/agent-loop.service.ts",
+        "tests/self-upgrade/agent-loop-split.test.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "status": "done",
+      "releasedIn": "2.21.0"
+    },
+    {
+      "id": "agent-loop-run-loop",
+      "title": "run() 主循环骨架抽成 runLoop()，run() 只保留三段式",
+      "strengthens": "Judge",
+      "allowed": [
+        "src/services/agent/agent-loop.service.ts",
+        "tests/self-upgrade/agent-loop-split.test.ts"
+      ],
+      "judge": "tests/self-upgrade/agent-loop-split.test.ts",
+      "maxAttempts": 3,
+      "status": "pending",
+      "package": "server",
+      "boundary": "只搬控制流，不改终止/压缩/迭代语义；不放宽预算、熔断与收敛阈值。",
+      "gap": "run() 当前 261 行，仍含 checkTermination、contextManager.buildView/压缩失败分支、迭代推进与最终答案/工具分发；prepareSession/runTurn/executeToolRound/finalizeRun 已抽出，但主循环骨架仍在 run()。",
+      "observable": "run() ≤200 行且只调用 prepareSession/runLoop/finalizeRun；runLoop() 内保留 checkTermination、contextManager.buildView、压缩失败分支、runTurn、finishWithFinalAnswer、executeToolRound；agent-loop-split 新增 runLoop 接线用例全绿。",
+      "evidence": [
+        "run() 当前 261 行，851→261 的拆分已完成前置/单轮/收尾，主循环仍在 run()",
+        "phase 5 交接文档 §5.2 已登记 agent-loop-run-loop，backlog 同 ID"
+      ],
+      "mode": "implement-first",
+      "attribution": "human"
     }
   ]
 }

@@ -1,11 +1,11 @@
 // ToolApprovalBar —— inline 审批确认条（AC-04/AC-06）：不弹窗，挂在工具卡内部
 // 服务端持有参数与 5 分钟令牌；前端只回传 { token, decision } / revise 档 { token, arguments }。
 // 回执纪律：404/409/410 → inline 置灰；mismatch → danger 累加，3 次锁定（lib/approval-receipt）。
-
 import { useEffect, useRef, useState } from 'react';
 import { Loader, Pencil, ShieldCheck, ShieldX, Timer, TriangleAlert } from 'lucide-react';
 import type { ApprovalDecision, ApprovalVM } from '../../types';
 import { useApprovalStore } from '../../stores/approvalStore';
+import { ToolCallDiff } from './ToolCallDiff';
 import {
   MISMATCH_ABORT_THRESHOLD,
   buildApprovalBody,
@@ -51,7 +51,6 @@ export function ToolApprovalBar({ approval, onSettled }: ToolApprovalBarProps) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-
   const remainMs = approval.expiresAt - now;
   const expired = remainMs <= 0;
   const locked = approval.receipt?.disabled === true;
@@ -218,6 +217,7 @@ export function ToolApprovalBar({ approval, onSettled }: ToolApprovalBarProps) {
               ? approval.effect.recoveryNote ?? '可用写前快照恢复'
               : approval.effect.recoveryNote ?? '不可恢复'}
           </div>
+          {approval.effect.diff?.length ? <ToolCallDiff items={approval.effect.diff} /> : null}
         </div>
       )}
 

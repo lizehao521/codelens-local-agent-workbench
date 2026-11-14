@@ -177,8 +177,8 @@ describe('真实豁免清单必须与磁盘对账（尺子刻度不得失真）'
     expect(seen.size).toBe(BASELINE.entries.length);
   });
 
-  it('两个包都在清单里（闸不能只盯一边）', () => {
-    for (const prefix of ['server/src/', 'client/src/']) {
+  it('五个扫描根都在清单里（闸不能只盯 src，也不能漏掉脚本与判据）', () => {
+    for (const prefix of ['server/src/', 'client/src/', 'server/scripts/', 'server/tests/', 'client/tests/']) {
       expect(BASELINE.entries.some((e: { file: string }) => e.file.startsWith(prefix))).toBe(true);
     }
   });

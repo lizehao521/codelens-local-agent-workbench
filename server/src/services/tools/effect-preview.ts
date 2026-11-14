@@ -8,10 +8,11 @@
  * 这里只读文件系统的事实（存在性、字节数、目录条目数），不推断模型意图。
  */
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { EffectItem, EffectPreview, ToolDefinition, ToolApprovalMode, RiskVerdict } from '../../types/tool.js';
+import type { ApprovalDiffItem, EffectItem, EffectPreview, ToolDefinition, ToolApprovalMode, RiskVerdict } from '../../types/tool.js';
 import { resolveInSandbox } from '../../tools/builtin/path-jail.js';
+import { lineDiff, renderUnified } from '../../tools/builtin/text-diff.tool.js';
 
 export interface EffectContext {
   sandboxRoot: string;
@@ -44,6 +45,57 @@ function fileItem(absPath: string, displayPath: string): EffectItem {
 function insideWorkspace(absPath: string, sandboxRoot: string): boolean {
   const rel = path.relative(path.resolve(sandboxRoot), path.resolve(absPath));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+const DIFF_READ_LIMIT = 500_000;
+
+/**
+ * 写操作在执行前能算出的 diff：读当前文件 + 按 operation 推导执行后的文本。
+ *
+ * 这是审批卡的主视图——删文件时用户看到的是具体会消失的行，而不是「将删除文件」。
+ * 读不到/太大/替换不唯一时返回空数组：预览失败不能阻断审批本身。
+ */
+export function buildWriteDiff(
+  operation: string,
+  args: Record<string, unknown>,
+  absPath: string,
+  displayPath: string,
+): ApprovalDiffItem[] {
+  try {
+    const exists = existsSync(absPath);
+    if (exists && (!statSync(absPath).isFile() || statSync(absPath).size > DIFF_READ_LIMIT)) return [];
+    const before = exists ? readFileSync(absPath, 'utf8') : '';
+    if (before.length > DIFF_READ_LIMIT) return [];
+    let after: string | null = null;
+    if (operation === 'create') after = String(args.content ?? '');
+    else if (operation === 'overwrite') after = String(args.content ?? '');
+    else if (operation === 'append') after = before + String(args.content ?? '');
+    else if (operation === 'delete') after = '';
+    else if (operation === 'replace') {
+      const oldText = String(args.oldText ?? '');
+      const newText = String(args.newText ?? '');
+      if (!oldText) return [];
+      const first = before.indexOf(oldText);
+      if (first < 0 || before.indexOf(oldText, first + oldText.length) >= 0) return [];
+      after = before.slice(0, first) + newText + before.slice(first + oldText.length);
+    }
+    if (after === null || after.length > DIFF_READ_LIMIT) return [];
+    const rendered = renderUnified(
+      lineDiff(before.length ? before.split('\n') : [], after.length ? after.split('\n') : []),
+      3,
+    );
+    if (rendered.additions === 0 && rendered.deletions === 0) return [];
+    return [
+      {
+        path: displayPath,
+        added: rendered.additions,
+        removed: rendered.deletions,
+        preview: rendered.text.slice(0, 4000),
+      },
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -134,6 +186,7 @@ export function buildEffectPreview(
       itemCount,
       recoverable,
       recoveryNote,
+      diff: buildWriteDiff(operation, args, abs, display),
     };
   }
 

@@ -221,9 +221,9 @@ describe('B · 合成器与向后兼容', () => {
     put('AGENTS.md', RULE);
     const base = buildSystemPrompt();
     expect(base.includes(RULE)).toBe(false);
-    expect(base).toContain('【最终答案】');
+    expect(base).toContain('【表达与版式】');
     // TaskKind 的合法值只有 analyze/explain/debug/optimize（TASK_KINDS 是单一来源）。
-    expect(buildSystemPrompt('debug')).toContain('【最终答案】');
+    expect(buildSystemPrompt('debug')).toContain('【表达与版式】');
     expect(buildSystemPrompt('debug')).toContain('问题定位');
   });
 

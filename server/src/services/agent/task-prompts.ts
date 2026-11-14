@@ -6,7 +6,7 @@
  * 叠加同一段任务提示词——两条通道缺一即开环。
  */
 
-export const TASK_KINDS = ['analyze', 'explain', 'debug', 'optimize'] as const;
+export const TASK_KINDS = ['analyze', 'explain', 'debug', 'optimize', 'verify'] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
 
 export interface TaskPromptSpec {
@@ -14,7 +14,7 @@ export interface TaskPromptSpec {
   label: string;
   /** 任务目标一句话，写入提示词正文。 */
   directive: string;
-  /** 最终答案必须包含的小节（按序，作为输出结构契约）。 */
+  /** 建议结构：内容需要时才用，可合并、省略或改名，不是固定模板。 */
   sections: string[];
   /** 任务级补充规则。 */
   rules: string[];
@@ -61,6 +61,16 @@ export const TASK_PROMPTS: Record<TaskKind, TaskPromptSpec> = {
       '明说不值得改的部分及理由。',
     ],
   },
+  verify: {
+    label: '验证',
+    directive: '在宣布改动完成之前，运行目标包自己声明的验证命令，用真实退出码证明改动没有破坏既有行为。',
+    sections: ['验证命令', '实际读数', '结论'],
+    rules: [
+      '必须调用 agent.verify（或等价的 type.check / test.run）拿到真实退出码；禁止只凭阅读代码声称通过。',
+      '验证失败时先修再报；不得把失败改写成「预期行为」或「环境问题」而不给证据。',
+      '结论必须引用通过/失败数量与失败脚本名，并区分「本次改动相关」与「既有失败」。',
+    ],
+  },
 };
 
 export function isTaskKind(value: unknown): value is TaskKind {
@@ -74,7 +84,7 @@ export function buildTaskSection(kind: TaskKind): string {
   return [
     `【任务模式：${spec.label}】`,
     `任务目标：${spec.directive}`,
-    `【最终答案结构】按以下小节组织，小节标题使用中文原文：${sections}`,
+    `【建议结构】以下小节按内容取舍，不必逐条套用；可合并、省略或改名：${sections}`,
     '【任务规则】',
     ...spec.rules.map((rule) => `- ${rule}`),
   ].join('\n');

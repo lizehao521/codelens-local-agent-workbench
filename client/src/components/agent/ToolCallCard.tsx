@@ -24,6 +24,7 @@ import { buildErrorBlock, configForKind, semanticBadge, semanticText } from '../
 import { formatCount, formatDuration, formatRelativeOffset } from '../../lib/tool-format';
 import { inlinePreview, isTruncated, omittedChars } from '../../lib/tool-preview';
 import { cn } from '../../lib/cn';
+import { ToolCallDiff } from './ToolCallDiff';
 
 const STATUS_META: Record<ToolCallStatus, { label: string; icon: LucideIcon; className: string }> = {
   pending: { label: '等待确认', icon: Clock, className: 'text-warning' },
@@ -87,6 +88,7 @@ export function ToolCallCard({ callId, baseAt, onRetryStep, onRerunFrom, approva
   // 旧数据可能把 arguments 存成字符串（展示层兼容），此时不覆写、仅 resumeFromCallId。
   const rerunArgs: Record<string, unknown> | undefined =
     typeof call.arguments === 'string' ? undefined : call.arguments;
+  const diffs = call.diff ?? call.effect?.diff ?? [];
   const canRetry =
     !disabled &&
     (call.status === 'failed' || call.status === 'timeout') &&
@@ -226,7 +228,7 @@ export function ToolCallCard({ callId, baseAt, onRetryStep, onRerunFrom, approva
             </Section>
           )}
 
-          {/* AC-10 干预入口 */}
+          {diffs.length > 0 && <ToolCallDiff items={diffs} />}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {canRetry && (
               <CardAction icon={RotateCw} label="重试" onClick={handleRetry} />
@@ -247,8 +249,6 @@ export function ToolCallCard({ callId, baseAt, onRetryStep, onRerunFrom, approva
           </div>
         </div>
       )}
-
-      {/* inline 审批条插槽（AC-04：不弹窗） */}
       {isPending && approvalSlot && <div className="border-t border-border-subtle p-2">{approvalSlot}</div>}
     </div>
   );

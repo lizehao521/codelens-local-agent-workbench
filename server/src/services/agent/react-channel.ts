@@ -73,7 +73,7 @@ export function buildReactSystemPrompt(catalogue: string, baseSystem?: string): 
     '1. 工具名必须与【可用工具】中的完全一致，禁止编造。',
     '2. arguments 必须是合法 JSON 对象，字符串用双引号。',
     '3. 每次只调用当前步骤需要的工具，拿到结果后再决定下一步。',
-    '4. 任务完成时按【最终答案】结构输出总结，不要再调用工具。',
+    '4. 任务完成时按【表达与版式】自适应输出最终答案，不要套固定模板，也不要再调用工具。',
   ]
     .join('\n')
     .replace(/TOOL_CALL_OPEN/g, String.fromCharCode(60) + 'tool_call' + String.fromCharCode(62))

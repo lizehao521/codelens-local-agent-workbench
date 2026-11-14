@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { PROTECTED_PATHS, isProtected } from '../../scripts/lib/protected-paths.js';
 import { formatResult, parseResult, proposeStatusLine } from '../../scripts/lib/propose-result.js';
 import { screen, sourceFiles } from '../../scripts/propose-gaps.js';
+import { coveringDoneTasks, judgeCaseTitles, loadDoneTasks } from '../../scripts/propose-gaps.js';
 
 const valid = {
   id: 'test-gap',
@@ -54,6 +55,50 @@ describe('保护路径单源', () => {
       expect(f.startsWith('src/')).toBe(true);
       expect(isProtected(f)).toBe(false);
     }
+  });
+});
+
+describe('判据感知：不重复提名已结题的缺陷', () => {
+  it('能读到 done 题的靶子与判据断言', () => {
+    const tasks = loadDoneTasks();
+    expect(tasks.length).toBeGreaterThan(0);
+    const codeCheck = tasks.find((t) => t.id === 'code-check');
+    expect(codeCheck?.allowed).toContain('src/tools/builtin/code-check.tool.ts');
+    const titles = judgeCaseTitles('tests/self-upgrade/code-check.test.ts');
+    expect(titles.length).toBeGreaterThan(0);
+    expect(titles.join('｜')).toContain('C1 已注册进内置工具表');
+  });
+
+  it('靶子落在 done 题 allowed 里且没有 notCoveredReason → 拒收并标 DONE_TASK_COVERED', () => {
+    const r = screen({ ...valid, targetFile: 'src/tools/builtin/code-check.tool.ts' });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe('DONE_TASK_COVERED');
+    expect(r.reason).toContain('code-check');
+    expect(r.reason).toContain('notCoveredReason');
+  });
+
+  it('给了 notCoveredReason（≥10 字）→ 放行，交给出题环节判断', () => {
+    const r = screen({
+      ...valid,
+      targetFile: 'src/tools/builtin/code-check.tool.ts',
+      notCoveredReason: '现有断言只覆盖缺少列号，未覆盖列号越过文件末尾时的截断行为',
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('notCoveredReason 敷衍（太短）仍然拒收', () => {
+    const r = screen({
+      ...valid,
+      targetFile: 'src/tools/builtin/code-check.tool.ts',
+      notCoveredReason: '不一样',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe('DONE_TASK_COVERED');
+  });
+
+  it('未被任何 done 题覆盖的靶子不受影响', () => {
+    expect(coveringDoneTasks('src/utils/errors.ts')).toHaveLength(0);
+    expect(screen(valid).ok).toBe(true);
   });
 });
 

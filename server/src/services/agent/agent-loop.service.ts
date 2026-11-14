@@ -57,6 +57,9 @@ import type { TraceService, TraceSpanKind } from '../observability/trace.service
 import type { CheckpointService } from '../tx/checkpoint.service.js';
 import type { SandboxGrantService } from '../tools/sandbox-grant.service.js';
 import type { ReviewService } from './review.service.js';
+import type { ReviewContext } from './review.service.js';
+import { buildReviewFacts } from './review-facts.js';
+import { prepareRun } from './run-assembly.js';
 import type { RunStateService } from './run-state.service.js';
 import type { ReviewFacts } from '../../types/tool.js';
 
@@ -302,29 +305,35 @@ export class AgentLoopService {
     return this.channelRouter;
   }
 
-  async run(req: AgentRunRequest, sse: SseWriter, signal: AbortSignal): Promise<void> {
-    // R3：controller 已在最前面发过 connecting（幂等）；这里兜底保证直接调用方也有 run 标识。
+  /**
+   * 会话/预算/轨迹/RunState 的前置装配。失败时已通过 SSE 报错，调用方直接 return。
+   */
+  private async prepareSession(p: { req: AgentRunRequest; sse: SseWriter; signal: AbortSignal }): Promise<
+    | {
+        runId: string; apiKey: string; clientIp: string; isFallback: boolean;
+        session: SessionRow; budget: BudgetState; usage: Usage;
+        onFirstToken: (kind: 'reasoning' | 'content') => void;
+        firstTokenMs: () => number | null;
+        cancel: RunCancellation; turnSignal: AbortSignal; traceId: string | null;
+      }
+    | null
+  > {
+    const { req, sse, signal } = p;
     const runId = sse.beginRunStage();
     sse.emitStage('connecting');
     const apiKey = req.apiKey?.trim() || this.deps.serverApiKey;
     if (!apiKey) {
       sse.emit('error', { code: 'MISSING_API_KEY', message: '未配置 API Key，请在设置页填写', retryable: false });
-      return;
+      return null;
     }
 
     const clientIp = req.clientIp ?? 'unknown';
-    // 兜底 Key = 请求未带 BYOK Key 且服务端配置了兜底 Key（与 prod 语义一致）。
     const isFallback = !req.apiKey?.trim() && this.deps.serverApiKey.length > 0;
-
-    // 试用锁定：BYOK 请求永远用用户自己的 provider/model；无 Key 的试用请求由服务端统一指向上游。
-    // 不锁的话，前端默认 provider（deepseek）+ 服务端兜底 Key（NVIDIA）必然 401——
-    // 零配置首跑直接失败，这是上一轮实测确认的产品缺陷。
     const target = resolveTrialTarget(req, isFallback, this.deps.trialLock);
     req.provider = target.provider;
     req.model = target.model;
     req.customBaseUrl = target.customBaseUrl;
 
-    // ── A-01/A-02 兜底 Key 试用 + 预算闸（仅 fallback 请求；置 session 前判定，避免留空会话）──
     if (isFallback && this.deps.fallbackBudget) {
       const gate = this.deps.fallbackBudget.reserve(clientIp);
       if (!gate.ok) {
@@ -333,18 +342,15 @@ export class AgentLoopService {
           message: gate.message ?? '兜底 Key 额度已用尽，请配置自己的 API Key',
           retryable: false,
         });
-        return;
+        return null;
       }
     }
 
-    // 任务累计用量（prompt+completion）。放 try 外以便 finally 统一记账（含上游中途失败的部分用量）。
     const usage = { promptTokens: 0, completionTokens: 0 };
-    // B-07 首 token 延迟：从 run 开始到上游首个内容块（delta/reasoning/tool_call）。
     const runStartedAt = Date.now();
     let firstTokenAt: number | null = null;
     const onFirstToken = (kind: 'reasoning' | 'content'): void => {
       if (firstTokenAt === null) firstTokenAt = Date.now();
-      // 阶段只记一次：首个 reasoning/content 到达，前端据此从「连接中」切到「生成中」。
       sse.emitStage(kind);
       this.deps.runState?.stage(runId, kind);
     };
@@ -355,10 +361,9 @@ export class AgentLoopService {
     else session = this.deps.sessions.create({ provider: req.provider, model: req.model });
     if (!session) {
       sse.emit('error', { code: 'SESSION_NOT_FOUND', message: '会话不存在或已被删除', retryable: false });
-      return;
+      return null;
     }
 
-    // ── RunState：run 级结构化状态（可查、可持久化、不含凭证）──────────────
     this.deps.runState?.start({
       runId,
       sessionId: session.id,
@@ -366,8 +371,6 @@ export class AgentLoopService {
       model: req.model,
       channel: req.channelMode,
     });
-    // 测量分流：rsiMeasure=false 的 run 照常判决/学习，只是不进 RSI 跨代对账。
-    // 用 sessionId 记录，与 activeTraces 同口径，避免并发 run 互相覆盖。
     if (req.rsiMeasure === false) {
       this.nonMeasureSessions.add(session.id);
       this.measureSampleCounts.delete(session.id);
@@ -377,51 +380,34 @@ export class AgentLoopService {
     }
     this.deps.runState?.stage(runId, 'connecting');
 
-    // ── 运行轨迹（可观测面）──────────────────────────────────────────────────
-    // 未启用时 startTrace 返回 null，后续埋点全程退化为「不记录」，主流程零影响。
     const traceId = this.deps.trace?.startTrace(session.id, `run:${req.provider}/${req.model}`)?.traceId ?? null;
     if (traceId) this.activeTraces.set(session.id, traceId);
-    // 轨迹终局：正常收尾记 ok，上游错误 / 异常记 error。
-    let traceStatus: 'ok' | 'error' = 'ok';
 
-    // ── one task per session (P0-2) ─────────────────────────────────────────
-    // A re-sent request — notably a repeated resumeFromCallId or a double
-    // submit — must not spawn a second concurrent loop on the same session:
-    // the two loops would double-write messages/tool results and leave orphan
-    // role:tool messages (upstream 400). Abort the previous run and wait for
-    // its teardown before registering this one.
     if (this.deps.abortRegistry.isActive(session.id)) {
       await this.deps.abortRegistry.abortAndWait(session.id);
     }
-
-    // The registry controller is the single abort point: the request-level signal
-    // (client disconnect) forwards into it, and POST /agent/abort aborts it too.
     const registryController = this.deps.abortRegistry.register(session.id);
+    const cancel = new RunCancellation()
+      .link(registryController.signal, 'abort')
+      .link(signal, 'abort')
+      .link(this.deps.shutdownSignal, 'shutdown');
+    const turnSignal = cancel.signal;
+    const budget: BudgetState = createBudget({
+      maxIterations: req.maxIterations,
+      maxToolCalls: config.agentMaxToolCalls,
+      totalBudgetMs: config.agentTaskBudgetMs,
+    });
 
-    // AUDIT-004: everything below owns the session slot. Any throw (a failed SSE
-    // frame, a SQLite write, messages.finalize) used to skip the only release()
-    // — which lived inside finish() — leaving the entry in the registry forever.
-    // Every later request for that session then waited out the 35s abort timeout
-    // before dying as 'replaced': one transient error made the session unusable
-    // until a process restart. release() is idempotent, so finish() can keep
-    // calling it early.
-    let runCancel: RunCancellation | undefined;
+    return { runId, apiKey, clientIp, isFallback, session, budget, usage, onFirstToken, firstTokenMs, cancel, turnSignal, traceId };
+  }
+
+  async run(req: AgentRunRequest, sse: SseWriter, signal: AbortSignal): Promise<void> {
+    // R3：controller 已在最前面发过 connecting（幂等）；这里兜底保证直接调用方也有 run 标识。
+    const prep = await this.prepareSession({ req, sse, signal });
+    if (!prep) return;
+    const { runId, apiKey, clientIp, isFallback, session, budget, usage, firstTokenMs, onFirstToken, cancel, turnSignal, traceId } = prep;
+    let traceStatus: 'ok' | 'error' = 'ok';
     try {
-      // 单一取消上下文：请求断连 / POST abort / 服务关闭 → 一个 run 级 signal。
-      // 下游（能力探测、adapter、工具执行）只消费这个 signal，不再各处 new 控制器。
-      const cancel = new RunCancellation()
-        .link(registryController.signal, 'abort')
-        .link(signal, 'abort')
-        .link(this.deps.shutdownSignal, 'shutdown');
-      runCancel = cancel;
-      const turnSignal = cancel.signal;
-
-      // ── per-request services ─────────────────────────────────────────────────
-      const budget: BudgetState = createBudget({
-        maxIterations: req.maxIterations,
-        maxToolCalls: config.agentMaxToolCalls,
-        totalBudgetMs: config.agentTaskBudgetMs,
-      });
       // 复核上下文：与主脑同一上游，但输入只有事实（ReviewFacts 类型层面隔离）。
       const reviewCtx = {
         runId,
@@ -432,105 +418,19 @@ export class AgentLoopService {
         baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
       };
       const review = this.deps.review;
-      // E：同一 run 内的可逆审批去重登记（授权 id / 步骤会写进 RunState）。
-      const approvalDedup = new ApprovalDedupService();
-      const executor = new ToolExecutor({
-        toolCalls: this.deps.toolCalls,
-        toolResults: this.deps.toolResults,
-        approvals: this.approvalService,
-        sse,
-        sandboxRoot: this.deps.sandboxRoot,
-        allowedDirs: this.deps.sandboxPermissions?.allowDirs ?? [],
-        canRetry: () => canRetry(budget),
-        onRetryConsumed: () => consumeRetry(budget),
-        runId,
-        dedup: approvalDedup,
-        onApprovalDedup: ({ toolCall, reusedGrantId, reusedStep }) => {
-          this.deps.runState?.approval(runId, {
-            callId: toolCall.call_id,
-            name: toolCall.tool_name,
-            approvalMode: toolCall.approval_mode as 'soft' | 'hard' | 'two_step',
-            decision: 'deduped',
-            at: Date.now(),
-            reusedGrantId,
-            reusedStep,
-          });
+      const { executor, contextManager, breaker, detector, convergence, reportedCircuit, resolver } = prepareRun(
+        {
+          toolCalls: this.deps.toolCalls, toolResults: this.deps.toolResults, registry: this.deps.registry,
+          messages: this.deps.messages, adapter: this.deps.adapter, sandboxRoot: this.deps.sandboxRoot,
+          sandboxPermissions: this.deps.sandboxPermissions, checkpoint: this.deps.checkpoint,
+          grants: this.deps.grants, runState: this.deps.runState, review,
         },
-        reviewIrreversible: review
-          ? async (facts) => {
-              const result = await review.review(facts, reviewCtx, 'sync', turnSignal);
-              this.deps.runState?.addReviewCost(runId, result.usage.promptTokens, result.usage.completionTokens);
-              if (result.status === 'underestimated') {
-                this.deps.runState?.error(runId, {
-                  code: 'REVIEW_UNDERESTIMATED',
-                  kind: 'error',
-                  message: `复核认为影响面被低估：${result.findings.map((f) => f.claim).join('；').slice(0, 200)}`,
-                  at: Date.now(),
-                });
-              }
-              return result;
-            }
-          : undefined,
-        onApprovalDecision: ({ toolCall, approvalMode, decision }) => {
-          this.deps.runState?.approval(runId, {
-            callId: toolCall.call_id,
-            name: toolCall.tool_name,
-            approvalMode,
-            decision: decision === 'revised_direct' ? 'revised' : decision,
-            at: Date.now(),
-          });
+        {
+          approvals: this.approvalService, channelRouter: this.channelRouter, sse, req, budget, runId,
+          turnSignal, reviewCtx, baseUrl: reviewCtx.baseUrl, apiKey,
+          allowedDirs: this.deps.sandboxPermissions?.allowDirs ?? [], sessionId: session.id,
         },
-      });
-      const contextManager = new ContextManager({
-        messages: this.deps.messages,
-        // P1-3(b): one shared context-window source with the ChannelRouter
-        // (static capability table merged with the probed row). The old DB-only
-        // lookup fell back to 32000 while the router fell back to 65536–128000,
-        // over-firing compaction on small-window models and under-firing on large.
-        resolveContextWindow: (provider, model) =>
-          this.channelRouter.resolveCapabilities(provider, model).contextWindow,
-        sse,
-        // P2-4②: the summary rides the MAIN model — there is no cheap-model
-        // config surface yet — so at least pin it to a terse, deterministic
-        // completion (was temperature 0.2 / maxTokens 1200). This single seam is
-        // where a lightweight model would drop in later.
-        summarize: (prompt, system) =>
-          this.deps.adapter
-            .chat(
-              {
-                baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
-                apiKey,
-                model: req.model,
-                messages: [
-                  { role: 'system', content: system },
-                  { role: 'user', content: prompt },
-                ],
-                temperature: 0.1,
-                maxTokens: 800,
-                stream: false,
-              },
-              undefined,
-              turnSignal,
-            )
-            .then((result) => result.content),
-      });
-      const breaker = new CircuitBreaker();
-      const detector = new LoopDetector();
-      // B：跨轮收敛检测（0 = 关闭；默认 3 轮）。
-      const convergence = new ConvergenceDetector(config.agentConvergenceRounds);
-      const reportedCircuit = new Set<string>();
-      const resolver = new CallResolver({
-        registry: this.deps.registry,
-        toolCalls: this.deps.toolCalls,
-        sse,
-        sandboxRoot: this.deps.sandboxRoot,
-        allowedDirs: this.deps.sandboxPermissions?.allowDirs ?? [],
-        exemptions: this.deps.sandboxPermissions?.autoApprove,
-        checkpointEnabled: this.deps.checkpoint?.enabled,
-        grants: this.deps.grants,
-        reverseIndex: buildReverseIndex(this.deps.registry.list()),
-        breaker,
-      });
+      );
 
       const onAbort = (): void => {
         budget.aborted = true;
@@ -720,157 +620,94 @@ export class AgentLoopService {
         }
         budget.iteration += 1;
 
-        let turn: TurnIR;
-        try {
-          turn =
-            channel === 'native'
-              ? await runNativeTurn({
-                  adapter: this.deps.adapter,
-                  providerId: req.provider,
-                  baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
-                  apiKey,
-                  model: req.model,
-                  messages: view.messages,
-                  tools: providerTools,
-                  temperature: req.temperature,
-                  maxTokens,
-                  capabilities: decision.capabilities,
-                  sse,
-                  signal: turnSignal,
-                  onResponseStart: () => sse.emitStage('upstream_first_byte'),
-                  onFirstToken,
-                })
-              : await runReactTurn({
-                adapter: this.deps.adapter,
-                providerId: req.provider,
-                baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
-                apiKey,
-                model: req.model,
-                messages: view.messages,
-                tools: toolDefs,
-                temperature: req.temperature,
-                maxTokens: req.maxTokens,
-                capabilities: decision.capabilities,
-                sse,
-                signal: turnSignal,
-                onResponseStart: () => sse.emitStage('upstream_first_byte'),
-                onFirstToken,
-              });
-        } catch (err) {
-          // P0-1: a turn that failed mid-stream already burned upstream tokens
-          // (the provider bills the prompt plus any completion tokens that
-          // arrived before the break). Recover them so degraded/aborted runs do
-          // not under-report their cost in done.usage. The success path below
-          // still owns the normal accounting — the two are mutually exclusive.
-          const partial = (err as { partialUsage?: Usage }).partialUsage;
-          if (partial) {
-            usage.promptTokens += partial.promptTokens;
-            usage.completionTokens += partial.completionTokens;
-          }
-          if (budget.aborted) {
-            sse.emitStage('aborted', '任务已被用户中止');
-            this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs());
-            return;
-          }
-          if (channel === 'native' && ChannelRouter.shouldDegrade(err)) {
-            channel = 'react';
-            degraded = true;
-            degradedReason = '上游拒绝 tools 参数，已自动切换提示词解析模式';
-            budget.iteration -= 1; // the failed turn does not count against the budget
-            emitMeta(budget.iteration + 1, 'native', degradedReason);
-            continue;
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          const code = message.includes('超时') ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_ERROR';
-          traceStatus = 'error';
-          // 阶段终局可区分：超时与上游报错走不同阶段，前端不必从 error 文案里猜。
-          sse.emitStage(code === 'UPSTREAM_TIMEOUT' ? 'upstream_timeout' : 'upstream_error', message);
-          sse.emit('error', { code, message, retryable: code === 'UPSTREAM_TIMEOUT' });
-          // Terminal path outside finish(): free the session slot so a later run
-          // for this session is not blocked by a leaked registry entry, and
-          // settle any approval park so no executor is left awaiting (P1-2).
-          this.deps.abortRegistry.markDone(session.id);
-          this.deps.abortRegistry.release(session.id);
-          this.approvalService.abortSession(session.id);
-          return;
-        }
-
-        usage.promptTokens += turn.usage.promptTokens;
-        usage.completionTokens += turn.usage.completionTokens;
-
-        // 自适应预算（只一次）：推理占满输出预算时，finish_reason=length 且
-        // 没有正文/工具调用。先抬预算重试同一轮，而不是直接报 UPSTREAM_EMPTY——
-        // 后者会让「预算不够」看起来像「上游故障」。
-        if (
-          turn.toolCalls.length === 0 &&
-          turn.text.trim() === '' &&
-          turn.finishReason === 'length' &&
-          !budgetAdapted
-        ) {
-          budgetAdapted = true;
-          const next = adaptOutputBudget(maxTokens);
-          maxTokens = next;
-          // 重试不计入轮次预算：这一轮没有产生任何可用于推进任务的内容。
-          budget.iteration -= 1;
-          sse.emitStage(
-            'budget_adapted',
-            `输出预算被推理耗尽（finish_reason=length），已自动提高到 ${next} 并重试本轮`,
-          );
+        const turnResult = await this.runTurn({
+          sse, session, req, apiKey, messages: view.messages, providerTools, toolDefs,
+          capabilities: decision.capabilities, turnSignal, channel, maxTokens, budget, usage,
+          budgetAdapted, onFirstToken, firstTokenMs,
+        });
+        if (turnResult.kind === 'degraded') {
+          channel = 'react';
+          degraded = true;
+          degradedReason = turnResult.reason;
+          emitMeta(budget.iteration + 1, 'native', degradedReason);
           continue;
         }
+        if (turnResult.kind === 'retry') {
+          budgetAdapted = true;
+          maxTokens = turnResult.maxTokens;
+          continue;
+        }
+        if (turnResult.kind === 'terminated') {
+          if (turnResult.error) traceStatus = 'error';
+          return;
+        }
+        const turn = turnResult.turn;
 
         // ── final answer ───────────────────────────────────────────────────────
         if (turn.toolCalls.length === 0) {
-          /**
-           * 空轮：没有正文、没有推理、没有工具调用，且这次上游一个 token 都没产出。
-           *
-           * 之前这里直接写一条空 assistant 消息并 `finish('stop')`，于是接口故障
-           * 会以「模型什么都没做」的形态出现在 run_report 里（toolCallCount=0,
-           * finishReason=stop）——和「模型只说不做」完全无法区分。实测撞到过：
-           * 某网关上的 claude-3-5-sonnet 首字节回来了、流正常结束、0 token。
-           * 现在单独报 UPSTREAM_EMPTY：调用方可以重试或换通道，
-           * 失败归因也不会把它错记成模型的能力缺口。
-           */
-          const noOutput = turn.text.trim() === '' && turn.reasoning.trim() === '';
-          const billed = turn.usage.completionTokens ?? 0;
-          // 不能只看「0 token」：实测撞到过计费 94 token、正文与推理却都是空的轮次。
-          // 旧判定放它走 finish('stop')，于是接口/解析故障以「模型什么都没说」的形态
-          // 静默落库，调用方拿不到任何错误码。对调用方来说「有 token 但没内容」同样是
-          // 上游空响应，而且更危险 —— 它连 UPSTREAM_EMPTY 都不会报。
-          if (noOutput) {
-            const message = billed === 0
-              ? '上游返回空响应（无正文/无推理/无工具调用，0 token）'
-              : `上游返回空响应（无正文/无推理/无工具调用，但计费 ${billed} token）`;
-            sse.emitStage('upstream_empty', message);
-            sse.emit('error', { code: 'UPSTREAM_EMPTY', message, retryable: true });
-            this.deps.abortRegistry.markDone(session.id);
-            this.deps.abortRegistry.release(session.id);
-            this.approvalService.abortSession(session.id);
-            return;
-          }
-
-          // 截断必须可见：finish_reason=length 时正文被 max_tokens 砍断，
-          // 之前一律记成 'stop'，于是「写了一半」和「写完收工」看起来一样。
-          const truncated = turn.finishReason === 'length';
-          const detail = truncated
-            ? '输出达到 max_tokens 上限被截断（finish_reason=length），这一轮没有产生工具调用'
-            : undefined;
-          const assistant = this.deps.messages.insert({
-            sessionId: session.id,
-            role: 'assistant',
-            content: turn.text,
-            reasoningContent: turn.reasoning || null,
-            segmentsJson: JSON.stringify([{ type: 'text', text: turn.text }]),
-            finishReason: truncated ? 'length' : 'stop',
-            usageJson: JSON.stringify(turn.usage),
-            // 体积口径含推理（此前只算正文，reasoning_content 被整段漏记）
-            tokens: estimateAssistantTokens(turn.text, turn.reasoning, null),
-          });
-          this.deps.sessions.bumpCounters(session.id, 1, assistant.tokens);
-          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs());
+          this.finishWithFinalAnswer({ sse, session, turn, budget, usage, firstTokenMs });
           return;
         }
+        const round = await this.executeToolRound({
+          sse, session, turn, budget, runId, channel, turnSignal, resolver, executor,
+          breaker, detector, convergence, reportedCircuit, review, reviewCtx, traceId, usage, firstTokenMs,
+        });
+        if (round.terminated) return;
+      }
+    } finally {
+      // 任何出口（正常 return、continue 到终点、或任一层抛错）都必须交还会话槽位，
+      // 否则该 session 之后每一个请求都要先空等 35s 再被秒退（AUDIT-004）。
+      this.finalizeRun({ runCancel: cancel, session, traceId, traceStatus, isFallback, clientIp, usage });
+    }
+  }
 
+  /** 统一的 run 收尾：会话槽位、轨迹、兜底 Key 记账。所有出口都走这里。 */
+  private finalizeRun(p: {
+    runCancel?: RunCancellation;
+    session: SessionRow;
+    traceId: string | null;
+    traceStatus: 'ok' | 'error';
+    isFallback: boolean;
+    clientIp: string;
+    usage: Usage;
+  }): void {
+    p.runCancel?.dispose();
+    this.deps.abortRegistry.release(p.session.id);
+    if (p.traceId) {
+      this.deps.trace?.endTrace(p.traceId, p.traceStatus);
+      this.activeTraces.delete(p.session.id);
+    }
+    // A-01：兜底 Key 用量统一在此记账（含上游中途失败已恢复的部分用量，P0-1）。
+    if (p.isFallback && this.deps.fallbackBudget) {
+      this.deps.fallbackBudget.recordUsage(p.clientIp, p.usage.promptTokens + p.usage.completionTokens);
+    }
+  }
+
+  /**
+   * 执行一轮工具调用：解析 → 快照 → 批量执行 → 证据回填 → 观测回喂 → 收敛判定。
+   * 返回 terminated=true 表示已在本方法内 finish()，调用方直接 return。
+   */
+  private async executeToolRound(p: {
+    sse: SseWriter;
+    session: SessionRow;
+    turn: TurnIR;
+    budget: BudgetState;
+    runId: string;
+    channel: Channel;
+    turnSignal: AbortSignal;
+    resolver: CallResolver;
+    executor: ToolExecutor;
+    breaker: CircuitBreaker;
+    detector: LoopDetector;
+    convergence: ConvergenceDetector;
+    reportedCircuit: Set<string>;
+    review: ReviewService | undefined;
+    reviewCtx: ReviewContext;
+    traceId: string | null;
+    usage: Usage;
+    firstTokenMs: () => number | null;
+  }): Promise<{ terminated: boolean }> {
+    const { sse, session, turn, budget, runId, channel, turnSignal, resolver, executor, breaker, detector, convergence, reportedCircuit, review, reviewCtx, traceId, usage, firstTokenMs } = p;
         // ── tool-call turn ─────────────────────────────────────────────────────
         // usageJson 必须写：这一轮的上游账单此前被整段丢掉（只有最终答案轮写），
         // 而一次 agent 运行里绝大多数是工具调用轮 —— 账单大面积静默丢失，
@@ -984,7 +821,7 @@ export class AgentLoopService {
           if (reportedCircuit.has(toolName)) {
             // The model asked again after the breaker opened: stop the task.
             this.finish(sse, session, 'circuit_open', budget.iteration, usage, `工具 ${toolName} 已熔断，任务中止`, undefined, budget.tokenBudget, firstTokenMs());
-            return;
+            return { terminated: true };
           }
           reportedCircuit.add(toolName);
         }
@@ -1042,29 +879,13 @@ export class AgentLoopService {
             });
             // 复核并行回填：不阻塞主流程；结论到达后单独发 review_result。
             if (review) {
-              const facts: ReviewFacts = {
-                toolName: item.toolCall.tool_name,
-                callId: item.toolCall.call_id,
-                iteration: budget.iteration,
-                command: typeof item.args.command === 'string' ? item.args.command : undefined,
-                cwd: typeof item.args.cwd === 'string' ? item.args.cwd : undefined,
-                affectedPaths: effect.items
-                  .filter((it) => it.kind === 'file' || it.kind === 'dir')
-                  .map((it) => ({
-                    path: it.path,
-                    operation: String(item.args.operation ?? item.toolCall.tool_name),
-                    beforeExists: it.exists,
-                    beforeBytes: it.bytes,
-                    afterExists: true,
-                    afterBytes: null,
-                  })),
-                itemCount: effect.itemCount,
-                sideEffects: [outcome.summary ?? ''].filter(Boolean),
-                diffSummary: itemDiffs
-                  .map((f) => `${f.path}: +${f.added}/-${f.removed}\n${f.preview}`)
-                  .join('\n')
-                  .slice(0, 4000),
-              };
+              const facts: ReviewFacts = buildReviewFacts(
+                item,
+                effect,
+                outcome.summary,
+                budget.iteration,
+                itemDiffs,
+              );
               void review
                 .review(facts, reviewCtx, 'async', turnSignal)
                 .then((result) => {
@@ -1105,7 +926,7 @@ export class AgentLoopService {
 
         if (loopAbort) {
           this.finish(sse, session, 'aborted', budget.iteration, usage, '检测到循环调用，任务已中止', undefined, budget.tokenBudget, firstTokenMs());
-          return;
+          return { terminated: true };
         }
 
         // B：收敛判定 —— 只读 RunState 相邻轮差异，模型自述不参与。
@@ -1127,33 +948,179 @@ export class AgentLoopService {
                 budget.tokenBudget,
                 firstTokenMs(),
               );
-              return;
+              return { terminated: true };
             }
           }
         }
-      }
-    } finally {
-      // 任何出口（正常 return、continue 到终点、或任一层抛错）都必须交还会话槽位，
-      // 否则该 session 之后每一个请求都要先空等 35s 再被秒退（AUDIT-004）。
-      runCancel?.dispose();
-      this.deps.abortRegistry.release(session.id);
-      // 轨迹收尾同理：所有出口都走到这里，轨迹不会永远悬在 running 状态。
-      if (traceId) {
-        this.deps.trace?.endTrace(traceId, traceStatus);
-        this.activeTraces.delete(session.id);
-      }
-      // A-01：兜底 Key 用量统一在此记账（含上游中途失败已恢复的部分用量，P0-1）。
-      if (isFallback && this.deps.fallbackBudget) {
-        this.deps.fallbackBudget.recordUsage(clientIp, usage.promptTokens + usage.completionTokens);
-      }
-    }
+    return { terminated: false };
+  }
+
+  /** 最终答案轮的收尾：空响应分型、截断标记、落库与 finish。 */
+  private finishWithFinalAnswer(p: {
+    sse: SseWriter;
+    session: SessionRow;
+    turn: TurnIR;
+    budget: BudgetState;
+    usage: Usage;
+    firstTokenMs: () => number | null;
+  }): void {
+    const { sse, session, turn, budget, usage, firstTokenMs } = p;
+          /**
+           * 空轮：没有正文、没有推理、没有工具调用，且这次上游一个 token 都没产出。
+           *
+           * 之前这里直接写一条空 assistant 消息并 `finish('stop')`，于是接口故障
+           * 会以「模型什么都没做」的形态出现在 run_report 里（toolCallCount=0,
+           * finishReason=stop）——和「模型只说不做」完全无法区分。实测撞到过：
+           * 某网关上的 claude-3-5-sonnet 首字节回来了、流正常结束、0 token。
+           * 现在单独报 UPSTREAM_EMPTY：调用方可以重试或换通道，
+           * 失败归因也不会把它错记成模型的能力缺口。
+           */
+          const noOutput = turn.text.trim() === '' && turn.reasoning.trim() === '';
+          const billed = turn.usage.completionTokens ?? 0;
+          // 不能只看「0 token」：实测撞到过计费 94 token、正文与推理却都是空的轮次。
+          // 旧判定放它走 finish('stop')，于是接口/解析故障以「模型什么都没说」的形态
+          // 静默落库，调用方拿不到任何错误码。对调用方来说「有 token 但没内容」同样是
+          // 上游空响应，而且更危险 —— 它连 UPSTREAM_EMPTY 都不会报。
+          if (noOutput) {
+            const message = billed === 0
+              ? '上游返回空响应（无正文/无推理/无工具调用，0 token）'
+              : `上游返回空响应（无正文/无推理/无工具调用，但计费 ${billed} token）`;
+            sse.emitStage('upstream_empty', message);
+            sse.emit('error', { code: 'UPSTREAM_EMPTY', message, retryable: true });
+            this.deps.abortRegistry.markDone(session.id);
+            this.deps.abortRegistry.release(session.id);
+            this.approvalService.abortSession(session.id);
+            return;
+          }
+
+          // 截断必须可见：finish_reason=length 时正文被 max_tokens 砍断，
+          // 之前一律记成 'stop'，于是「写了一半」和「写完收工」看起来一样。
+          const truncated = turn.finishReason === 'length';
+          const detail = truncated
+            ? '输出达到 max_tokens 上限被截断（finish_reason=length），这一轮没有产生工具调用'
+            : undefined;
+          const assistant = this.deps.messages.insert({
+            sessionId: session.id,
+            role: 'assistant',
+            content: turn.text,
+            reasoningContent: turn.reasoning || null,
+            segmentsJson: JSON.stringify([{ type: 'text', text: turn.text }]),
+            finishReason: truncated ? 'length' : 'stop',
+            usageJson: JSON.stringify(turn.usage),
+            // 体积口径含推理（此前只算正文，reasoning_content 被整段漏记）
+            tokens: estimateAssistantTokens(turn.text, turn.reasoning, null),
+          });
+          this.deps.sessions.bumpCounters(session.id, 1, assistant.tokens);
+          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs());
+          return;
   }
 
   /**
    * 从本轮工具调用里挑出「本轮将被改动的文件」路径，作为快照白名单。
-   *
    * 逻辑见模块级 `selectFilesToSnapshot`（纯函数，可直接单测）。
    */
+  /**
+   * 跑一轮上游调用：native/react 分支、工具参数被拒时降级、空响应抬预算重试。
+   * 不在这里写最终答案或执行工具——那是 run() 的下一步。
+   */
+  private async runTurn(p: {
+    sse: SseWriter; session: SessionRow;
+    req: AgentRunRequest; apiKey: string;
+    messages: Awaited<ReturnType<ContextManager['buildView']>>['messages'];
+    providerTools: ReturnType<ToolRegistry['toProviderTools']>;
+    toolDefs: ToolDefinition[];
+    capabilities: Awaited<ReturnType<ChannelRouter['decide']>>['capabilities'];
+    turnSignal: AbortSignal; channel: Channel; maxTokens: number;
+    budget: BudgetState; usage: Usage; budgetAdapted: boolean;
+    onFirstToken: (kind: 'reasoning' | 'content') => void; firstTokenMs: () => number | null;
+  }): Promise<
+    | { kind: 'turn'; turn: TurnIR }
+    | { kind: 'degraded'; reason: string }
+    | { kind: 'retry'; maxTokens: number }
+    | { kind: 'terminated'; error?: boolean }
+  > {
+    const { sse, session, req, apiKey, messages, providerTools, toolDefs, capabilities, turnSignal, channel, maxTokens, budget, usage, budgetAdapted, onFirstToken, firstTokenMs } = p;
+    let turn: TurnIR;
+    try {
+      turn = channel === 'native'
+        ? await runNativeTurn({
+            adapter: this.deps.adapter,
+            providerId: req.provider,
+            baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
+            apiKey,
+            model: req.model,
+            messages,
+            tools: providerTools,
+            temperature: req.temperature,
+            maxTokens,
+            capabilities,
+            sse,
+            signal: turnSignal,
+            onResponseStart: () => sse.emitStage('upstream_first_byte'),
+            onFirstToken,
+          })
+        : await runReactTurn({
+            adapter: this.deps.adapter,
+            providerId: req.provider,
+            baseUrl: this.deps.providerBaseUrl(req.provider, req.customBaseUrl),
+            apiKey,
+            model: req.model,
+            messages,
+            tools: toolDefs,
+            temperature: req.temperature,
+            maxTokens: req.maxTokens,
+            capabilities,
+            sse,
+            signal: turnSignal,
+            onResponseStart: () => sse.emitStage('upstream_first_byte'),
+            onFirstToken,
+          });
+    } catch (err) {
+      const partial = (err as { partialUsage?: Usage }).partialUsage;
+      if (partial) {
+        usage.promptTokens += partial.promptTokens;
+        usage.completionTokens += partial.completionTokens;
+      }
+      if (budget.aborted) {
+        sse.emitStage('aborted', '任务已被用户中止');
+        this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs());
+        return { kind: 'terminated' };
+      }
+      if (channel === 'native' && ChannelRouter.shouldDegrade(err)) {
+        budget.iteration -= 1;
+        return { kind: 'degraded', reason: '上游拒绝 tools 参数，已自动切换提示词解析模式' };
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      const code = message.includes('超时') ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_ERROR';
+      sse.emitStage(code === 'UPSTREAM_TIMEOUT' ? 'upstream_timeout' : 'upstream_error', message);
+      sse.emit('error', { code, message, retryable: code === 'UPSTREAM_TIMEOUT' });
+      this.deps.abortRegistry.markDone(session.id);
+      this.deps.abortRegistry.release(session.id);
+      this.approvalService.abortSession(session.id);
+      return { kind: 'terminated', error: true };
+    }
+
+    usage.promptTokens += turn.usage.promptTokens;
+    usage.completionTokens += turn.usage.completionTokens;
+
+    if (
+      turn.toolCalls.length === 0 &&
+      turn.text.trim() === '' &&
+      turn.finishReason === 'length' &&
+      !budgetAdapted
+    ) {
+      const next = adaptOutputBudget(maxTokens);
+      budget.iteration -= 1;
+      sse.emitStage(
+        'budget_adapted',
+        `输出预算被推理耗尽（finish_reason=length），已自动提高到 ${next} 并重试本轮`,
+      );
+      return { kind: 'retry', maxTokens: next };
+    }
+
+    return { kind: 'turn', turn };
+  }
+
   private filesToSnapshot(items: Array<{ toolCall: ToolCallRow; args: Record<string, unknown> }>): string[] {
     return selectFilesToSnapshot(items);
   }

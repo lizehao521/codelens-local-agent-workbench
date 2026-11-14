@@ -9,6 +9,7 @@
  * 约束：
  *   - 只接受「源串在文件里恰好出现 hits 次」的变异，避免误改多处；
  *   - 目标文件必须 git clean，跑完在 finally 里按字节还原并校验 sha256；
+ *     `--dirty` 显式放行脏文件（人工注入器的固化），仍然先备份字节、跑完还原并核对 sha256。
  *   - 判据文件必须存在，否则「非零退出」可能只是路径写错，不是判别力；
  *   - 超时 180s；任何异常都先还原再退出，不把工作区留在改坏状态。
  *
@@ -16,6 +17,7 @@
  *   node scripts/mutation-probe.mjs            # 全跑
  *   node scripts/mutation-probe.mjs --dry      # 只校验源串/脏净/判据存在，不改盘
  *   node scripts/mutation-probe.mjs --only=id  # 只跑一个变异体
+ *   node scripts/mutation-probe.mjs --dirty    # 允许脏文件：按字节备份 + 注入 + finally 还原 + sha256 对账
  * 退出码：0 全部被杀 / 1 有存活变异体 / 2 环境或还原失败
  */
 
@@ -30,6 +32,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
 const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) ?? '').slice(`--${k}=`.length) || undefined;
 const DRY = process.argv.includes('--dry');
+/** 允许脏文件：只在显式 --dirty 时生效，仍然字节备份 + finally 还原 + sha256 对账。 */
+const DIRTY = process.argv.includes('--dirty');
 const ONLY = arg('only');
 
 /** 三个根：靶子可以在 server/、client/，也可以在仓库根（尺子侧脚本）。 */
@@ -76,9 +80,12 @@ for (const m of selected) {
     continue;
   }
   if (!gitClean(repoRel)) {
-    console.error(`[SKIP] ${tag}: 目标文件有未提交改动，拒绝在脏文件上做变异`);
-    envError = true;
-    continue;
+    if (!DIRTY) {
+      console.error(`[SKIP] ${tag}: 目标文件有未提交改动，拒绝在脏文件上做变异（确需人工注入时加 --dirty）`);
+      envError = true;
+      continue;
+    }
+    console.warn(`[DIRTY] ${tag}: 目标文件有未提交改动，按 --dirty 继续（字节备份 + 还原 + sha256 对账）`);
   }
 
   const original = readFileSync(abs);

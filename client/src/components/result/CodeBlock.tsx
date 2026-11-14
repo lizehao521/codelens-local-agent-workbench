@@ -32,6 +32,9 @@ interface CodeBlockProps {
 
 export function CodeBlock({ children, code, lang, className }: CodeBlockProps) {
   const rawText = code ?? extractText(children);
+  const lineCount = rawText ? rawText.split('\n').length : 0;
+  const collapsible = lineCount > 24;
+  const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const pushToast = useUiStore((s) => s.pushToast);
 
@@ -71,11 +74,26 @@ export function CodeBlock({ children, code, lang, className }: CodeBlockProps) {
           {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
         </button>
       </figcaption>
-      <pre className="overflow-x-auto px-3 py-2">
+      <pre
+        className={cn(
+          'overflow-x-auto px-3 py-2',
+          collapsible && !expanded && 'max-h-72 overflow-y-hidden',
+        )}
+      >
         <code className={cn('hljs font-mono text-code leading-[1.6]', className)}>
           {children ?? code}
         </code>
       </pre>
+      {collapsible && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="flex w-full items-center justify-center gap-1 border-t border-border-subtle py-1 text-xs text-text-secondary transition-colors duration-150 hover:bg-bg-tertiary hover:text-text-primary"
+          aria-expanded={expanded}
+        >
+          {expanded ? '收起代码' : `展开全部（${lineCount} 行）`}
+        </button>
+      )}
     </figure>
   );
 }
