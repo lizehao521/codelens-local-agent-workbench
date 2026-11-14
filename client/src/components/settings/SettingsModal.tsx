@@ -8,14 +8,16 @@ import { ToolsZone } from './ToolsZone';
 import { McpZone } from './McpZone';
 import { SecurityZone } from './SecurityZone';
 import { DataZone } from './DataZone';
+import { PluginsZone } from './PluginsZone';
 import { cn } from '../../lib/cn';
 
-type ZoneId = 'provider' | 'tools' | 'mcp' | 'security' | 'data';
+type ZoneId = 'provider' | 'tools' | 'mcp' | 'security' | 'data' | 'plugins';
 
 const ZONES: { id: ZoneId; label: string }[] = [
   { id: 'provider', label: '模型与密钥' },
   { id: 'tools', label: '工具管理' },
   { id: 'mcp', label: 'MCP 连接器' },
+  { id: 'plugins', label: 'UI 插件' },
   { id: 'security', label: '安全边界' },
   { id: 'data', label: '数据管理' },
 ];
@@ -53,6 +55,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           {zone === 'mcp' && <McpZone />}
           {zone === 'security' && <SecurityZone />}
           {zone === 'data' && <DataZone />}
+          {zone === 'plugins' && <PluginsZone />}
         </div>
       </div>
     </Modal>

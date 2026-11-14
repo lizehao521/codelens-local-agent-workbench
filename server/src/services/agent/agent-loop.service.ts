@@ -75,6 +75,8 @@ export interface AgentRunRequest {
   message: string;
   /** 四类任务模式：合成进两通道的 system prompt（缺省 = 自由对话）。 */
   taskKind?: TaskKind;
+  /** 执行方式：按计划 / 目标模式；缺省不追加执行方式段。 */
+  executionMode?: 'plan' | 'goal';
   tools?: string[];
   channelMode: 'auto' | 'native' | 'react';
   /** 是否计入 RSI 测量（缺省 true）。false = 只干活/学习，不参与跨代对账。 */
@@ -590,7 +592,7 @@ export class AgentLoopService {
           // 再叠加工作目录声明：模型不知道自己在哪，就会靠猜路径试错（实测 10 轮烧掉 68K token
           // 一个文件都没读到）。这段只在配置了沙箱根时追加，未配置时行为与历史一致。
           this.withWorkspace(
-            buildSystemPrompt(req.taskKind, policyForPrompt),
+            buildSystemPrompt(req.taskKind, policyForPrompt, req.executionMode),
             this.deps.sandboxRoot,
           ),
           // P1-3c: native turns ship the tool schemas in the request itself (often

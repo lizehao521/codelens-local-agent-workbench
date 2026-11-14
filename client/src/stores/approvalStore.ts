@@ -95,6 +95,10 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     set((state) => {
       const prev = state.byCallId[callId];
       if (!prev) return state;
+      // 迟到的 ackPass：第 1 步的请求可能在第 2 步挑战到达后才返回。
+      // 终步（pass >= totalPasses）不得再被锁住，否则会显示
+      // “已确认第 2 步，等待最终确认…”并禁用最终确认按钮。
+      if (prev.totalPasses !== undefined && (prev.pass ?? 1) >= prev.totalPasses) return state;
       return { byCallId: { ...state.byCallId, [callId]: { ...prev, awaitingNextStep: true } } };
     }),
 

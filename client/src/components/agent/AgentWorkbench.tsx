@@ -12,6 +12,7 @@ import { useUiStore } from '../../stores/uiStore';
 import { useRunStore } from '../../stores/runStore';
 import { useApprovalStore } from '../../stores/approvalStore';
 import { useAgentStream } from '../../hooks/useAgentStream';
+import { useComposerStore } from '../../stores/composerStore';
 import { abortAgentRun } from '../../services/api';
 import { createId } from '../../lib/format';
 import { ContextOccupancyBar } from './ContextOccupancyBar';
@@ -23,7 +24,6 @@ import { ResumeConflictCard } from './ResumeConflictCard';
 import { AuditView } from './AuditView';
 import { SandboxGrantBar } from './SandboxGrantBar';
 import { cn } from '../../lib/cn';
-
 const SUGGESTIONS = [
   '用计算工具算 (1234.5*87)/13，并说明每一步',
   '读取 data 目录下的文件列表',
@@ -195,7 +195,7 @@ export function AgentWorkbench() {
 
   const handleSend = useCallback(
     (text: string) => {
-      void runTask(text, taskKind ? { taskKind } : undefined);
+      void runTask(text, { taskKind: taskKind ?? undefined, executionMode: useComposerStore.getState().executionMode });
     },
     [runTask, taskKind],
   );

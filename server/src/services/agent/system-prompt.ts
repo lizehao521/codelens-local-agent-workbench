@@ -1,6 +1,7 @@
 /** Agent system prompt: identity, rules, final-answer contract, and task sections. */
 
 import { buildTaskSection, type TaskKind } from './task-prompts.js';
+import { buildExecutionModeSection, type ExecutionMode } from './execution-mode.js';
 import type { Policy } from '../../repositories/policy.repository.js';
 import { loadProjectInstructions } from './project-instructions.js';
 
@@ -22,6 +23,7 @@ export const AGENT_BASE_PROMPT = `你是 CodeLens Agent，一个通过调用工�
 3. 涉及文件写入、外部 HTTP 写操作时，系统会暂停等待用户确认——这是正常流程，向用户说明你在等待什么即可。
 4. 禁止编造工具结果；引用文件内容或外部响应时，必须来自工具实际返回的 observation。
 5. 达到最大轮次时，基于已完成的工作输出阶段性总结，明确列出未完成项。
+6. 全量测试/类型检查优先调用 agent.verify；禁止用 sys.exec 跑无目标的 vitest 或 npm test（会撞工具超时）。单文件测试用 test.run。
 
 【表达与版式】不要每轮套用同一个版式；先看这一轮要交付什么，再决定结构：
 1. 简单问题用 1–3 段短段落直接回答，不加标题、表格，也不要固定写「结论/执行过程/遗留项」。
@@ -41,11 +43,12 @@ export const AGENT_SYSTEM_PROMPT = AGENT_BASE_PROMPT;
  * policy 来自 Update 闭环的当前 π'，使上一轮沉积的经验进入下一轮 Act（关闭 C2 开环）。
  * policy 缺省时行为与历史完全一致（向后兼容）。
  */
-export function buildSystemPrompt(taskKind?: TaskKind, policy?: Policy): string {
+export function buildSystemPrompt(taskKind?: TaskKind, policy?: Policy, executionMode?: ExecutionMode): string {
   const base = taskKind ? `${AGENT_BASE_PROMPT}\n\n${buildTaskSection(taskKind)}` : AGENT_BASE_PROMPT;
-  if (!policy || policy.lessons.length === 0) return base;
+  const withMode = executionMode ? `${base}\n\n${buildExecutionModeSection(executionMode)}` : base;
+  if (!policy || policy.lessons.length === 0) return withMode;
   const lessonsBlock = policy.lessons.map((lesson, i) => `${i + 1}. ${lesson}`).join('\n');
-  return `${base}\n\n【来自过往经验的策略（强化内核自动沉淀，仅供本次任务参考）】\n${lessonsBlock}`;
+  return `${withMode}\n\n【来自过往经验的策略（强化内核自动沉淀，仅供本次任务参考）】\n${lessonsBlock}`;
 }
 
 /** Observation fed back for a hallucinated or disabled tool (no retry budget burn). */

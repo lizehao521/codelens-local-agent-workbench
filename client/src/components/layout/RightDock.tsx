@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { RunInspector } from '../agent/RunInspector';
+import { PluginDock } from '../../plugins/PluginDock';
 import { listCheckpoints, listTraces, type CheckpointSummary, type TraceSummary } from '../../services/api';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -22,11 +23,12 @@ import { useUiStore, type CapabilityModal } from '../../stores/uiStore';
 import { formatRelativeTime } from '../../lib/format';
 import { cn } from '../../lib/cn';
 
-type DockTab = 'run' | 'cap';
+type DockTab = 'run' | 'cap' | 'plugins';
 
 const TABS: Array<{ id: DockTab; label: string }> = [
   { id: 'run', label: '运行检视器' },
   { id: 'cap', label: '能力' },
+  { id: 'plugins', label: '插件' },
 ];
 
 const CAPABILITY_ENTRIES: Array<{
@@ -71,7 +73,7 @@ export function RightDock({ className }: { className?: string }) {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {tab === 'run' ? <RunInspector /> : <CapabilityPanel />}
+        {tab === 'run' ? <RunInspector /> : tab === 'cap' ? <CapabilityPanel /> : <PluginDock />}
       </div>
     </div>
   );

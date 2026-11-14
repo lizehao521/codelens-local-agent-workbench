@@ -81,7 +81,10 @@ export class SandboxPermissionService {
       allowDirs: validated,
       autoApprove: { ...this.config.autoApprove, ...(partial.autoApprove ?? {}) },
     };
-    this.config = next;
+    // 运行中的 CallResolver 持有的是这个对象的引用：必须原地更新，
+    // 否则用户在本次 run 里打开“免审批”后，后续调用仍按旧配置弹审批。
+    Object.assign(this.config.autoApprove, next.autoApprove);
+    this.config = { allowDirs: validated, autoApprove: this.config.autoApprove };
     this.repo.set(next);
     return { ok: true };
   }

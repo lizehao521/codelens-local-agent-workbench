@@ -88,4 +88,13 @@ describe('SandboxPermissionService', () => {
     expect(svc.allowDirs.length).toBe(1);
     expect(svc.autoApprove.fsDestructive).toBe(true);
   });
+
+  it('update 原地更新 autoApprove，运行中持有的旧引用能看到新值', () => {
+    const db = makeFakeDb();
+    const svc = new SandboxPermissionService(db, sandboxRoot);
+    const held = svc.autoApprove; // 模拟 CallResolver 在 run 开始时拿到的引用
+    expect(held.fsDestructive).toBe(false);
+    svc.update({ autoApprove: { fsDestructive: true } });
+    expect(held.fsDestructive).toBe(true);
+  });
 });

@@ -27,6 +27,13 @@ describe('buildAgentStreamRequest（AUDIT-006 taskKind 接线）', () => {
     expect(req.taskKind, 'taskKind 必须透传').toBe('optimize');
   });
 
+  it('执行方式透传：plan / goal 都进入请求体', () => {
+    for (const executionMode of ['plan', 'goal'] as const) {
+      const req = buildAgentStreamRequest(settings, 'x', 's', { executionMode });
+      expect(req.executionMode).toBe(executionMode);
+    }
+  });
+
   it('任务模式齐全（与服务端 TASK_KINDS 同集合）', () => {
     expect(TASK_MODES.map((m) => m.value)).toEqual(['analyze', 'explain', 'debug', 'optimize', 'verify']);
   });

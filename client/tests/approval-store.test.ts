@@ -83,6 +83,17 @@ describe('approvalStore.ackPass（AUDIT-005 非终步锁定）', () => {
   it('ackPass 对不存在的 callId 是空操作（不抛错）', () => {
     expect(() => useApprovalStore.getState().ackPass('nope')).not.toThrow();
   });
+
+  it('第二步到达后迟到的 ackPass 不得重新锁住终步', () => {
+    useApprovalStore.getState().upsert(approval({ approvalId: 'ap_1' }));
+    useApprovalStore.getState().ackPass('call_1');
+    useApprovalStore.getState().upsert(approval({ approvalId: 'ap_2', approvalToken: 'tok_2' }));
+    // 模拟第 1 步的 submit 请求此时才返回，触发迟到的 ackPass
+    useApprovalStore.getState().ackPass('call_1');
+    const vm = useApprovalStore.getState().byCallId.call_1;
+    expect(vm?.pass).toBe(2);
+    expect(vm?.awaitingNextStep).toBe(false);
+  });
 });
 
 describe('approvalStore.refresh（AUDIT-009 续期）', () => {

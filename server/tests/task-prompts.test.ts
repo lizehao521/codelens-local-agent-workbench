@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { TASK_KINDS, TASK_PROMPTS, buildTaskSection, isTaskKind } from '../src/services/agent/task-prompts.js';
+import { buildExecutionModeSection } from '../src/services/agent/execution-mode.js';
 import { AGENT_BASE_PROMPT, AGENT_SYSTEM_PROMPT, buildSystemPrompt } from '../src/services/agent/system-prompt.js';
 import { buildReactSystemPrompt } from '../src/services/agent/react-channel.js';
 import { AgentRequestSchema } from '../src/validators/agent.schema.js';
@@ -66,6 +67,14 @@ describe('buildSystemPrompt composition', () => {
     expect(composed).toContain('【任务模式：优化】');
     expect(composed).toContain('优化后代码');
   });
+
+  it('executionMode adds a plan/goal section without changing task/content rules', () => {
+    expect(buildExecutionModeSection('plan')).toContain('【执行方式：按计划执行】');
+    expect(buildExecutionModeSection('goal')).toContain('【执行方式：目标模式】');
+    const prompt = buildSystemPrompt('debug', undefined, 'plan');
+    expect(prompt).toContain('【任务模式：调试】');
+    expect(prompt).toContain('【执行方式：按计划执行】');
+  });
 });
 
 describe('AgentRequestSchema taskKind', () => {
@@ -81,6 +90,14 @@ describe('AgentRequestSchema taskKind', () => {
   it('rejects unknown kinds (single source of truth = TASK_KINDS)', () => {
     const parsed = AgentRequestSchema.safeParse({ ...MINIMAL_BODY, taskKind: 'review' });
     expect(parsed.success).toBe(false);
+  });
+
+  it('accepts executionMode plan/goal and rejects unknown values', () => {
+    for (const executionMode of ['plan', 'goal'] as const) {
+      const parsed = AgentRequestSchema.safeParse({ ...MINIMAL_BODY, executionMode });
+      expect(parsed.success && parsed.data.executionMode).toBe(executionMode);
+    }
+    expect(AgentRequestSchema.safeParse({ ...MINIMAL_BODY, executionMode: 'auto' }).success).toBe(false);
   });
 });
 

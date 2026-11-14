@@ -11,6 +11,8 @@ export const AgentRequestSchema = z.object({
   // 四类任务模式（README「四类核心能力」）：经 buildSystemPrompt 注入任务段，
   // react 通道同样叠加。枚举值单一来源 = TASK_KINDS，缺省 = 自由对话。
   taskKind: z.enum(TASK_KINDS).optional(),
+  /** 执行方式：plan=按计划执行，goal=以目标模式执行此计划。 */
+  executionMode: z.enum(['plan', 'goal']).optional(),
   // 自定义 Provider（provider='custom'）的自带 Base URL。非 custom  provider 忽略。
   // 历史上仅 legacy chat 接口透传该字段，Agent 流接口漏掉 → resolveBaseUrl 抛
   // 「customBaseUrl is required for custom provider」（2026-10-24 修复）。

@@ -17,6 +17,7 @@
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { config } from '../../config/env.js';
+import { fullTestVerdict } from './full-test-policy.js';
 
 /**
  * 一律拒绝的命令名（不依赖白名单是否配置）。
@@ -329,11 +330,7 @@ function normalize(name: string): string {
 }
 
 /**
- * 命令形态校验 + 白名单判定。
- *
- * `command` 只接受**逻辑名**（basename），不接受路径：
- * `./evil-git`、`C:\tmp\git.exe`、`..\git` 一律 INVALID_ARGS ——
- * 允许路径就等于允许执行沙箱里任意一个刚被 fs.write 写出来的文件。
+ * 命令形态校验 + 白名单判定。command 只接受逻辑名（basename），不接受路径。
  */
 export function evaluateExecCommand(
   command: string,
@@ -408,6 +405,8 @@ export function evaluateExecCommand(
       };
     }
   }
+
+  const denied = fullTestVerdict(name, args); if (denied) return denied;
 
   // fail-closed：空白名单 = 全拒。这里刻意不写 `allowlist.length === 0 → 放行`。
   const normalizedAllow = allowlist.map(normalize).filter((v) => v.length > 0);

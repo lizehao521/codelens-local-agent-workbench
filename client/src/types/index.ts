@@ -618,7 +618,6 @@ export interface AgentErrorPayload {
 }
 
 // ── 请求体 ──────────────────────────────────────────────────
-
 export interface AgentStreamRequest {
   sessionId?: string;
   provider: string;
@@ -638,8 +637,9 @@ export interface AgentStreamRequest {
   overrideArguments?: Record<string, unknown>;
   /** 四类任务模式（analyze/explain/debug/optimize）；缺省=自动，模型自定 */
   taskKind?: Task;
+  /** 执行方式：plan=按计划执行，goal=以目标模式执行；缺省不追加 */
+  executionMode?: 'plan' | 'goal';
 }
-
 export interface ApprovalSubmitRequest {
   token: string;
   decision: ApprovalDecision;
