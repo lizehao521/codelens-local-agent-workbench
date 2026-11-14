@@ -94,6 +94,10 @@ server/scratch/_list-models.mjs
 # 人所有目录重锚时 cp 出来的改前留档（还原版），不是要发布的基线
 .self-upgrade/*.bak-*
 
+# 自升级循环运行态产物：checkpoint 源码副本 + diag/sse/judge 调试日志，可重跑，不进版本控制
+# （判据结论与账本记录另存于 .self-upgrade 顶层可验证文件，不在此目录）
+.self-upgrade/loop/
+
 # 本机磁盘巡检脚本与两份交付包（产物，不是源码）
 _disk_scan.ps1
 delivery-scope-guardian.zip
@@ -104,3 +108,7 @@ server/scratch/_patch-env.mjs
 server/scratch/live7.mjs
 server/scratch/dsh-index.json
 server/scratch/dsh-pkg-1/
+
+# Playwright 浏览器 e2e 产物（test-results / report 可重跑）
+client/test-results/
+client/playwright-report/
