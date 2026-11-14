@@ -13,14 +13,26 @@
 
 ## 功能
 
-- **Agent 工作台**：自然语言任务 → 显式状态机（原生 function calling / ReAct 双通道）→ 工具调用 → 观测反馈 → 最终答案；每轮工具与推理可见
-- **工具调用 + 三档审批**：内置工具（`fs.read` / `fs.list` / `fs.write`、`code.check`（语法）/ `type.check`（项目根 `tsc --noEmit`）/ `test.run`（项目根跑单文件测试）、计算、时间、UUID、JSON、文本 diff、HTTP 请求）与 MCP 连接器；高危工具走审批（none / soft / hard / two_step），审批令牌 HMAC 签名，支持改参重批与单步重跑
+- **Agent 工作台**：自然语言任务 → 显式状态机（原生 function calling / ReAct 双通道）→ 工具调用 → 观测反馈 → 最终答案；每轮工具与推理可见。输入框为空时给一条**下一步引导**（纯规则按会话末条消息推荐，不调模型、不产生费用）
+- **执行方式（发送前切换）**：「按计划执行」——先拆步骤再照做，遇阻或需改步骤先说明、不静默改道；「以目标模式执行此计划」——锁定目标与边界，允许执行中换步骤与工具。**只影响 Agent 的组织方式，不改变工具权限与审批规则**
+- **工具调用 + 三档审批**：内置工具（`fs.read` / `fs.list` / `fs.write`、`code.check`（语法）/ `type.check`（项目根 `tsc --noEmit`）/ `test.run`（项目根跑单文件测试）、计算、时间、UUID、JSON、文本 diff、HTTP 请求）与 MCP 连接器；高危工具按 `soft` / `hard` / `two_step` 三档审批（`none` 为免审），审批令牌 HMAC 签名，支持改参重批与单步重跑
+- **UI 插件坞**：右栏「插件」页签常驻。插件是**声明式 manifest**（面板 + 动作），动作只把草稿填进输入框、不自动发送，**不含任何脚本**——所以装第三方插件不会获得页面脚本执行权限。内置「开发工具箱」「会议纪要」，设置页可表单创建或粘贴 JSON 安装，启停与自定义只存本机 localStorage
 - **上下文与预算**：上下文占用条、75% 自动压缩；单任务四道预算（迭代数、工具调用总数、累计 token、墙钟）同时生效，到顶先写 RunState 终态再停，汇报卡区分「已完成 / 预算耗尽 · 未完成」
 - **会话持久化**：服务端 SQLite（node:sqlite），刷新/重开不丢失；恢复码支持换机找回
 - **BYOK**：DeepSeek / 智谱 GLM / Moonshot / 通义千问 / OpenAI / 自定义 OpenAI 兼容端点；Key 仅存本浏览器，服务端只代理转发、不落库、不记日志
 - **免 Key 试用（可选）**：配置兜底 Key 后可开启试用模式，按 IP 每日限次 + 三级 token 预算闸，防成本失控。试用态固定使用服务端配置的上游与模型（`TRIAL_PROVIDER` / `TRIAL_MODEL` / `TRIAL_BASE_URL`），**切换上游请自带 Key**；上游不可用时界面会给出中文原因与一键配置入口，不会白屏。
 - **双端形态**：网页端（Express 托管构建产物）+ 桌面端（Electron，Windows 安装包）
 - **深色 IDE 工作台**：深色优先 + 浅色可选 + 跟随系统；桌面三栏 / 平板两栏 + 抽屉 / 手机底部 TabBar
+
+> UI 插件 manifest 最小形态（`id` 为 3–40 位 kebab-case；1–4 个面板，每面板 1–12 条动作，动作只有 `label` 与 `prompt` 两个字段）：
+>
+> ```json
+> { "id": "my-tools", "name": "我的动作", "version": "1.0.0", "description": "把常用提问变成一键草稿",
+>   "panels": [{ "id": "main", "title": "常用动作",
+>     "items": [{ "label": "检查覆盖", "prompt": "检查本次改动是否覆盖了相关测试，并列出缺口。" }] }] }
+> ```
+>
+> 校验失败会在设置页直接给出原因（如 id 非法、面板 id 重复、动作条数越界），不会静默丢弃。
 
 ## 技术栈
 
@@ -29,7 +41,8 @@
 | 前端 | React 19.3.1 + Vite 8.3.4 + TypeScript 5.9 + Tailwind CSS 4.3.3 + zustand + lucide-react |
 | 后端 | Node 22+ + Express 5.3.0 + TypeScript + zod 4.6.7 + node:sqlite |
 | 桌面端 | Electron 45 + electron-builder（Windows NSIS 安装包） |
-| 存储 | 服务端 SQLite（node:sqlite，路径见 `AGENT_DB_PATH`）；前端不持久化任何密钥 |
+| 存储 | 服务端 SQLite（node:sqlite，路径见 `AGENT_DB_PATH`）；前端不持久化任何密钥，仅存 UI 插件清单与偏好 |
+| 测试 | vitest（server / client 各自单测）+ Playwright（浏览器 e2e，跑在构建产物上） |
 | 部署 | 单容器（Express 托管 Vite 构建产物）；桌面端内嵌同一服务端 |
 
 架构决策记录见 `docs/decisions/`，规格契约见 `docs/agent/spec.md`，API 契约见 `docs/agent/openapi.yaml`（v2.0）。
@@ -42,11 +55,13 @@
 
 ```bash
 # 终端 1：服务端（:8080）
-cd server && npm install && npm run dev
+cd server && npm install && npx tsx src/app.ts
 
 # 终端 2：前端（:5173，/api 代理到 8080）
 cd client && npm install && npm run dev
 ```
+
+> 服务端请用上面这条 `npx tsx src/app.ts`，**不要用 `npm run dev`**：它是 `tsx watch`，而 `app.ts` 的启动判据是 `isMainModule()`（比较 `import.meta.url` 与 `process.argv[1]`），watch 模式下判为 false，`app.listen` 不会执行——表现为端口不监听、也没有任何日志，很容易误判成配置问题。
 
 打开 http://localhost:5173 → 点右上角设置 → 选 provider、填自己的 API Key → 保存 → 回到工作台描述任务即可。
 
@@ -124,10 +139,15 @@ node scripts/build-desktop-offline.mjs  # 离线构建（使用本地 electron �
 
 ```bash
 cd server && npm test        # vitest：校验/限流/adapter/提示词/Agent 循环/审批/安全
-cd client && npm test        # vitest：存储/结果解析/Agent 请求/工作台挂载
-bash scripts/e2e.sh          # 端到端：构建+启动+curl 断言
+cd client && npm test        # vitest：存储/结果解析/Agent 请求/工作台挂载/插件 manifest
+cd client && npm run test:e2e   # 浏览器 e2e（Playwright）：先构建双端再跑，不依赖上游 Key
+bash scripts/e2e.sh          # 端到端：构建+启动+curl 断言（可用 E2E_PORT 指定端口）
 bash scripts/agent-e2e.sh    # Agent 闭环端到端（可选真实 Key）
 ```
+
+浏览器 e2e 首次需装浏览器：`cd client && npx playwright install chromium`；已有本机 Chrome/Chromium 时可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定可执行文件。
+
+CI（GitHub Actions）分两个 job：`server`（typecheck + 验收套件 + krsi）与 `client`（tsc + vitest + ui-static + 浏览器 e2e，含 chromium 安装）。
 
 ## 安全模型（BYOK）
 
