@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   client:
-    name: client (tsc + 136 + ui-static)
+    name: client (tsc + vitest + ui-static + browser e2e)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,6 +24,8 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
+      - run: npm ci --prefix ../server
+      - run: npx playwright install --with-deps chromium
       - run: npm run test:acceptance
 
   server:

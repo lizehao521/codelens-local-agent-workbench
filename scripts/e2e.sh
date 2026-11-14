@@ -2,7 +2,9 @@
 # ============================================================
 # CodeLens 端到端验证脚本（对应 docs/agent/spec.md §12 端到端验证步骤）
 # 用法：bash scripts/e2e.sh
-# 前置：client 与 server 已 npm install
+# 前置：client 与 server 已 npm install；浏览器级 e2e 需先
+#   cd client && npx playwright install chromium
+# （本机已把 Chrome for Testing 解压到 ms-playwright/chromium-1255；也可用 PLAYWRIGHT_CHROMIUM_EXECUTABLE 指定）
 # 说明：2026-10-24 起本脚本只验证 v2.0 Agent 端点——v1 的 /api/v1/chat*
 # 路由已随 docs/spec.md 一同退役（v1 文档见 docs/ 根目录，已被 docs/agent/* 取代）。
 # ============================================================
@@ -74,6 +76,14 @@ echo "== 5. 关键错误流：校验失败 =="
 INVALID="$(curl -s -X POST "$BASE/api/v1/agent/stream" -H "Content-Type: application/json" -d '{"model":"x","message":""}')"
 assert_contains "400 VALIDATION_ERROR" "$INVALID" "VALIDATION_ERROR"
 
+echo "== 5.1 执行方式协议 =="
+BADMODE="$(curl -s -X POST "$BASE/api/v1/agent/stream" -H "Content-Type: application/json" -d '{"provider":"deepseek","model":"deepseek-chat","message":"test","executionMode":"auto"}')"
+assert_contains "非法 executionMode 被校验拒绝" "$BADMODE" "VALIDATION_ERROR"
+PLANMODE="$(curl -s -N -X POST "$BASE/api/v1/agent/stream" -H "Content-Type: application/json" -d '{"provider":"deepseek","model":"deepseek-chat","message":"test","executionMode":"plan"}' --max-time 15)"
+assert_contains "executionMode=plan 进入 Agent 流" "$PLANMODE" "MISSING_API_KEY"
+GOALMODE="$(curl -s -N -X POST "$BASE/api/v1/agent/stream" -H "Content-Type: application/json" -d '{"provider":"deepseek","model":"deepseek-chat","message":"test","executionMode":"goal"}' --max-time 15)"
+assert_contains "executionMode=goal 进入 Agent 流" "$GOALMODE" "MISSING_API_KEY"
+
 echo "== 6. 会话与工具清单 =="
 SESSIONS="$(curl -s "$BASE/api/v1/sessions?limit=100")"
 assert_contains "sessions 返回 items" "$SESSIONS" '"items"'
@@ -84,6 +94,12 @@ assert_contains "tools 含线上名 http_request" "$TOOLS" "http_request"
 echo "== 7. SPA fallback =="
 INDEX="$(curl -s "$BASE/")"
 assert_contains "index.html 返回" "$INDEX" "root"
+
+echo "== 7.1 新 UI 产物 =="
+ASSETS="$ROOT/server/dist-client/assets"
+for NEEDLE in "按计划执行" "以目标模式执行此计划" "下一步：" "UI 插件"; do
+  if grep -R -q "$NEEDLE" "$ASSETS" 2>/dev/null; then ok "构建产物含 $NEEDLE"; else bad "构建产物缺 $NEEDLE"; fi
+done
 
 echo "== 8. 停止服务 =="
 # 先 TERM 后 KILL，并验证端口确实释放
@@ -96,6 +112,14 @@ if curl -sf "$BASE/api/health" >/dev/null 2>&1; then
   sleep 1
 fi
 if curl -sf "$BASE/api/health" >/dev/null 2>&1; then bad "服务未能停止"; else ok "服务已停止"; fi
+
+echo "== 9. 浏览器级交互（Playwright）=="
+if ( cd "$ROOT/client" && npx playwright test >/tmp/e2e-playwright.log 2>&1 ); then
+  ok "Playwright：Tab 填草稿 + 插件安装常驻"
+else
+  bad "Playwright（见 /tmp/e2e-playwright.log）"
+  tail -20 /tmp/e2e-playwright.log
+fi
 
 echo ""
 echo "========== E2E 结果: $PASS 通过 / $FAIL 失败 =========="
