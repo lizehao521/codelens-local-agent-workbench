@@ -87,7 +87,10 @@ const toRepoRel = (f) => {
   return x;
 };
 /** 仓库相对路径 → 磁盘绝对路径（client/ 在 server 上一级）。 */
-const absPath = (f) => (f.startsWith('client/') ? join(SERVER, '..', f) : join(SERVER, f));
+const absPath = (f) =>
+  f.startsWith('client/') || f.startsWith('scripts/')
+    ? join(SERVER, '..', f)
+    : join(SERVER, f);
 
 const ALLOWED = ((process.argv.find((a) => a.startsWith('--allowed=')) ?? '').slice('--allowed='.length) || 'src/services/tools/observation-render.ts')
   .split(',')
@@ -409,7 +412,7 @@ try {
 // 规则：每个判据文件至少 1 条反向断言，且反向占比 ≥20%。
 let judgeSelfOk = true;
 try {
-  execFileSync('node', ['scripts/judge-audit.mjs', '--strict'], {
+  execFileSync('node', ['scripts/judge-audit.mjs', '--strict', `--file=${baseline.judge}`], {
     cwd: SERVER,
     stdio: 'pipe',
     encoding: 'utf8',

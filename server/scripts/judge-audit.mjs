@@ -26,6 +26,8 @@ import { fileURLToPath } from 'node:url';
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 const DIR = join(SERVER, 'tests', 'self-upgrade');
 const STRICT = process.argv.includes('--strict');
+/** 限定只审本题判据；默认仍审全目录，保持既有用法。 */
+const FILE = ((process.argv.find((a) => a.startsWith('--file=')) ?? '').slice('--file='.length)).trim();
 
 /** 反向断言：期望失败、期望抛错、期望被拒绝。 */
 const NEGATIVE = [
@@ -41,8 +43,13 @@ const POSITIVE = [/\.toBe\(\s*true\s*\)/g, /\.toBeTruthy\(\)/g, /\.resolves\b/g,
 const count = (src, list) => list.reduce((n, re) => n + (src.match(re)?.length ?? 0), 0);
 
 const rows = [];
-for (const name of readdirSync(DIR).filter((f) => f.endsWith('.test.ts'))) {
-  const src = readFileSync(join(DIR, name), 'utf8');
+const files = FILE
+  ? [FILE]
+  : readdirSync(DIR).filter((f) => f.endsWith('.test.ts'));
+for (const name of files) {
+  const abs = FILE ? join(SERVER, FILE) : join(DIR, name);
+  const src = readFileSync(abs, 'utf8');
+  const displayName = name.split(/[\\/]/).pop();
   const its = src.match(/\bit\(/g)?.length ?? 0;
   const neg = count(src, NEGATIVE);
   const pos = count(src, POSITIVE);
@@ -51,7 +58,7 @@ for (const name of readdirSync(DIR).filter((f) => f.endsWith('.test.ts'))) {
   const skipped = /skipIf|\.skip\(/.test(src);
   // 判据里出现 skip 就是「可能永远不跑」，必须单独标出来 —— 我们被假绿坑过一次。
   const verdict = total === 0 ? 'NO-ASSERT' : neg === 0 ? 'NO-NEGATIVE' : ratio < 0.2 ? 'WEAK' : 'OK';
-  rows.push({ name, its, neg, pos, ratio, skipped, verdict });
+  rows.push({ name: displayName, its, neg, pos, ratio, skipped, verdict });
 }
 
 const pad = (s, n) => String(s).padEnd(n);

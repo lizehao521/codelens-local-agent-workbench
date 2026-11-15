@@ -17,7 +17,7 @@
  *   node scripts/mutation-probe.mjs            # 全跑
  *   node scripts/mutation-probe.mjs --dry      # 只校验源串/脏净/判据存在，不改盘
  *   node scripts/mutation-probe.mjs --only=id  # 只跑一个变异体
- *   node scripts/mutation-probe.mjs --dirty    # 允许脏文件：按字节备份 + 注入 + finally 还原 + sha256 对账
+ *   node scripts/mutation-probe.mjs --dirty    # 仅本地显式 + 当前任务 allowed；CI/MUTATION_AUTO 会拒绝
  * 退出码：0 全部被杀 / 1 有存活变异体 / 2 环境或还原失败
  */
 
@@ -27,6 +27,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MUTATIONS } from './lib/mutations.mjs';
+import { allowedForTask, evaluateDirtyPolicy, isAutomatedFlow } from './lib/mutation-dirty-gate.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sha = (buf) => createHash('sha256').update(buf).digest('hex');
@@ -80,12 +81,18 @@ for (const m of selected) {
     continue;
   }
   if (!gitClean(repoRel)) {
-    if (!DIRTY) {
-      console.error(`[SKIP] ${tag}: 目标文件有未提交改动，拒绝在脏文件上做变异（确需人工注入时加 --dirty）`);
+    const policy = evaluateDirtyPolicy({
+      requested: DIRTY,
+      automated: isAutomatedFlow(),
+      target: repoRel,
+      allowed: allowedForTask(m.task, pkg, fileRoot, ROOT),
+    });
+    if (!policy.allow) {
+      console.error(`[SKIP] ${tag}: ${policy.reason}`);
       envError = true;
       continue;
     }
-    console.warn(`[DIRTY] ${tag}: 目标文件有未提交改动，按 --dirty 继续（字节备份 + 还原 + sha256 对账）`);
+    console.warn(`[DIRTY] ${tag}: ${policy.reason}（字节备份 + 还原 + sha256 对账）`);
   }
 
   const original = readFileSync(abs);
