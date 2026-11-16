@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>exp13 · 代边界的受控开关</title>
+<style>
+:root{--bg:#0f1216;--card:#171c23;--line:#2a323d;--fg:#e6edf3;--mut:#8b98a8;
+--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;}
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:var(--bg);color:var(--fg);
+font:15px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1080px;margin:0 auto}
+h1{font-size:25px;margin:0 0 6px;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:22px}
+h2{font-size:18px;margin:30px 0 10px;padding-left:10px;border-left:3px solid var(--acc)}
+h3{font-size:14px;margin:18px 0 6px;color:#c9d6e4}
+p{margin:9px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+.kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:16px 0}
+.kpi>div{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.kpi b{display:block;font-size:20px;color:var(--acc)}
+.kpi span{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:8px 9px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12px}
+tr:hover td{background:#1b212a}
+code{background:#11161d;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+pre{background:#11161d;border:1px solid var(--line);border-radius:8px;padding:13px;overflow:auto;font-size:12px;line-height:1.55}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.small{font-size:12px;color:var(--mut)}
+.tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;border:1px solid}
+.t-ok{color:var(--ok);border-color:#2c5f38;background:#132218}
+.t-bad{color:var(--bad);border-color:#6a2a2a;background:#211414}
+.t-warn{color:var(--warn);border-color:#5c4a1a;background:#1f1a10}
+blockquote{border-left:3px solid var(--warn);margin:12px 0;padding:6px 14px;color:#d9c9a3;background:#1c1810;border-radius:0 8px 8px 0}
+.big-ok{color:var(--ok);font-weight:600}
+.big-bad{color:var(--bad);font-weight:600}
+</style></head><body><div class="wrap">
+
+<h1>exp13 · 代边界的受控开关</h1>
+<div class="sub">缺口：上一轮把「只统计本次运行」做成了无条件改动，OFF 态不再等价官方，受控放行失去对照组。
+本轮把开关收进取数点，让 OFF 回到官方全量、ON 保留本代口径。改动 1 文件 4 处。</div>
+
+<div class="kpi">
+  <div><b>11/11</b><span>端到端判据全过</span></div>
+  <div><b>4 格</b><span>OFF/ON × 边界/缺省</span></div>
+  <div><b>4</b><span>codelens 给出的 Edit</span></div>
+  <div><b>1</b><span>改动文件数</span></div>
+  <div><b>0</b><span>tsc 报错</span></div>
+</div>
+
+<h2>一、缺口：OFF 这一维是死的</h2>
+<p>探针不跑会话：拷一份 DB，固定 session（21 条工具调用 / 13 成功），只改 flag 与 <code>runStartedAt</code>，直接调 <code>judge()</code>，读 <code>tool.success_rate</code> 的 detail。补丁前四格：</p>
+<table><tr><th>旗标</th><th>runStartedAt</th><th>判据读数</th><th>判决</th></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>边界</td><td class='mono'>3 次 / 1 成功（33.3%）</td><td><span class='tag t-fail'>bad</span></td></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>边界</td><td class='mono'>3 次 / 1 成功（33.3%）</td><td><span class='tag t-fail'>bad</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr></table>
+<p>OFF 与 ON 完全一样 —— 旗标对这条路径零影响。同一探针跑在<b>官方基线树</b>（<code>bak_exp12/*.before</code>，judge 哈希 <code class="mono">cbd3f6c1</code>）上，四格全是 21/13：</p>
+<table><tr><th>旗标</th><th>runStartedAt</th><th>判据读数</th><th>判决</th></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>边界</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>边界</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr></table>
+<p>而受控放行协议对 OFF 的定义写死在两处先例注释里：<code>OFF（旗标不存在）：…函数级等价官方行为</code>。缺口的静态证据也直接：<code>grep controlled-release.flag src/</code> 只命中 <code>update.service.ts:88</code> 与 <code>rsi-bridge.service.ts:77</code>，judge 路径 0 引用；而 agent-loop 的 8 个 <code>finish()</code> 调用点全部传 <code>budget.startedAt</code>，所以 OFF 下边界永远被声明。</p>
+
+<h2>二、投放：四次才拿到可应用的补丁</h2>
+<table><tr><th>轮次</th><th>参数</th><th>产出</th><th>结果</th></tr>
+<tr><td class='mono'>exp13（第 1 投）</td><td class='small'>maxIterations=5</td><td class='small'>5 次 fs.read 读完材料即耗尽轮数，零输出</td><td><span class='tag t-warn'>max_iterations</span></td></tr>
+<tr><td class='mono'>exp13（第 2 投）</td><td class='small'>maxIterations=12 / maxTokens=3800</td><td class='small'>23 次工具调用，读到 <code>.runtime_view/src</code> 旧快照后与材料互相矛盾，最后 22000 字被截断</td><td><span class='tag t-bad'>截断</span> finish_reason=length</td></tr>
+<tr><td class='mono'>exp13（第 3 投）</td><td class='small'>maxTokens=8192 + 隔离旧快照 + 任务收紧到 1200 字</td><td class='small'>给出完整判定与 2 个 Edit，但有 3 处硬伤（缩进、class body、缺 import）</td><td><span class='tag t-warn'>不可应用</span></td></tr>
+<tr><td class='mono'>exp13b（同会话修正）</td><td class='small'>回投 tsc 原文与逐字 OLD</td><td class='small'>改为 4 个 Edit：import、模块级旗标、evidenceToolCalls 归零、buildContext 快照</td><td><span class='tag t-ok'>通过</span> tsc 0</td></tr></table>
+
+<blockquote>第 2 投暴露了一个环境缺陷：<code>workspace/.runtime_view/src/</code> 是一份<b>未打上一轮补丁的旧快照</b>（judge 哈希 <code>cbd3f6c1</code>，与官方基线一致）。模型读到它后写下「实际源码没有 runStartedAt」，与材料正面冲突，随后被 22000 字截断。第 3 投把该目录临时隔离、任务压到 1200 字才拿到答案。该目录已原样还原。</blockquote>
+
+<h2>三、补丁（codelens 原文，4 处）</h2>
+<pre>// Edit-1  import 区
+import { existsSync } from 'node:fs';
+
+// Edit-2  模块级旗标（第 3 份字面量，不迁移另两处）
+const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+function rsiReleaseOn(): boolean {
+  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+}
+
+// Edit-3  evidenceToolCalls：OFF 把边界归零
+const effectiveStart = rsiReleaseOn() ? runStartedAt : undefined;
+return this.deps.toolCalls
+  .listBySession(sessionId)
+  .filter((t) => effectiveStart === undefined || t.created_at >= effectiveStart)
+
+// Edit-4  buildContext：OFF 不把边界写进快照
+runStartedAt: rsiReleaseOn() ? runtime.runStartedAt : undefined,</pre>
+<p class="small">落地方式：前 3 处逐字命中；Edit-4 模型给的 OLD 是 10 空格缩进、源码是 8 空格，按「单行去缩进后唯一匹配」落地，表达式逐字未改 —— 这条匹配方式在验收里单独标了 <code>stripped</code>。</p>
+
+<h3>落地后四格</h3>
+<table><tr><th>旗标</th><th>runStartedAt</th><th>判据读数</th><th>结果</th></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>边界</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>OFF</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>边界</td><td class='mono'>3 次 / 1 成功（33.3%）</td><td><span class='tag t-fail'>ok</span></td></tr>
+<tr><td class='mono'>ON</td><td class='mono'>缺省</td><td class='mono'>21 次 / 13 成功（61.9%）</td><td><span class='tag t-pass'>ok</span></td></tr></table>
+<p>OFF 回到 21/13，ON 保持 3/1。四格在同一次进程里跑完（先 OFF 后 ON），顺带证明旗标没有被缓存。</p>
+
+<h2>四、端到端：11/11</h2>
+<table><tr><th>段/代</th><th>阈值</th><th>rate</th><th>detail</th><th>rsi</th></tr>
+<tr><td class='mono'>ON gen1</td><td class='mono'>0.65</td><td class='mono'>0.333</td><td class='small'>终态调用 3 次，成功 1 次（33.3%），下限 60%</td><td class='mono'>skipped</td></tr>
+<tr><td class='mono'>ON gen2</td><td class='mono'>0.6</td><td class='mono'>1.0</td><td class='small'>终态调用 1 次，成功 1 次（100.0%），下限 65%</td><td class='mono'>not_improved</td></tr>
+<tr><td class='mono'>ON gen3</td><td class='mono'>0.6</td><td class='mono'>1.0</td><td class='small'>终态调用 1 次，成功 1 次（100.0%），下限 60%</td><td class='mono'>not_improved</td></tr>
+<tr><td class='mono'>OFF gen1</td><td class='mono'>0.6</td><td class='mono'>0.333</td><td class='small'>终态调用 3 次，成功 1 次（33.3%），下限 60%</td><td class='mono'>skipped</td></tr>
+<tr><td class='mono'>OFF gen2</td><td class='mono'>0.6</td><td class='mono'>0.5</td><td class='small'>终态调用 4 次，成功 2 次（50.0%），下限 60%</td><td class='mono'>not_improved</td></tr></table>
+<p class="small">阈值列是该代收尾后 π 里的 minToolSuccessRate；detail 里的「下限」是本代判决当时用的值，两者差 0.05 就是这一代发生的收紧/放松。</p>
+<table><tr><th>判据</th><th>结果</th></tr>
+<tr><td class='mono'>ON_gen1_rate_0.333</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen1_th_0.65</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen2_rate_1.0</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen2_n_is_1</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen2_th_rollback_0.60</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen2_loosened</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen3_rate_1.0</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>ON_gen3_th_stay_0.60</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>OFF_gen2_rate_0.5</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>OFF_gen2_n_is_4</td><td><span class='tag t-ok'>OK</span></td></tr>
+<tr><td class='mono'>OFF_gen2_no_loosened</td><td><span class='tag t-ok'>OK</span></td></tr></table>
+<p>关键对照：OFF 段第 2 代从补丁前的 <span class="big-bad">1/1 = 100%</span> 变成 <span class="big-ok">4/2 = 50%</span>（累计口径，官方行为）；ON 段仍读本代 1/1。</p>
+
+<h2>五、回滚与可逆性</h2>
+<p>把 <code>judge.service.ts</code> 还原为 <code>bak_exp13/*.before</code>（<code class="mono">3e45c981</code>）：<code>tsc</code> 0，探针立刻退回 OFF/边界=3 次 —— 缺口复现。再按同一份 snippets 重放，哈希回到 <code class="mono">d1987d12</code>，四格恢复。两次切换都是整文件覆盖，无手工修补。</p>
+
+<h2>六、边界与未决</h2>
+<ul>
+<li><b>等价是函数级，不是源码级</b>：judge.service.ts 多出 6 行（import + 旗标助手），OFF 只保证取数结果与官方一致。</li>
+<li><b>Edit-2 插在 import 块中间</b>（<code>adversarialClaimEvidence</code> 之后仍有 import）。语法合法、tsc 0，可读性差；属 codelens 原文，未代改。</li>
+<li><b>旗标路径第 3 份字面量</b>：本轮按「爆炸半径最小」接受，抽公共模块留作技术债。</li>
+<li><b>历史快照跨口径</b>：ON 期写入 <code>context.runStartedAt</code> 的快照，在 OFF 下 replay 会标 <code>drifted=true</code>，但 <code>reproduced</code> 仍按快照证据判，不受影响。</li>
+<li><b>旧缺口 ④ 仍在</b>：投放轮也会走 <code>applyFromJudge</code>。本轮一次<b>失败</b>投放（22000 字截断、无工具失败）就写进了 v97。</li>
+<li><b>新缺口 ⑤</b>：<code>.runtime_view/src</code> 是 11-14 的旧快照，任何自我修改类任务都会被它带偏。建议下一轮先做「快照与线上源码的一致性校验」。</li>
+<li><b>② 0.60↔0.65 往返震荡、③ 放松永远拿不到 improved</b>：仍未动。</li>
+</ul>
+
+<h2>七、账本与卫生</h2>
+<table><tr><th>项</th><th>值</th></tr>
+<tr><td>policy_versions</td><td class="mono">96 → 104（min_id=1，append-only）</td></tr>
+<tr><td>policy_rsi_runs</td><td class="mono">83 → 88</td></tr>
+<tr><td>judge_runs</td><td class="mono">180</td></tr>
+<tr><td>src 变更</td><td class="mono">judge.service.ts（d1987d12）；agent-loop/replay 未动</td></tr>
+<tr><td>旗标</td><td class="mono">OFF（不存在）</td></tr>
+<tr><td>服务</td><td class="mono">:8080 在线；MCP gapfill 已 connected</td></tr>
+<tr><td>aitl_pr/</td><td class="mono">6 文件哈希不变、未上传、零密钥</td></tr>
+<tr><td>未做</td><td class="small">未读 hidden/expected；未代写诊断与补丁；账本未删行</td></tr>
+</table>
+
+<div class="sub" style="margin-top:26px">生成时间 2026-11-16 13:48 · 证据文件：exp13_probe.ts / exp13_probe_official.ts / exp13_snippets.json / exp13_apply_result.json / exp13v_result.json</div>
+</div></body></html>

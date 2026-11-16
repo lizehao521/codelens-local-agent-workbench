@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSI π 回归迭代 · exp16 · codelens 复核 eaa6dfa</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--fg:#e6edf3;--mut:#8b949e;
+        --ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#58a6ff;--purple:#bc8cff;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:25px;margin:0 0 6px}h2{font-size:19px;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--acc)}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:14px 0}
+  .kpi{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px}
+  .kpi .n{font-size:22px;font-weight:700}.kpi .l{color:var(--mut);font-size:12px;margin-top:2px}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--bd);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#1c2128;color:var(--mut);font-weight:600}
+  code{background:#1c2128;border:1px solid var(--bd);border-radius:4px;padding:1px 5px;font:12.5px ui-monospace,SFMono-Regular,Consolas,monospace}
+  pre{background:#010409;border:1px solid var(--bd);border-radius:8px;padding:14px;overflow:auto;font:12.5px/1.6 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+  .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.acc{color:var(--acc)}.purple{color:var(--purple)}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--bd);margin-right:6px}
+  .tag.g{color:var(--ok);border-color:var(--ok)}.tag.y{color:var(--warn);border-color:var(--warn)}.tag.b{color:var(--bad);border-color:var(--bad)}
+  .quote{border-left:3px solid var(--purple);padding:6px 0 6px 14px;margin:12px 0;color:#c9d1d9;font-size:14px}
+  ul{margin:8px 0;padding-left:22px}li{margin:5px 0}
+  .foot{color:var(--mut);font-size:12px;margin-top:36px;border-top:1px solid var(--bd);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RSI π 回归迭代 · exp16</h1>
+  <div class="sub">codelens 真实模型复核 eaa6dfa 行数棘轮修复 · 2026-11-16 · 链路：relay(:9999, DeepSeek-V4-Flash) → codelens(:8080)</div>
+
+  <div class="grid">
+    <div class="kpi"><div class="n ok">8 / 8</div><div class="l">补丁语义等价判决 pass</div></div>
+    <div class="kpi"><div class="n ok">2 轮</div><div class="l">RSI 闭环探活（真实模型驱动）</div></div>
+    <div class="kpi"><div class="n acc">2 投</div><div class="l">审补丁 + 独立修 CI</div></div>
+    <div class="kpi"><div class="n warn">未推送</div><div class="l">eaa6dfa 仍在本地</div></div>
+  </div>
+
+  <div class="card">
+    <span class="tag b">我判错了</span>
+    <h3 style="margin-top:8px">先纠正上一条会话的判断</h3>
+    我上一条说"沙箱够不到 codelens、只能转投给你"——<b>这是错的</b>。源码一直在 <code>/workspace/codelens</code>，relay 代理 <code>/workspace/agent_proxy/proxy_relay.py</code> 和 seed 脚本都完好。真实情况是当时 <b>8080/9999 的进程没在跑</b>，我把"进程停了"错误地说成了"能力上够不到"。这俩是两回事。
+    本轮已把整条链路重新拉起并跑通，无需转投。
+  </div>
+
+  <h2>① 链路重建与探活</h2>
+  <table>
+    <tr><th>组件</th><th>动作</th><th>结果</th></tr>
+    <tr><td>relay <code>:9999</code></td><td><code>python3 -u proxy_relay.py</code></td><td class="ok">health 200 · 主上游 DeepSeek-V4-Flash + fallback · key 已加载</td></tr>
+    <tr><td>codelens <code>:8080</code></td><td><code>npm run dev</code>（tsx watch）</td><td class="ok">/api/health 200</td></tr>
+    <tr><td>relay→模型 chat</td><td>非流式探活</td><td class="ok">200 · 0.83s · 返回"收到" · <code>self-dploy/DeepSeek-V4-Flash</code></td></tr>
+    <tr><td>RSI 闭环</td><td><code>seed-agent-loop.ts 2 --code</code>（隔离 DB 副本）</td><td class="ok">2 轮跑通 · anchor 链 ✓ · 8 次请求 0 超时</td></tr>
+  </table>
+  <div class="quote">g0→g1 skipped（首次无可比上一代） · g1→g2 not_improved（目标指标 test_pass_rate 0.95→0.95 没变好） · 实例化历史：judge_runs 196、policy#105，非干净快照。</div>
+  <p class="sub">副作用复核：跑前/跑后 <code>tests/*.test.ts</code> 均 175 个、一个没少；workspace 无 17:29 后新增/改动文件；隔离 DB 写在 <code>/tmp/codelens_probe.db</code>，主库已备份 <code>codelens.db.before-codelens-run</code>。指纹差异仅 eval-state 目录 mtime 抖动，无实质污染。</p>
+
+  <h2>② 审补丁：8 条语义等价性逐条判决</h2>
+  <p>把 <code>e1c2064 → eaa6dfa</code> 的 424 行逐字 diff 投给 codelens，要求它独立判断我写的压缩重构有没有偷换语义。明确告知"代理写的补丁同样可以被推翻"。会话 <code>db5958b3</code>，344.9s / 399 事件 / finish=stop。</p>
+  <table>
+    <tr><th>#</th><th>核对点</th><th>codelens</th></tr>
+    <tr><td>1</td><td>judge 证据取数：generationStart 的 OFF 全量 / ON 本代过滤，runStartedAt=undefined 短路</td><td class="ok">pass</td></tr>
+    <tr><td>2</td><td>judge map 四字段字节不变、exit_code=undefined 被 canonicalJson 丢弃</td><td class="ok">pass</td></tr>
+    <tr><td>3</td><td>update 阈值：else if → 早返回的边界（cur≤0.6 不动、clamp 顺序）</td><td class="ok">pass</td></tr>
+    <tr><td>4</td><td>update 产版本条件：只需收紧阈值无 lessons 时仍产版本；OFF 函数级等价</td><td class="ok">pass</td></tr>
+    <tr><td>5</td><td>rsi-bridge 判据指纹：归一化 / 差分方向符号逐字一致</td><td class="ok">pass</td></tr>
+    <tr><td>6</td><td>prevEffectiveThresholds 正则：旧格式取"生效 Y"不能被 <code>-&gt;</code> 误取左侧</td><td class="ok">pass</td></tr>
+    <tr><td>7</td><td>旗标读取：existsSync 实时读、逐字路径、try/catch 兜底</td><td class="ok">pass</td></tr>
+    <tr><td>8</td><td>agent-loop 参数压缩：budgetHit(第10) 与 startedAt(第11) 是否错位</td><td class="ok">pass（但有盲区，见下）</td></tr>
+  </table>
+  <div class="card">
+    <b>codelens 结论原文：</b>
+    <div class="quote">判决：8/8 全部 pass。eaa6dfa 与 e1c2064 在三个目标语义（本代起点取数、受控旗标 ON/OFF 双口径、运行期视图门禁）上等价，行数棘轮通过压缩注释/参数行回落。</div>
+  </div>
+
+  <div class="card">
+    <span class="tag y">我的补证</span>
+    <h3 style="margin-top:8px">第 8 点 codelens 有盲区，我用源码实证补上</h3>
+    codelens 在第 8 点明确写："diff 只给局部上下文，看不到完整函数签名，只能靠'压缩前后逐字一致'推断"。这不算严格验证。我实际拉了两版源码比对：
+    <ul>
+      <li><code>finish</code> 签名 = <code>(..., budgetHit?: BudgetHit, runStartedAt?: number)</code></li>
+      <li>四处调用均为 <code>..., budget.tokenBudget, firstTokenMs(), &lt;第10参&gt;, budget.startedAt</code> 共 11 位</li>
+      <li>第 10 参有的传 <code>term.budget</code>、有的传 <code>undefined</code>，<code>budgetHit</code> 位没被挤占；<code>budget.startedAt</code> 稳在第 11 位</li>
+    </ul>
+    所以结论一致（无错位），但证据强度不同：codelens 是推断，我是实证。这点如实区分，不把它的推断当成已验证。
+  </div>
+
+  <h2>③ 独立修 CI：不给补丁的第三方诊断</h2>
+  <p>第二投只给 CI 失败材料，<b>不告诉 codelens 我的 eaa6dfa 补丁</b>，让它从零诊断。会话 <code>8b436eba</code>，178.6s / 519 事件 / finish=stop。</p>
+  <div class="card">
+    <ul>
+      <li><b>A 根因</b>：认同是净增行数撞穿棘轮；越线文件与改动文件一一对应，非伪装。</li>
+      <li><b>B 策略</b>：<span class="warn">与我做法有分歧</span>——它主张"逐文件压缩为主、抽模块为辅"，理由是抽模块只减原文件、却新增一个共享文件，若 <code>&gt;300</code> 行反而新增违规。</li>
+      <li><b>C 收拢点</b>：认同 judge/update/rsi-bridge 三处的 flag 读取与判据差分最适合抽共享函数，且 OFF 必须函数级等价官方、注意短路顺序与默认值。</li>
+      <li><b>D 参数压缩</b>：最易出第 10/11 参错位；验证方法点名 <code>tsc --noEmit</code> 严格类型校验 + 逐行 diff + 相关套件。</li>
+      <li><b>E 空间估计</b>：agent-loop 差 5 行最松、replay 差 1 行最易、rsi-bridge 差 56 行最吃力（建议配合抽模块）。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">对分歧的处理</h3>
+    codelens 担心"新文件 &gt;300 反违规"——但我实际抽出的 <code>controlled-release.ts</code> 只有 <b>79 行</b>，远低于 300，这个风险在我的具体方案里不成立。它主张"先逐压缩再视余量抽模块"，我实际是"抽模块消重 + 逐文件压缩"一起做；两条路都落在硬约束内（棘轮全回落、语义等价），属于策略差异而非对错。<br>
+    它 D 点建议的 <code>tsc --noEmit</code> 校验，我在上一轮已实跑通过（0 错误）——这是比"建议去验"更强的实测证据。
+  </div>
+
+  <h2>④ 当前状态与待决</h2>
+  <table>
+    <tr><th>项</th><th>值</th></tr>
+    <tr><td>本地 HEAD</td><td><code>eaa6dfa</code>（两轮 codelens 复核通过，8/8 pass）</td></tr>
+    <tr><td>远端 main</td><td><code>e1c2064</code> —— 行数棘轮失败那版，<b>尚未推送修复</b></td></tr>
+    <tr><td>卡点</td><td>上次设备授权码 CAE8-xxxx（已过期） 没等到 token、轮询进程已退出；token 按约定未落盘</td></tr>
+    <tr><td>林箱验证</td><td>CI 同款 Node 22.23：193 文件 / 1932 用例全过，各门禁全绿（唯一未跑 krsi Go 下载 + browser e2e）</td></tr>
+  </table>
+  <p>两轮 codelens 都没发现问题需要"丢回去迭代"——审补丁 8/8 pass，独立诊断认同根因与约束。唯一值得注意的是 <b>③B 的策略分歧</b>，已在上文处理。修复已可推送，等一个可用的写通道即可。</p>
+
+  <div class="foot">
+    材料：<code>/workspace/codelens-rsi-fix-eaa6dfa-input.md</code> · <code>/workspace/codelens-rsi-fix-eaa6dfa.diff</code> ·
+    判决原文：<code>/workspace/codelens-audit-verdict.json</code> · <code>/workspace/codelens-fix-verdict.json</code><br>
+    全程遵守：不改尺子/测试/豁免 · 账本 append-only · 不读 hidden/expected · 补丁逐字节可回滚 · 零密钥落盘 · 代理失误如实记录。
+  </div>
+</div>
+</body>
+</html>

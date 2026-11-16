@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RSI π 回归迭代 · exp18 · token 预算耗尽诊断与方案迭代</title>
+<style>
+  :root{--bg:#0f1419;--card:#1a2129;--card2:#222b35;--fg:#e6edf3;--mut:#9aa7b4;--line:#2d3844;--red:#f85149;--green:#3fb950;--amber:#d29922;--blue:#58a6ff;--purple:#bc8cff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;padding:0 0 80px}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  header{padding:48px 0 28px;border-bottom:1px solid var(--line);margin-bottom:32px}
+  h1{font-size:26px;margin:0 0 8px;font-weight:650}
+  .sub{color:var(--mut);font-size:14px}
+  .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600;margin-right:6px}
+  .b-red{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+  .b-green{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+  .b-amber{background:rgba(210,153,34,.15);color:var(--amber);border:1px solid rgba(210,153,34,.3)}
+  .b-blue{background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+  h2{font-size:19px;margin:36px 0 14px;padding-left:12px;border-left:3px solid var(--blue)}
+  h3{font-size:15px;margin:22px 0 10px;color:var(--fg)}
+  p{margin:10px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .card.alt{background:var(--card2)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600;background:rgba(255,255,255,.02)}
+  tr:last-child td{border-bottom:none}
+  code{background:rgba(88,166,255,.1);color:var(--blue);padding:1px 5px;border-radius:4px;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{background:#0b1015;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:12.5px;color:#c9d5e1}
+  .quote{border-left:3px solid var(--purple);padding:6px 0 6px 16px;color:#cbd5e1;font-style:italic;margin:12px 0}
+  .mine{border-left-color:var(--red)}
+  .ok{color:var(--green);font-weight:600}
+  .no{color:var(--red);font-weight:600}
+  .warn{color:var(--amber);font-weight:600}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0}
+  .flow .node{background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:12.5px}
+  .flow .arrow{color:var(--mut)}
+  .kv{font-size:13.5px;color:var(--mut)}
+  .kv b{color:var(--fg)}
+  ul{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  .tag{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--line);color:var(--mut);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>RSI π 回归迭代 · exp18</h1>
+  <div class="sub">把「token 预算耗尽」作为独立问题丢回 codelens 自己解 —— 四轮往返、逐版实跑、代理失误如实记账</div>
+  <div style="margin-top:14px">
+    <span class="badge b-amber">根因：策略低效（非预算大小）</span>
+    <span class="badge b-red">方案三易其版，实跑各暴露新失败</span>
+    <span class="badge b-blue">全程只读旁账 · 未写 π · 未改判据塔</span>
+  </div>
+</header>
+
+<h2>一、起点：问题是什么</h2>
+<p>exp17 第二轮「缺口自造 + π 迭代」里，codelens 自造的 <code>semver_compare</code> 判据从 6/14 修到 13/14，最后 1 个隐藏用例没攻下，<code>finish=budget_exhausted</code>，<b>256000 token 全部耗尽</b>、793 秒。按你的指令，把这个预算问题作为独立任务丢回 codelens，让它自己诊断、自己给方案。</p>
+
+<div class="card">
+<div class="kv"><b>预算机制（我独立核实，源码实证）：</b> 总预算 = <code>contextWindow × AGENT_TOKEN_BUDGET_FACTOR</code>。自定义端点 <code>contextWindow=128000</code>、factor 默认 2 → <b>正好 256000</b>；无 env 覆盖、无 fallback 削顶。</div>
+<div class="kv" style="margin-top:8px"><b>关键历史：</b> <code>capabilities.ts</code> 注释记载，预算曾为 64000（32000×2），当时也发生过 budget_exhausted（"9 次调用全是读、一次写入都没发生"），于是把 contextWindow 提了 4 倍到 128000 —— <span class="warn">预算已经人为加过一次，照样耗尽</span>。这是判断 codelens 诊断质量的硬指标。</div>
+</div>
+
+<h2>二、四轮往返全景</h2>
+<div class="flow">
+  <span class="node">① 诊断<br><span class="tag">投问题</span></span><span class="arrow">→</span>
+  <span class="node">② 实跑 v1<br><span class="tag">按它纪律</span></span><span class="arrow">→</span>
+  <span class="node">③ 迭代<br><span class="tag">丢回失败</span></span><span class="arrow">→</span>
+  <span class="node">④ 实跑 v2<br><span class="tag">按新纪律</span></span>
+</div>
+<table>
+  <tr><th>轮次</th><th>任务</th><th>耗时</th><th>events</th><th>收尾</th><th>结论</th></tr>
+  <tr><td>① 诊断</td><td>只诊断根因+给方案</td><td>85s</td><td>382</td><td class="ok">stop</td><td>判"策略低效"，与源码历史独立吻合</td></tr>
+  <tr><td>② 实跑 v1</td><td>按它 v1 纪律跑</td><td class="no">1115s</td><td>228</td><td class="no">aborted</td><td>卡 sys.exec hard 审批，循环检测中止</td></tr>
+  <tr><td>③ 迭代</td><td>把失败丢回，重给方案</td><td>35s</td><td>355</td><td class="ok">stop</td><td>承认错，换成纯只读静态审查</td></tr>
+  <tr><td>④ 实跑 v2</td><td>按它 v2 纪律跑</td><td class="warn">789s</td><td>3379</td><td class="warn">length 截断</td><td>避开 sys.exec，但滑入 reasoning 死循环</td></tr>
+</table>
+
+<h2>三、逐轮细节与判决</h2>
+
+<h3>① 诊断 —— 判对了，且和源码历史独立吻合</h3>
+<div class="card">
+<p>codelens 逐条回答 5 问，核心结论：</p>
+<div class="quote">"是「信息获取策略低效」，不是「预算绝对值太小」。判据：换成 512000 token，同样的策略大概率仍会耗尽……它在信息盲区里做的是无反馈的穷举，而 semver 的边界空间是组合爆炸的，穷举不完。"</div>
+<p>它点出两处最不值的 token 开销：<b>反复全量复验</b>（166/168 全量跑只为看一个 semver 读数）和<b>信息盲区里的"脑补式穷举"</b>（"让我考虑…让我考虑…"连续推理、零工具调用）。</p>
+<p><span class="ok">交叉验证：</span>它不知道源码里"预算已从 64k 加到 256k 仍耗尽"这段历史，却独立得出"加预算无用"的同一结论。<b>诊断这一层，它是对的。</b></p>
+</div>
+
+<h3>② 实跑 v1 —— 方案不可执行（卡在 hard 审批）</h3>
+<div class="card">
+<p>它 v1 纪律第 2 条是"用 node 本地构造差分探针"。我原样投回去实跑，结果：</p>
+<ul>
+  <li>它<b>确实守住了纪律</b>：确认 13/14、公开 4/4、写了 <code>probe.cjs</code>、没读 hidden/expected。</li>
+  <li>但探针要跑必须调 <code>sys.exec</code> —— 这是 <b>hard 审批档</b>，无人值守时两步确认的审批 5 分钟过期，调用根本不执行。源码 <code>seed-agent-loop.ts:53</code> 注释明写"不能用 sys.exec：它是 hard 审批，无人值守会卡在 approval 上不返回"。</li>
+  <li>它试过绕道（改 test_run、把探针改成 vitest、换 cwd），最后回到"再试一次 sys.exec" → <b>触发循环检测，aborted</b>。探针一次都没跑成。</li>
+</ul>
+<p class="mine"><b>这里错的是我：</b>我把一个 seed 脚本明写"无人值守必卡"的 hard 审批工具，写进了自动任务的任务书。任务设计失误，不是 codelens 的错。</p>
+</div>
+
+<h3>③ 迭代 —— 它承认错，给出可执行方案</h3>
+<div class="card">
+<p>把②的失败事实原样丢回（不喂答案），它 35 秒给出迭代方案：</p>
+<div class="quote">"承认。第 2 条在当前系统里不可执行。根因是对系统工具约束不了解……差分信号不一定要跑代码，可以靠纯只读工具拿到。"</div>
+<p>新方案：<code>fs_read</code>（读实现）→ <code>code_search</code>（逐分支确认存在性）→ <code>text_diff</code>（对比完整语义）→ <code>fs_write</code>（补缺失分支）→ <code>eval_run</code> 单套件复验。停止判据改成<b>不依赖不可用通道</b>："静态审查已穷尽所有分支且无差异，或已尝试所有可用通道仍 13/14 → 停止并报告信号为零。"</p>
+<p><b>关键认知修正：</b><span class="tag">"方案里的每一步都必须先验证在当前无人值守约束下可执行；不可执行的前提会让停止判据变成死条件，把诊断拖成死循环。"</span>这一版全只读工具，确实可执行。</p>
+</div>
+
+<h3>④ 实跑 v2 —— 避开 sys.exec 成功，但滑入另一种死循环</h3>
+<div class="card">
+<p>按 v2 纪律实跑，行为验证：</p>
+<ul>
+  <li class="ok"><b>sys.exec 零调用</b>（逐 trace 核实 <code>exec_call=False</code>）—— 新纪律被严格遵守。</li>
+  <li>走静态路线：<code>fs.read</code> → <code>fs.write</code> 改了 2 处 impl.cjs → <code>eval.run</code> 复验，读数仍 <b>13/14</b>。</li>
+  <li class="no">后半程进入 <b>reasoning 死循环</b>："让我重新审视…让我考虑一个可能被忽略的边界…" 重复 <b>134 次</b>，最终<b>单次输出撞 max_tokens 上限被截断</b>（服务端注入"finish_reason=length"说明）。</li>
+</ul>
+<p><b>新失败模式：</b>v1 死于"调用不可用工具"，v2 死于"静态审查无差分信号时的无限自检"。两版都收敛失败，但失败机制不同 —— 这说明<b>问题是结构性的</b>：在"隐藏用例不回显 + 无可靠本地执行/反馈通道"时，agent 缺少一个真正的停止机制，会一直找"再考虑一个边界"直到撞预算或被截断。</p>
+</div>
+
+<h2>四、我（代理）记错的两处 —— 如实纠正</h2>
+<div class="card alt">
+<table>
+  <tr><th>项</th><th>我记的</th><th>实际</th></tr>
+  <tr><td>实跑 v2 的 finish</td><td><code>stop</code>（脚本抓的最后一个 finishReason）</td><td class="no">实为 <code>length</code>——末尾有服务端注入的"达到 max_tokens 上限被截断"说明，被脚本当普通文本拼进 answer，且中间某次 LLM 调用撞了 length</td></tr>
+  <tr><td>"方案已收敛"的隐含预期</td><td>我原本期待 v2 能跑通即收尾</td><td class="no">实跑显示仍 13/14 + 死循环，<b>不能算收敛</b>，必须以"暴露新失败模式"如实记</td></tr>
+</table>
+<p>加上 exp17 已记的"读错 π 库""重启用错 ROOT"，这轮再添两处 —— 一路绿灯从不是真的，每处都是被证据或实跑抓出来才补。</p>
+</div>
+
+<h2>五、边界与副作用核验</h2>
+<div class="card">
+<table>
+  <tr><th>核验项</th><th>结果</th></tr>
+  <tr><td>受保护源码 <code>suites.ts</code></td><td class="ok">时间戳仍 11-14 18:55，未动</td></tr>
+  <tr><td>受保护源码 <code>agent-loop.service.ts</code></td><td class="ok">时间戳仍今天 12:57，未动</td></tr>
+  <tr><td>hidden / expected</td><td class="ok">5 个相关 trace 仅有任务书"禁止读 hidden"文本回显，无 fs.read 路径命中</td></tr>
+  <tr><td>改动范围</td><td class="ok">仅 <code>workspace/eval/semver_compare/impl.cjs</code>（沙箱运行时副本，gitignore）</td></tr>
+  <tr><td>π 写入</td><td class="ok">全程旁账 session，未写 policy、未调 eval.propose</td></tr>
+</table>
+</div>
+
+<h2>六、结论与待决</h2>
+<div class="card">
+<p><b>本轮回答了你的问题：</b>"token 预算耗尽"丢给 codelens 后，它给了正确的根因诊断（策略低效、加预算无用，与源码历史独立吻合），但方案连改三版、每版实跑都暴露新的失败模式 —— <b>诊断对 ≠ 方案可执行 ≠ 执行收敛</b>。这是这轮最有价值的结论：budget 只是表象，真问题是 agent 在"零差分信号"时没有可靠的停止机制。</p>
+<p><b>不再无限迭代：</b>再投第 4 版大概率还是同样套路（换工具 → 实跑 → 新失败模式）。结构性问题的解法不在"再给一版纪律"，而在系统层给一个可信的停止/降级通道 —— 这超出"把它丢回去迭代"的范畴，需要你定夺是否另立一项。</p>
+<p class="warn"><b>待决（延续 exp17）：</b>GitHub 推送仍搁置（授权码你连不上，残留已清）；本地 <code>eaa6dfa</code> 未推、远端 main 仍是失败的 <code>e1c2064</code>。π 连续性补验也仍欠着（本轮跑在空 π 实例上，与历史 107 版本不连续）。</p>
+</div>
+
+<footer>
+产出：exp18 四轮原始判决 <code>rsi_pi/exp16_budget_{result,validate_result,iterate_result,final_result}.json</code> · 投放脚本 <code>rsi_pi/budget_{drop,validate_drop,iterate_drop,final_drop}.py</code>。<br>
+全程约束：代理不代写模型补丁；发现问题→丢回 codelens→核对判决→实跑→如实记账；逐字节可回滚；不读 hidden/expected；零密钥落盘。
+</footer>
+</div>
+</body>
+</html>

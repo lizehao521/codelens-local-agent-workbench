@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>exp14 · 运行期源码视图的漂移</title>
+<style>
+:root{--bg:#0f1216;--card:#171c23;--line:#2a323d;--fg:#e6edf3;--mut:#8b98a8;
+--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;}
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:var(--bg);color:var(--fg);
+font:15px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1080px;margin:0 auto}
+h1{font-size:25px;margin:0 0 6px;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:22px}
+h2{font-size:18px;margin:30px 0 10px;padding-left:10px;border-left:3px solid var(--acc)}
+h3{font-size:14px;margin:18px 0 6px;color:#c9d6e4}
+p{margin:9px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+.kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:16px 0}
+.kpi>div{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.kpi b{display:block;font-size:20px;color:var(--acc)}
+.kpi span{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:8px 9px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12px}
+tr:hover td{background:#1b212a}
+code{background:#11161d;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+pre{background:#11161d;border:1px solid var(--line);border-radius:8px;padding:13px;overflow:auto;font-size:12px;line-height:1.55}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.small{font-size:12px;color:var(--mut)}
+.tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;border:1px solid}
+.t-ok{color:var(--ok);border-color:#2c5f38;background:#132218}
+.t-bad{color:var(--bad);border-color:#6a2a2a;background:#211414}
+.t-warn{color:var(--warn);border-color:#5c4a1a;background:#1f1a10}
+blockquote{border-left:3px solid var(--warn);margin:12px 0;padding:6px 14px;color:#d9c9a3;background:#1c1810;border-radius:0 8px 8px 0}
+.big-ok{color:var(--ok);font-weight:600}
+.big-bad{color:var(--bad);font-weight:600}
+</style></head><body><div class="wrap">
+
+<h1>exp14 · 运行期源码视图的漂移</h1>
+<div class="sub">缺口：给 Agent 读的「整份运行时源码」快照落后线上 5 个文件，没有任何机制发现。
+本轮先拉平（203/203 逐字节一致），再由 codelens 给出常设门禁；门禁三态，接入验收链。</div>
+
+<div class="kpi">
+  <div><b>203 / 203</b><span>拉平后逐文件一致</span></div>
+  <div><b>5 → 0</b><span>漂移文件数</span></div>
+  <div><b>91 行</b><span>零依赖检查器</span></div>
+  <div><b>0 / 1 / 2</b><span>过 / 漂移 / 前置不可得</span></div>
+  <div><b>9/9</b><span>场景矩阵全过</span></div>
+</div>
+
+<h2>一、缺口与取证</h2>
+<p>`.runtime_view/src/` 被简报称为「整份运行时源码」，203 个文件、1.9MB。逐文件 sha256 比对，5 个与 <code>server/src</code> 不一致，差异全部来自最近几轮 RSI 改动：</p>
+<table><tr><th>文件</th><th>快照（11-14）</th><th>线上（13:5x）</th><th>拉平后</th></tr>
+<tr><td class='mono'>services/agent/agent-loop.service.ts</td><td class='mono'>50d748636e68</td><td class='mono'>ba7cca631b33</td><td class='mono'>✓</td></tr>
+<tr><td class='mono'>services/agent/update.service.ts</td><td class='mono'>b2c5fdd193bd</td><td class='mono'>2c4d440b619c</td><td class='mono'>✓</td></tr>
+<tr><td class='mono'>services/judge/judge.service.ts</td><td class='mono'>cbd3f6c148f6</td><td class='mono'>d1987d124129</td><td class='mono'>✓</td></tr>
+<tr><td class='mono'>services/judge/replay.ts</td><td class='mono'>27c128a89b26</td><td class='mono'>7139a2755335</td><td class='mono'>✓</td></tr>
+<tr><td class='mono'>services/rsi/rsi-bridge.service.ts</td><td class='mono'>813326308d32</td><td class='mono'>6a6b340906ce</td><td class='mono'>✓</td></tr></table>
+<p>它既没有生成者也没有校验者：<code>grep runtime_view src/</code> 只命中三处旗标路径。<code>.gitignore</code> 第 27、76 行把 <code>server/workspace/</code> 整目录忽略——所以这份「源码」只存在于运行态，任何干净 checkout 里都没有。</p>
+<blockquote>伤害不是假设：exp13 第 2 投，模型按简报读了旧 <code>judge.service.ts</code>（44512 字节、0 处 runStartedAt），写下「实际源码没有 runStartedAt，与材料矛盾」，在两种事实间空转到 22000 字被截断，整轮报废。</blockquote>
+
+<h2>二、拉平</h2>
+<p><code>cp -a src/. workspace/.runtime_view/src/</code>，然后逐文件复核：203 个文件全部一致、无缺失、无多余。旧快照整目录备份在 <code>rsi_pi/bak_exp14/runtime_view_src.before</code>，可整目录还原。</p>
+
+<h2>三、投放：五次才定稿</h2>
+<table><tr><th>轮次</th><th>这一轮改了什么</th><th>产出</th><th>结果</th></tr>
+<tr><td class='mono'>exp14（第 1 投）</td><td class='small'>任务写「比对 src/ 与 workspace/.runtime_view/src/」</td><td class='small'>模型沙箱根是 server/workspace/，看不到 ../src，花 8 轮 fs.list/glob 找源码，零输出</td><td><span class='tag t-warn'>max_iterations</span></td></tr>
+<tr><td class='mono'>exp14（第 2 投）</td><td class='small'>补「路径契约」段：脚本落 server/scripts，src=../src，别去找</td><td class='small'>给出完整脚本 + (b) 方案 + 独立挂载；但自检路径写错、package.json 没给 OLD/NEW、sync 退出码未定义</td><td><span class='tag t-warn'>3 处待补</span></td></tr>
+<tr><td class='mono'>exp14b（同会话）</td><td class='small'>要求补自检、两行 package.json、sync 语义</td><td class='small'>给了 2 处 OLD/NEW，sync 选「重扫后按结果退出」；但 OLD 带行号前缀、sync 段用了不存在的 SRC 命名</td><td><span class='tag t-warn'>机械修正</span></td></tr>
+<tr><td class='mono'>exp14c（同会话）</td><td class='small'>回投：workspace 被 gitignore，干净 checkout 没有视图 → 未捕获 ENOENT</td><td class='small'>给出 exit 2 前置检查；仍漏了 existsSync 的 import</td><td><span class='tag t-warn'>缺 import</span></td></tr>
+<tr><td class='mono'>exp14d（同会话）</td><td class='small'>回投：挂在 test:acceptance 会让 CI 恒红（run #5 是 clean checkout）</td><td class='small'>选 (ii)：默认缺失 exit 0 + stderr skipped，显式 --view 缺失才 exit 2</td><td><span class='tag t-ok'>定稿</span></td></tr></table>
+<p class="small">机械修正两处，均在报告里披露：package.json 的 OLD 带材料行号前缀（去掉后逐字匹配）；sync 段用了脚本里不存在的 <code>SRC</code> 大写命名（统一为 <code>src</code>，并保留原有的 extra 空循环）。另有一处是补 <code>existsSync</code> 的 import——模型的前置检查用到它但没导入。</p>
+
+<h2>四、门禁：三态 + 场景矩阵</h2>
+<p>脚本 <code>server/scripts/check-runtime-view.mjs</code>，零依赖，路径从 <code>import.meta.url</code> 推导；默认只读，<code>sync</code> 子命令显式调用才写。</p>
+<table><tr><th>场景</th><th>命令</th><th>退出</th><th>输出</th></tr>
+<tr><td class='small'>已同步</td><td class='mono small'>node scripts/check-runtime-view.mjs</td><td class='mono'>0</td><td class='small'>OK: runtime view matches src</td></tr>
+<tr><td class='small'>静默</td><td class='mono small'>… --quiet</td><td class='mono'>0</td><td class='small'>（无输出）</td></tr>
+<tr><td class='small'>单文件被改</td><td class='mono small'>… --view /tmp/exp14/final</td><td class='mono'>1</td><td class='small'>differ services/judge/judge.service.ts / drift 0 missing, 0 extra, 1 differ</td></tr>
+<tr><td class='small'>缺一个文件</td><td class='mono small'>… --view /tmp/exp14/final</td><td class='mono'>1</td><td class='small'>missing app.ts / drift 1 missing, 0 extra, 0 differ</td></tr>
+<tr><td class='small'>多一个文件</td><td class='mono small'>… --view /tmp/exp14/rv（+ghost.ts）</td><td class='mono'>1</td><td class='small'>extra services/ghost.ts / drift 0 missing, 1 extra, 0 differ</td></tr>
+<tr><td class='small'>sync 修干净</td><td class='mono small'>… --view /tmp/exp14/rv2 sync</td><td class='mono'>0</td><td class='small'>OK: runtime view matches src</td></tr>
+<tr><td class='small'>sync 遇 extra</td><td class='mono small'>… --view /tmp/exp14/rv sync</td><td class='mono'>1</td><td class='small'>extra services/ghost.ts / drift 0 missing, 1 extra, 0 differ</td></tr>
+<tr><td class='small'>默认视图未部署</td><td class='mono small'>mv src src.off; …; mv 回来</td><td class='mono'>0</td><td class='small'>stderr: runtime-view: skipped (视图未部署)</td></tr>
+<tr><td class='small'>显式 --view 不存在</td><td class='mono small'>… --view /tmp/does-not-exist</td><td class='mono'>2</td><td class='small'>stderr: runtime-view: … 不存在（未同步或未部署）</td></tr></table>
+<p>三态沿用仓库既有约定：<b>0</b> 通过 / <b>1</b> 漂移 / <b>2</b> 前置不可得。默认视图缺失（干净 checkout）按「未部署」跳过并打印到 stderr；<code>--view</code> 显式指定却不存在按前置错误退 2。</p>
+
+<h2>五、挂载与 CI 语义</h2>
+<p>新增 <code>check:runtime-view</code>，并接到 <code>test:acceptance</code> 链尾。之所以不是 exit 2：<code>AGENTS.md:20</code> 的验收命令就是它，而 CI 锚点（run #5，ubuntu-latest clean checkout）里 <code>server/workspace/</code> 被 gitignore，必然没有视图——exit 2 会让验收恒红。跳过语义的代价写在下面的残余风险里。</p>
+
+<h2>六、验收</h2>
+<p>完整链路 <code>npm run test:acceptance</code>：<span class='tag t-bad'>exit 1</span>　<b>1975 passed / 9 failed / 1984 总</b></p>
+<p class="small">失败与本轮无关，做了 A/B：撤掉本轮改动（移走新脚本 + 还原 package.json）后，同一组 4 个文件、9 个用例逐项仍然失败。失败面：file-size-ratchet（seed-agent-loop.ts 1151>1139，11-15 的改动）、code-check*（7 例）、author-model-resolution（.env 相关）。</p>
+<pre>    193|     }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/9]⎯
+
+
+ Test Files  4 failed | 187 passed (191)
+      Tests  9 failed | 1975 passed (1984)
+   Start at  14:20:06
+   Duration  60.35s (tests 82%, import 14%, transform 3%, setup 1%, worker 1%)
+
+    Isolate  191 workers spawned · ~73ms startup each (spawn + environment, per file)
+             at least ~6.93s faster with isolate: false — reuses workers across files instead of one per file</pre>
+
+<h2>七、边界与残余风险</h2>
+<ul>
+<li><b>跳过不是绿</b>：默认视图缺失时 exit 0，只往 stderr 打一行。CI 日志会留下这行，但不会红；这是「不误伤 CI」与「不漏报」之间的取舍。</li>
+<li><b>只查内容，不查权限/软链</b>：逐文件 sha256 比对；<code>statSync</code> 跟随软链，视图里若出现指向外部的软链目录，遍历会跟进去。</li>
+<li><b>91 行 &gt; 我给的 70 行约束</b>：sync 重扫段是应我的要求加的，记录不改。</li>
+<li><b>拉平是手工动作</b>：本轮用 <code>cp -a</code> 一次性对齐；以后应由 <code>sync</code> 子命令承担（已具备）。</li>
+<li><b>旧缺口 ④ 仍在</b>：投放轮也走 <code>applyFromJudge</code>；本轮 5 次投放里 1 次写进了账本（v105）。</li>
+<li><b>②</b> 0.60 与 0.65 往返震荡、<b>③</b> 放松拿不到 improved 仍未动。</li>
+</ul>
+
+<h2>八、账本与卫生</h2>
+<table><tr><th>项</th><th>值</th></tr>
+<tr><td>policy_versions</td><td class="mono">104 → 105（min_id=1，append-only）</td></tr>
+<tr><td>policy_rsi_runs</td><td class="mono">88（未增）</td></tr>
+<tr><td>judge_runs</td><td class="mono">185</td></tr>
+<tr><td>新增文件</td><td class="mono">server/scripts/check-runtime-view.mjs</td></tr>
+<tr><td>修改文件</td><td class="mono">server/package.json（两处）</td></tr>
+<tr><td>视图</td><td class="mono">203/203 与 src 一致</td></tr>
+<tr><td>aitl_pr/</td><td class="mono">6 文件哈希不变、未上传、零密钥</td></tr>
+</table>
+
+<div class="sub" style="margin-top:26px">生成时间 2026-11-16 14:24 · 证据文件：exp14_sync.json / exp14_text*.json / exp14d_text.json / check-runtime-view.mjs / acceptance.log</div>
+</div></body></html>

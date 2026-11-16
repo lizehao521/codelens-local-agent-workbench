@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>exp15 · 门禁自身的四个缺陷</title>
+<style>
+:root{--bg:#0f1216;--card:#171c23;--line:#2a323d;--fg:#e6edf3;--mut:#8b98a8;
+--acc:#58a6ff;--ok:#3fb950;--warn:#d29922;--bad:#f85149;}
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:var(--bg);color:var(--fg);
+font:15px/1.7 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1080px;margin:0 auto}
+h1{font-size:25px;margin:0 0 6px;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--mut);font-size:13px;margin-bottom:22px}
+h2{font-size:18px;margin:30px 0 10px;padding-left:10px;border-left:3px solid var(--acc)}
+h3{font-size:14px;margin:18px 0 6px;color:#c9d6e4}
+p{margin:9px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+.kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:16px 0}
+.kpi>div{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.kpi b{display:block;font-size:20px;color:var(--acc)}
+.kpi span{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:8px 9px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12px}
+tr:hover td{background:#1b212a}
+code{background:#11161d;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+pre{background:#11161d;border:1px solid var(--line);border-radius:8px;padding:13px;overflow:auto;font-size:12px;line-height:1.55}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.small{font-size:12px;color:var(--mut)}
+.tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;border:1px solid}
+.t-ok{color:var(--ok);border-color:#2c5f38;background:#132218}
+.t-bad{color:var(--bad);border-color:#6a2a2a;background:#211414}
+.t-warn{color:var(--warn);border-color:#5c4a1a;background:#1f1a10}
+blockquote{border-left:3px solid var(--warn);margin:12px 0;padding:6px 14px;color:#d9c9a3;background:#1c1810;border-radius:0 8px 8px 0}
+.big-ok{color:var(--ok);font-weight:600}
+.big-bad{color:var(--bad);font-weight:600}
+</style>
+</head><body><div class="wrap">
+
+<h1>exp15 · 把门禁自己送上门禁</h1>
+<div class="sub">上一轮我给仓库加了一个运行期视图一致性门禁；这一轮让作者自己审它。四条缺口，四次投放，一条被我自己判错。生成时间 2026-11-16 15:20</div>
+
+<div class="kpi">
+  <div><b>4</b><span>条实测缺口</span></div>
+  <div><b>4</b><span>次投放（含 1 次 400）</span></div>
+  <div><b>12/12</b><span>验收场景</span></div>
+  <div><b>69</b><span>行（限 70）</span></div>
+  <div><b>0</b><span>新增测试失败</span></div>
+</div>
+
+<h2>一、我钉的四个洞，都有复现读数</h2>
+<p>不跑会话、不动线上：拷一份视图到 <code>/tmp</code>，只改一个变量，看退出码与 stderr。</p>
+<table>
+<tr><th style="white-space:nowrap">编号</th><th>缺口</th><th>复现</th><th>补丁前读数</th><th>为什么算缺口</th></tr>
+<tr><td class='mono'>P1</td><td class='small'><code>--view</code> 缺值</td><td class='mono small'><code>node scripts/check-runtime-view.mjs --view</code></td><td class='small'>stderr: <code>runtime-view: undefined 不存在（未同步或未部署）</code>，exit 2</td><td class='small'>参数写错被误判成「视图未部署」；报错里直接漏出 <code>undefined</code></td></tr>
+<tr><td class='mono'>P2</td><td class='small'>视图里有软链成环</td><td class='mono small'><code>mkdir loopdir &amp;&amp; ln -s ../ loopdir/up</code></td><td class='small'><code>Error: ELOOP: too many symbolic links</code>，栈顶 <code>walk (…:35)</code>，exit 1</td><td class='small'>未捕获异常，与「真漂移」的 exit 1 撞车；<code>walk</code> 对软链目录是跟进去的</td></tr>
+<tr><td class='mono'>P3</td><td class='small'>默认视图缺失</td><td class='mono small'><code>mv workspace/.runtime_view/src src.off</code></td><td class='small'>stderr: <code>runtime-view: skipped (视图未部署)</code>，exit 0</td><td class='small'>干净 checkout 的 CI 必然没有此目录，门禁恒绿——跳过不是绿</td></tr>
+<tr><td class='mono'>P4</td><td class='small'>视图多出文件</td><td class='mono small'><code>touch services/ghost.ts</code> 后跑 <code>sync</code></td><td class='small'><code>extra services/ghost.ts</code>，exit 1，文件仍在</td><td class='small'>src/ 已删除的文件以「视图残留」形式继续被 Agent 读到</td></tr>
+</table>
+<p class="small">静态侧也一致：<code>walk</code> 用 <code>statSync</code>（跟随软链）、<code>--view</code> 只做 <code>indexOf</code> 不校验值、<code>for (const f of extra) { /* 不删，只报 */ }</code> 是一句空循环。</p>
+
+<h2>二、四次投放</h2>
+<table>
+<tr><th>轮次</th><th>我给的任务</th><th>它给的</th><th>判决</th></tr>
+<tr><td class='mono small'>exp15（第 1 投）</td><td class='small'>4 条缺口 + 复现命令 + 语义决定要求</td><td class='small'>诊断四条全对（根因、行号准确）；但 <b>4 条 OLD 全部命中 0</b>——文件是顶层零缩进，它给了 2/4/6 空格。另把 <code>const src</code> 当死代码删掉，而 <code>src</code> 有 5 处引用</td><td><span class='tag t-bad'>0/4 命中 + 致命</span></td></tr>
+<tr><td class='mono small'>exp15b（同会话）</td><td class='small'>改竖线格式材料 + 给 ReferenceError 实测 + 点出 P3 甩锅 CI</td><td class='small'>4 条 exact 命中，11/11 通过；P3 论证后回到「默认 0 / 显式 2」；但估 60 行实际 78</td><td><span class='tag t-warn'>78 行</span></td></tr>
+<tr><td class='mono small'>exp15c（第 3 投）</td><td class='small'>要求压到 ≤70 并给逐行减法</td><td class='small'><code>maxIterations=4</code> 被 schema 拒（min 5），HTTP 400，零输出</td><td><span class='tag t-bad'>参数非法</span></td></tr>
+<tr><td class='mono small'>exp15c（重发）</td><td class='small'>同任务，迭代改回 5</td><td class='small'>69 行，逐行减法清单；与当前版 diff 只有注释块与输出块两处</td><td><span class='tag t-ok'>定稿</span></td></tr>
+</table>
+
+<h3>第 1 投那条致命错误，实测输出</h3>
+<p>它把 <code>const src = vi &gt;= 0 ? SRC : SRC;</code> 判成「死代码」并顺手删掉。死的是那个恒等三元，不是变量——<code>src</code> 在 L46/51/54/60/64 被引用 5 次。按它的 NEW 落地后：</p>
+<pre>$ node --check c.mjs      <span class="small"># 语法通过</span>
+$ node c.mjs
+ReferenceError: src is not defined
+    at file:///workspace/codelens/server/scripts/_c_try.mjs:46:21</pre>
+<p><code>node --check</code> 不报、运行即死。若落地，门禁不是变严，是<b>完全不可用</b>，而且只有跑到 <code>test:acceptance</code> 链尾才暴露。</p>
+
+<h2>三、补丁与落地</h2>
+<p>文件 <code>server/scripts/check-runtime-view.mjs</code>，单一文件。四条补丁 + 一次压缩：</p>
+<table>
+<tr><th>#</th><th>改动</th><th>要点</th></tr>
+<tr><td class="mono">1</td><td class="small">import 加 <code>lstatSync</code> / <code>rmSync</code></td><td class="small">P2、P4 需要</td></tr>
+<tr><td class="mono">2</td><td class="small"><code>--view</code> 缺值守卫</td><td class="small">缺参 exit 2 并给明确文案，不再漏 <code>undefined</code></td></tr>
+<tr><td class="mono">3</td><td class="small"><code>walk</code> 里 <code>lstatSync</code> 先判软链</td><td class="small">软链一律跳过，不进 missing/extra</td></tr>
+<tr><td class="mono">4</td><td class="small">抽 <code>scan()</code>；sync 与默认分支合一；<code>rmSync</code> 删 extra</td><td class="small">消掉两套重复的 s/v/missing/extra/differ 计算</td></tr>
+<tr><td class="mono">5</td><td class="small">压缩注释块 + 合并输出循环</td><td class="small">91 → 78 → 69 行</td></tr>
+</table>
+<h3>定稿的输出段（逐字）</h3>
+<pre>const bad = r.missing.length + r.extra.length + r.differ.length;
+if (!quiet) {
+  for (const [k, fs] of [['missing', r.missing], ['extra', r.extra], ['differ', r.differ]]) for (const f of fs) console.log(`${k}  ${f}`);
+  console.log(bad > 0 ? `runtime-view drift: ${r.missing.length} missing, ${r.extra.length} extra, ${r.differ.length} differ` : 'OK: runtime view matches src');
+}
+process.exit(bad > 0 ? 1 : 0);</pre>
+
+<h2>四、有一条我判错了：P3</h2>
+<blockquote>
+P3 的结论是「原行为正确，不改代码」。我给它的题面写的是「跳过不是绿」，但视图 <code>workspace/.runtime_view/src</code> 在 <code>.gitignore</code> 第 27、76 行，<b>不进版本库</b>；CI 是干净 checkout，必然没有这个目录。改成 exit 2 只会把「恒绿的门禁」换成「恒红的门禁」——<code>test:acceptance</code> 是 <code>&amp;&amp;</code> 链，<code>ci.yml</code> 里没有任何退出码映射。
+</blockquote>
+<p>所以正确语义是它第 2 投给出的那个：<b>默认路径缺失 = exit 0 跳过（stderr 留痕）；显式 <code>--view</code> 缺失 = exit 2</b>。门禁的真实价值在本地/运行期（视图已生成时逐文件比对），不在 CI。这一条我不再算缺口，如实记下。</p>
+<p class="small">残余风险仍在：跳过时 CI 日志里只有一行 stderr，没有「未校验」的显式标记；如果哪天视图在生产机上被删成空目录，会被判成「全部 missing」而 exit 1——这个是能抓到的，反倒是安全的。</p>
+
+<h2>五、验收</h2>
+<p>13 个场景在最终版上逐个跑过（<code>exp15_verify.sh</code>，可复跑）：<b class="big-ok">12 PASS / 0 FAIL</b>。</p>
+<table>
+<tr><th>#</th><th>场景</th><th>exit</th><th>读数</th></tr>
+<tr><td class='mono'>S1</td><td class='small'>已同步</td><td class='mono t-ok'>0</td><td class='small'>OK: runtime view matches src</td></tr>
+<tr><td class='mono'>S2</td><td class='small'>--quiet 且已同步</td><td class='mono t-ok'>0</td><td class='small'>stdout+stderr 0 字节</td></tr>
+<tr><td class='mono'>S3</td><td class='small'>改一个文件</td><td class='mono t-ok'>1</td><td class='small'>differ 点名 1 处</td></tr>
+<tr><td class='mono'>S4</td><td class='small'>缺一个文件</td><td class='mono t-ok'>1</td><td class='small'>missing 点名 1 处</td></tr>
+<tr><td class='mono'>S5</td><td class='small'>多一个文件</td><td class='mono t-ok'>1</td><td class='small'>extra 点名 1 处</td></tr>
+<tr><td class='mono'>S6</td><td class='small'>sync 修干净</td><td class='mono t-ok'>0</td><td class='small'>修完 exit 0</td></tr>
+<tr><td class='mono'>S7</td><td class='small'>sync 后复检</td><td class='mono t-ok'>0</td><td class='small'>--quiet 复检 0</td></tr>
+<tr><td class='mono'>S8</td><td class='small'>默认视图未部署</td><td class='mono t-warn'>0</td><td class='small'>stderr skipped（CI 语义，见下）</td></tr>
+<tr><td class='mono'>S9</td><td class='small'>显式 --view 不存在</td><td class='mono t-ok'>2</td><td class='small'>前置不可得</td></tr>
+<tr><td class='mono'>P1</td><td class='small'>--view 缺值</td><td class='mono t-ok'>2</td><td class='small'><code>--view 缺少路径参数</code>，不含 undefined</td></tr>
+<tr><td class='mono'>P2</td><td class='small'>视图内软链成环</td><td class='mono t-ok'>0</td><td class='small'>链接跳过，不再 ELOOP</td></tr>
+<tr><td class='mono'>P4</td><td class='small'>sync 删 extra</td><td class='mono t-ok'>0</td><td class='small'>ghost.ts 已删除，复检 0</td></tr>
+<tr><td class='mono'>P5</td><td class='small'>行数</td><td class='mono t-ok'>69</td><td class='small'>≤ 70</td></tr>
+</table>
+<p>S8 标了 warn 不是失败：它按 P3 的结论就该是 0。这条由「跳过」承担，不校验。其余 12 条全部通过。</p>
+<h3>完整链路仍红，但不是本轮造成的</h3>
+<p><code>npm run test:acceptance</code> → <b>1975 passed / 9 failed / 1984</b>，与 exp14 那轮逐项一致（同一批 <code>file-size-ratchet</code>、<code>code-check*</code>、<code>author-model-resolution</code>）。本轮只动 <code>.mjs</code>，<code>tsconfig</code> 的 <code>include</code> 只有 <code>src</code>，它不参与 typecheck。门禁本身 <code>npm run check:runtime-view</code> 单独跑是 <b>0</b>。</p>
+
+<h2>六、可回滚不是形容词</h2>
+<table>
+<tr><th>状态</th><th>sha256</th><th>行数</th><th>验收读数</th><th>怎么来的</th></tr>
+<tr><td class='small'>官方原样（改前）</td><td class='mono'>1eb9b74c</td><td class='mono'>91</td><td class='small'>9 pass / 3 fail</td><td class='small'>exp15 起点</td></tr>
+<tr><td class='small'>四条补丁落地</td><td class='mono'>27eccaae</td><td class='mono'>78</td><td class='small'>11 pass / 1 fail（只剩行数）</td><td class='small'>P1/P2/P4 + 合并重构</td></tr>
+<tr><td class='small'>压缩定稿</td><td class='mono'>4456dd10</td><td class='mono'>69</td><td class='small'>12 pass / 0 fail</td><td class='small'>仅动注释块与输出块</td></tr>
+</table>
+<p>回滚实测：<code>cp check-runtime-view.mjs.before</code> → 哈希逐字节回到 <code>1eb9b74c</code>，读数立刻退回 <b>9 pass / 3 fail</b>；再覆盖定稿 → <code>4456dd10</code>，读数回到 <b>12 / 0</b>。往返一次，无手工修补。</p>
+
+<h2>七、瑕疵清单</h2>
+<h3>它这边</h3>
+<ul class="small">
+<li><b>四条 OLD 全部命中 0</b>（第 1 投）：文件顶层零缩进，它给了 2/4/6 空格；<code>count=0</code> ×4。</li>
+<li><b>删了 <code>const src</code></b>（第 1 投）：5 处引用，落地即 <code>ReferenceError</code>。这条最贵——<code>node --check</code> 拦不住。</li>
+<li><b>P3 倒回 exit 2 并甩锅</b>（第 1 投）：原文写「CI 侧应把 2 视为跳过而非失败」，但仓库里没有这个映射；被点出后才改回。</li>
+<li><b>行数估 60、实际 78</b>（第 2 投）；第 3 投又把 78 数成 79（材料末尾空行）。</li>
+</ul>
+<h3>我这边</h3>
+<ul class="small">
+<li><b>材料格式歧义</b>：第 1 版用「5 位行号 + 两空格 + 原文」，两空格被当成缩进基线；第 2 版改 <code>NNN|</code> 才消掉。</li>
+<li><b>TASK2 没写清新材料文件名</b>：它去读了旧的 <code>code.md</code>，<code>[D]</code>/<code>[E]</code> 没读到，靠我在正文里的口头描述补足。</li>
+<li><b><code>maxIterations=4</code> 违反 schema</b>（min 5），浪费一轮 400。</li>
+</ul>
+
+<h2>八、账本与卫生</h2>
+<table>
+<tr><th>项</th><th>值</th></tr>
+<tr><td>policy_versions</td><td class="mono">105（未增，min_id=1）</td></tr>
+<tr><td>policy_rsi_runs</td><td class="mono">88（未增）</td></tr>
+<tr><td>judge_runs</td><td class="mono">187 → 188</td></tr>
+<tr><td>package.json</td><td class="mono">57640f25（与 exp14 结束一致，本轮未动）</td></tr>
+<tr><td>旗标</td><td class="mono">OFF（文件不存在）</td></tr>
+<tr><td>服务</td><td class="mono">:8080 在线；relay :9999 在线</td></tr>
+<tr><td>aitl_pr/</td><td class="mono">六文件哈希不变、未上传、零密钥</td></tr>
+</table>
+<p class="small">缺口 ④（投放轮也写账本）本轮<b>没有复现</b>：4 次投放后 <code>policy_versions</code> 停在 105。说明它取决于 judge 是否触发 <code>applyFromJudge</code>，不是必然路径。</p>
+
+<h2>九、下一轮</h2>
+<ol class="small">
+<li><b>② 0.60 与 0.65 往返震荡</b>：放宽到 0.60 后，下一代只要成功率掉一点就回到 0.65，没有收敛判据。这是 RSI 层最实的缺口，建议下一轮做。</li>
+<li><b>③ 放松永远拿不到 <code>improved</code></b>：krsi 的判决口径里，阈值的单向收紧才算改善，放松只能落在 <code>loosened</code>。</li>
+<li><b>快照与线上源码的一致性</b>：exp14 已拉平并上门禁，但「谁生成视图」仍没有答案——<code>sync</code> 要人手跑。</li>
+</ol>
+
+<div class="sub" style="margin-top:26px">本轮未读 hidden/expected、未代写诊断、未改 <code>aitl_pr/</code>、未上传。</div>
+</div></body></html>

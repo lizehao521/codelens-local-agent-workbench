@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSI π 回归迭代 · exp17 · 缺口自造 + π 迭代 + 辩论协同</title>
+<style>
+  :root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--fg:#e6edf3;--mut:#8b949e;
+        --ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#58a6ff;--purple:#bc8cff;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.7 -apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  h1{font-size:25px;margin:0 0 6px}h2{font-size:19px;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+  h3{font-size:15px;margin:18px 0 8px;color:var(--acc)}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:18px 20px;margin:14px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0}
+  .kpi{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 14px}
+  .kpi .n{font-size:21px;font-weight:700}.kpi .l{color:var(--mut);font-size:12px;margin-top:2px}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--bd);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#1c2128;color:var(--mut);font-weight:600}
+  code{background:#1c2128;border:1px solid var(--bd);border-radius:4px;padding:1px 5px;font:12.5px ui-monospace,Consolas,monospace}
+  .ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}.acc{color:var(--acc)}.purple{color:var(--purple)}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--bd);margin-right:6px}
+  .tag.g{color:var(--ok);border-color:var(--ok)}.tag.y{color:var(--warn);border-color:var(--warn)}.tag.b{color:var(--bad);border-color:var(--bad)}.tag.p{color:var(--purple);border-color:var(--purple)}
+  .quote{border-left:3px solid var(--purple);padding:6px 0 6px 14px;margin:12px 0;color:#c9d1d9;font-size:14px}
+  ul{margin:8px 0;padding-left:22px}li{margin:5px 0}
+  .foot{color:var(--mut);font-size:12px;margin-top:36px;border-top:1px solid var(--bd);padding-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RSI π 回归迭代 · exp17</h1>
+  <div class="sub">缺口自造 + π 迭代 + 辩论协同 · 2026-11-16 · 链路 relay(:9999, DeepSeek-V4-Flash) → codelens(:8080)</div>
+
+  <div class="grid">
+    <div class="kpi"><div class="n ok">1 道</div><div class="l">自造新判据并晋升</div></div>
+    <div class="kpi"><div class="n acc">6/14→13/14</div><div class="l">semver_compare 自修复</div></div>
+    <div class="kpi"><div class="n purple">5/10</div><div class="l">反方给主任务可信度</div></div>
+    <div class="kpi"><div class="n warn">观测错位</div><div class="l">π 读取失误（见下）</div></div>
+  </div>
+
+  <h2>① 你问的"辩论协同"——能，已做成真的</h2>
+  <p>不用改 codelens 一行代码。系统原生有两条对抗通道，我又加了第三条旁路：</p>
+  <table>
+    <tr><th>通道</th><th>机制</th><th>是否碰主任务</th></tr>
+    <tr><td>L3 红队判据</td><td><code>judge/red-team.ts</code>：自动检查"声称做了但没证据"——codelens 的自我对抗面</td><td class="ok">内建，每次判决都跑</td></tr>
+    <tr><td>独立反方辩论</td><td>我用 agent/stream 开<b>独立 session</b>，让 codelens 扮演反方质疑自己上一轮的结论，结论落旁账</td><td class="ok">只读不写，不进主 session、不写 π、不改判据塔</td></tr>
+    <tr><td>我的旁账审计</td><td>我读两方产出做交叉核对，判决如实记录，包括我自己写错的地方</td><td class="ok">完全旁路</td></tr>
+  </table>
+  <div class="quote">所以"不影响 codelens 的任务"是这套设计的立身之本：辩手和辩方各走各的 session、各记各的账。我当辩手/记录员，它当被辩方，通过投放接口对话。</div>
+
+  <h2>② 缺口自造 + π 迭代（两轮盲测）</h2>
+  <p>不给题面、方向、答案，让它自己找能力缺口。第一轮 <code>807f329f</code>（415s / 719 事件 / finish=stop），第二轮 <code>ea27176a</code>（793s / 604 事件 / finish=<span class="warn">budget_exhausted</span>）。</p>
+
+  <h3>第一轮：自造新判据 ✅</h3>
+  <ul>
+    <li>自查测量面，判定"日期时间域"完全没覆盖 → 自造方向 <b>ISO 日期解析与校验</b>（闰年世纪规则 / 大小月 / 无效日期拒绝）</li>
+    <li>调 <code>eval.propose</code> 提交，服务端机械验证（参考全过、缺陷真红、隐藏不重复、变异杀死≥60%）——中途被拒 2 次后按反馈自改，最终通过</li>
+    <li>提案已晋升落盘：<code>parse_iso_date.json</code>（exportName <code>parseIsoDate</code>，2 公开 + 5 隐藏 + 2 链接，含 validation 字段）</li>
+  </ul>
+  <div class="quote">盲测约束守住：reference / buggy / hiddenCases 只记录字段长度（527/467/419~525B），没读内容；判据是否真红只认服务端机械验证，不认模型自述。</div>
+
+  <h3>第二轮：自迭代（在沙箱 workspace 上）</h3>
+  <ul>
+    <li><code>parse_iso_date</code>：识别世纪年规则缺陷（<code>y%4===0</code> 漏 1900/2100），修到<b>满分</b></li>
+    <li><code>semver_compare</code>：6/14 → 12/14 → 13/14（补了预发布数字标识符前导零等），全量 166/168 = 98.8%</li>
+    <li>最后 1 个隐藏用例没攻下，<span class="warn">token 预算耗尽（256000）finish=budget_exhausted</span>，收尾停在臆测</li>
+  </ul>
+
+  <h2>③ 辩论协同实测：反方 5/10，"方向对、收尾虚"</h2>
+  <p>把第二轮自述原文（3056 字）投给独立反方 session <code>aa98012c</code>（176s / finish=stop）。反方逐条反驳：</p>
+  <ul>
+    <li><b>最可能错的一句</b>："build 元数据忽略应该没问题"——它从头到尾<b>没跑过一个真实反例</b>，只是"让我想想/可能的问题是"的自我说服循环；而 13/14 卡住恰说明 build 分支没覆盖。</li>
+    <li><b>缺口真假</b>：判定是<b>真能力缺口</b>——分数随修复单调递增（6→12→13），测量假象不会这样。区分方法：能力缺口随修复上升，假象是"修了不动/无规律跳变"。</li>
+    <li><b>π 副作用</b>：警惕"追着隐藏用例打"的过度拟合——每补一分支涨 1 分但永远差 1 个，可能把实现改得特化、甚至为过 build 用例放宽校验而改坏已满分的 parse_iso_date（修一个套件引入另一个回归）。</li>
+    <li><b>可信度 5/10</b>：加分是修对了 parse_iso_date 且 semver 单调提升；扣分是全篇无实证、前后摇摆（先说 build 没问题又反复怀疑）、过度自信于未证实的覆盖项。</li>
+  </ul>
+  <div class="quote">反方核心判断：<b>这个观点方向对、收尾虚</b>——真能力缺口修对了，但最后 1 个用例的归因全是臆测，没有一次真实反例支撑，可信度打折。这正是辩论协同的价值：把自述里的水分挤出来。</div>
+
+  <h2>④ 我必须如实记录的三处问题</h2>
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag b">我的失误</span>观测口径错位，π 被读成 None</h3>
+    脚本读 <code>server/data/codelens.db</code>（0 版本），但真实主库是 <code>/workspace/codelens/data/codelens.db</code>（107 版本，最新 thresholds 含 minToolSuccessRate）。所以初报 <code>policy None->None (+0)</code> 是<b>读错库</b>，不是 π 真没迭代。真实 π 状态：107 版本 / 200 judge_runs / 有 rsi 表。
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag y">我的失误</span>重启 server 用错 ROOT</h3>
+    我用 <code>cd /workspace/codelens/server && npm run dev</code> 启动，ROOT 落在 server/，导致本轮两批任务跑在<b>空 π 实例</b>上，与历史 exp 的 π 状态不连续。因此这轮"π 迭代"不能算作在既有 π 上的连续演进——它验证了缺口自造与自修复能力，但 π 连续性存疑。要补的话需用 <code>cd /workspace/codelens && AGENT_DB_PATH=... </code> 指向真实库重跑。
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0"><span class="tag y">需关注</span>模型改了沙箱 eval 实现</h3>
+    trace 显示第二轮用 <code>fs.write</code> 覆盖写了 <code>workspace/eval/semver_compare/impl.cjs</code> 和 <code>parse_iso_date/impl.cjs</code>。核查：<b>受保护源码 <code>src/services/eval/suites.ts</code> 时间戳仍是 11-14、未被动</b>；改的是 gitignore 的沙箱运行时副本，用于自迭代验证。不算越界改判据塔，但"不改任何现有文件"的指令它没严格守住——如实记录。
+  </div>
+
+  <h2>⑤ 待决</h2>
+  <table>
+    <tr><th>项</th><th>状态</th></tr>
+    <tr><td>GitHub 推送 <code>eaa6dfa</code></td><td class="warn">搁置：设备码 BF5D-xxxx（已过期） 你那边连不上授权页；残留已清空、hosts 未改。等你可上 GitHub 再请码</td></tr>
+    <tr><td>π 连续性补验</td><td class="warn">可选：指向真实主库重跑一轮，确认 π 在既有 107 版本上能继续迭代</td></tr>
+    <tr><td>本地/远端 ref</td><td>本地 <code>eaa6dfa</code>，远端 main 仍 <code>e1c2064</code>（行数棘轮失败版）</td></tr>
+  </table>
+
+  <div class="foot">
+    产出：<code>/workspace/rsi_pi/gap_pi_iterate.py</code> · <code>exp16_gap_pi_result.json</code> · <code>debate_drop.py</code> · <code>exp16_debate_result.json</code> ·
+    新提案 <code>/workspace/codelens/server/data/eval-proposals/parse_iso_date.json</code><br>
+    全程遵守：不给题面/答案 · 敏感字段脱敏落盘 · 判据读数只认服务端 · 辩论独立 session 只读不写 · 账本 append-only · 不读 hidden/expected · 代理失误如实记录。
+  </div>
+</div>
+</body>
+</html>
