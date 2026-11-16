@@ -1,0 +1,424 @@
+diff --git a/server/src/services/agent/agent-loop.service.ts b/server/src/services/agent/agent-loop.service.ts
+index 21f9e85..2e1c415 100644
+--- a/server/src/services/agent/agent-loop.service.ts
++++ b/server/src/services/agent/agent-loop.service.ts
+@@ -643,10 +643,7 @@ export class AgentLoopService {
+             usage,
+             `上下文已满：压缩自检未通过（缺：${view.compactionFailed.join('、')}），任务已回退。建议：新建会话，或把任务拆小后重试`,
+             undefined,
+-            budget.tokenBudget,
+-            firstTokenMs(),
+-            undefined,
+-            budget.startedAt,
++            budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt,
+           );
+           return;
+         }
+@@ -971,10 +968,7 @@ export class AgentLoopService {
+                 usage,
+                 `连续 ${config.agentConvergenceRounds} 轮无新增文件改动 / 证据 / 工具结果变化，我判断已到头`,
+                 undefined,
+-                budget.tokenBudget,
+-                firstTokenMs(),
+-                undefined,
+-                budget.startedAt,
++                budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt,
+               );
+               return { terminated: true };
+             }
+diff --git a/server/src/services/agent/update.service.ts b/server/src/services/agent/update.service.ts
+index 2afdb46..a98fd5a 100644
+--- a/server/src/services/agent/update.service.ts
++++ b/server/src/services/agent/update.service.ts
+@@ -1,20 +1,13 @@
+ /**
+  * Update service — the `Update` step of the reinforcement loop (强化内核宣言第1节):
+- *
+  *   Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
+- *
+- * Responsibilities:
+- *  - turn a judgment r (an increment) into a new π' (append-only version);
+- *  - never mutate the metric口径 of the Judges to flatter the result;
+- *  - every mutation is rollable (no DELETE — rollback appends a revert version);
+- *  - expose getPolicy() so the NEXT Act can read π' (closes the C2 open-loop).
+- *
+- * This is the minimal closed loop, NOT full self-modifying RL. The π surface is
+- * deliberately small (lessons + thresholds) and the only consumer wired today is
+- * the agent system prompt (see system-prompt.ts buildSystemPrompt).
++ * - turn judgment r into π' (append-only); never flatter the metric口径;
++ * - every mutation rollable (no DELETE — rollback appends a revert version);
++ * - getPolicy() lets the NEXT Act read π' (closes C2 open-loop).
++ * Minimal closed loop, NOT full self-modifying RL; π surface = lessons + thresholds.
+  */
+ 
+-import { existsSync } from 'node:fs'; // [controlled-release-exp5] 受控开关（文件旗标，实时读取）
++import { rsiReleaseOn, rateThresholdDelta } from '../rsi/controlled-release.js';
+ import type { Db } from '../../repositories/db.js';
+ import {
+   PolicyRepository,
+@@ -81,15 +74,6 @@ const CRITERION_LESSON: Record<string, string> = {
+     '此前任务 token 消耗接近或超过预算。应减少冗余读取与重复调用，一次取够所需信息。',
+ };
+ 
+-// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
+-// OFF（旗标不存在）：applyFromJudge 只产 lessons，函数级等价官方行为。
+-// ON （旗标存在）：tool.success_rate 失败时额外收紧 minToolSuccessRate。
+-// 旗标由部署脚本增删，切换 off/on 无需重启进程（tsx watch 不重载 .flag）。
+-const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+-function rsiReleaseOn(): boolean {
+-  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+-}
+-
+ export class UpdateService {
+   private readonly repo: PolicyRepository;
+ 
+@@ -214,33 +198,12 @@ export class UpdateService {
+       seen.add(lesson);
+       addLessons.push(lesson);
+     }
+-    // [controlled-release-exp5] OFF：函数级等价官方 —— 无新经验则不产版本
+-    if (!rsiReleaseOn()) {
+-      if (addLessons.length === 0) return null;
+-      return this.applyUpdate({ addLessons }, `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`);
+-    }
+-
+-    // [controlled-release-exp5] ON：除 lessons 外，按失败判据收紧阈值并产出 setThresholds
+-    // 收紧值落在 THRESHOLD_BOUNDS 内（resolveThresholds clamp 兜底）；只收紧不放宽。
+-    const setThresholds: Record<string, number> = {};
+-    if (failed.some((v) => v.criterion === 'tool.success_rate')) {
+-      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
+-      setThresholds.minToolSuccessRate = Math.min(1, Math.round((cur + 0.05) * 100) / 100);
+-    } else if (
+-      // [patch2-rollback] 对称回退：tool.success_rate 判 pass 时向默认 0.6 回落，抵消单向棘轮
+-      run.verdicts.some((v) => v.criterion === 'tool.success_rate' && v.status === 'pass')
+-    ) {
+-      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
+-      if (cur > 0.6) {
+-        setThresholds.minToolSuccessRate = Math.max(0.6, Math.round((cur - 0.05) * 100) / 100);
+-      }
+-    }
+-    // 关键：即使 addLessons 因去重为空，只要本轮该收紧阈值也要落版本（否则补不上 P2）
+-    if (addLessons.length === 0 && Object.keys(setThresholds).length === 0) return null;
+-    return this.applyUpdate(
+-      { addLessons, ...(Object.keys(setThresholds).length ? { setThresholds } : {}) },
+-      `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`,
+-    );
++    const reason = `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`;
++    // OFF：无新经验则不产版本（函数级等价官方）；ON：按失败判据调整阈值（clamp 兜底）。
++    if (!rsiReleaseOn()) return addLessons.length ? this.applyUpdate({ addLessons }, reason) : null;
++    const delta = rateThresholdDelta(failed, run.verdicts, this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6);
++    if (addLessons.length === 0 && delta === null) return null; // 无经验且阈值不动 ⇒ 不产版本
++    return this.applyUpdate({ addLessons, ...(delta === null ? {} : { setThresholds: { minToolSuccessRate: delta } }) }, reason);
+   }
+ 
+   /** 把一次判决换算成可读的经验增量（供展示/测试，不落库）。 */
+diff --git a/server/src/services/judge/judge.service.ts b/server/src/services/judge/judge.service.ts
+index 6c7090f..50443fa 100644
+--- a/server/src/services/judge/judge.service.ts
++++ b/server/src/services/judge/judge.service.ts
+@@ -1,23 +1,13 @@
+ /**
+- * Judge service — 闭环的 `Judge` 一步（强化内核宣言第 1、3 节）。
+- *
++ * Judge service — 闭环的 `Judge` 一步（强化内核宣言第 1、3 节）：
+  *   Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
+- *
+- * 它做三件事，缺一不可：
+- *   1. 从 τ（tool_calls / approvals / messages / 运行期元数据）抽取证据；
+- *   2. 跑判据塔 L0–L3，产出结构化 r（含 unexec，不把「没测」说成「通过」）；
+- *   3. 计算覆盖率并按门槛定档 —— 覆盖率不足时只能 inconclusive。
+- *
+- * 关键设计：
+- *  - L1 金丝雀若不能证明判据具备判别力，本轮 L0 结论整体降级为 unexec。
+- *    判据不可信时，它给出的任何绿都不算数（C3）。
+- *  - v2：覆盖率分母只算 available 层；不可用层既不给绿也不占名额。
+- *  - v2：判决必须可复算 —— 证据、阈值、金丝雀状态全部进 context_json 快照。
+- *  - v2：判据塔自身故障（L1 fail）判 inconclusive，绝不写成「任务失败」。
+- *    否则自证故障会被 Update 当成任务失败永久入库，污染经验有效性的分母。
++ * 做三件事：从 τ 抽证据；跑判据塔 L0–L3 产出 r（含 unexec）；按覆盖率定档。
++ * 关键：L1 金丝雀不能证明判别力则 L0 降级 unexec（C3）；覆盖率只算 available 层；
++ * 判决可复算（证据/阈值/金丝雀进 context_json 快照）；塔自身故障判 inconclusive，
++ * 绝不写成「任务失败」（否则污染经验有效性分母）。
+  */
+ 
+-import { existsSync } from 'node:fs';
++import { generationStart } from '../rsi/controlled-release.js';
+ import type { Db } from '../../repositories/db.js';
+ import type { ToolCallRepository } from '../memory/tool-call.repository.js';
+ import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
+@@ -61,12 +51,6 @@ import {
+   type LayerProfile,
+ } from './types.js';
+ 
+-// [controlled-release-exp13] 受控开关：OFF（旗标不存在）等价官方全量取数。
+-const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+-function rsiReleaseOn(): boolean {
+-  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+-}
+-
+ /** 运行期上下文：loop 结束时才知道、且不在 τ 里的信息。 */
+ export interface JudgeRuntimeContext {
+   finishReason: string;
+@@ -983,7 +967,7 @@ export class JudgeService {
+         tokenBudget: runtime.tokenBudget,
+         usage: runtime.usage,
+         circuitOpened: runtime.circuitOpened,
+-        runStartedAt: rsiReleaseOn() ? runtime.runStartedAt : undefined,
++        runStartedAt: generationStart(runtime.runStartedAt),
+       },
+       canary: {
+         status: canary.verdict.status,
+@@ -1063,21 +1047,16 @@ export class JudgeService {
+       }
+     }
+ 
+-    // [controlled-release-exp13] OFF：忽略 runStartedAt 走全量，函数级等价官方。
+-    const effectiveStart = rsiReleaseOn() ? runStartedAt : undefined;
+-    return this.deps.toolCalls
+-      .listBySession(sessionId)
+-      .filter((t) => effectiveStart === undefined || t.created_at >= effectiveStart)
++    const start = generationStart(runStartedAt);
++    return this.deps.toolCalls.listBySession(sessionId)
++      .filter((t) => start === undefined || t.created_at >= start)
+       .map((t) => ({
+-      status: t.status as string,
+-      display_name: t.display_name,
+-      error_kind: t.error_kind,
+-      // 只有 sys.exec 行才有值。undefined 会被 canonicalJson 直接丢弃，
+-      // 因此**非 exec 会话的 evidence digest 必须保持字节级不变**（加了字段也不许漂移）。
+-      // 会变的只有含 exec 调用的会话：那是证据本身真的多了「真实退出码」，
+-      // 跨版本 replay 时显示一次 drift 是诚实反映，不是 bug。
+-      exit_code: byToolCall.get(t.id) ?? undefined,
+-    }));
++        status: t.status as string,
++        display_name: t.display_name,
++        error_kind: t.error_kind,
++        // 非 exec 会话 digest 必须字节不变；含 exec 的 drift 是真实新增退出码。
++        exit_code: byToolCall.get(t.id) ?? undefined,
++      }));
+   }
+ 
+   /**
+diff --git a/server/src/services/judge/replay.ts b/server/src/services/judge/replay.ts
+index 8dd3bd9..5403b6b 100644
+--- a/server/src/services/judge/replay.ts
++++ b/server/src/services/judge/replay.ts
+@@ -1,9 +1,7 @@
+ /**
+  * Replay —— 判决复算（判据塔 v2）。
+- *
+- * 为什么需要它：v1 的 `context_json` 只存了 runtime + 两个金丝雀分数。
+- * 一旦判据口径、阈值或证据变了，事后没人能回答「这条 fail 是怎么判出来的」。
+- * 不可复算的判决等于不可审计的判决 —— 它只能被相信，不能被检验。
++ * v1 的 `context_json` 只存 runtime + 金丝雀分数，判据/阈值/证据一变就无法回答
++ * 「这条 fail 怎么判出来」；不可复算等于不可审计 —— 只能被相信，不能被检验。
+  *
+  * 复算的硬约束：
+  *  - **只读**。replay 不写任何一行；重复调用必须得到逐字节相同的 body。
+diff --git a/server/src/services/rsi/controlled-release.ts b/server/src/services/rsi/controlled-release.ts
+new file mode 100644
+index 0000000..7393a82
+--- /dev/null
++++ b/server/src/services/rsi/controlled-release.ts
+@@ -0,0 +1,78 @@
++/**
++ * 受控发布开关与判据差分（强化 Judge + Update + RSI 三维）。
++ * 集中管理 controlled-release.flag：OFF 时所有 RSI 增量函数级等价官方闭环，
++ * ON 时才启用本代证据取数、阈值调整与判据指纹；旗标实时读取、不缓存。
++ */
++import { existsSync } from 'node:fs';
++import { criteriaFingerprint, type RsiCriterionDiff } from './manifest-builder.js';
++import { resolveThresholds, DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js';
++
++export const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
++
++export function rsiReleaseOn(): boolean {
++  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
++}
++
++/** 受控开关下的本代起点；OFF 返回 undefined（证据取全量）。 */
++export function generationStart(start?: number): number | undefined {
++  return rsiReleaseOn() ? start : undefined;
++}
++
++/** 受控开关下的判据指纹与差分；OFF 返回空对象，调用方展开后等价官方调用。 */
++export function releaseCriteria(
++  db: { get<T>(sql: string, params?: unknown): T | undefined },
++  prevEffective?: Record<string, number>,
++): { criteriaSha256?: string; criteriaDiff?: RsiCriterionDiff[] } {
++  try {
++    if (!rsiReleaseOn()) return {};
++    const row = db.get<{ policy_json: string }>('SELECT policy_json FROM policy_versions ORDER BY version DESC LIMIT 1');
++    let raw: Record<string, number> = {};
++    try { raw = JSON.parse(row?.policy_json ?? '{}').thresholds ?? {}; } catch { raw = {}; }
++    const eff = resolveThresholds(raw) as unknown as Record<string, number>;
++    const def = DEFAULT_L0_THRESHOLDS as unknown as Record<string, number>;
++    const diffs: RsiCriterionDiff[] = [];
++    for (const [k, v] of Object.entries(eff)) {
++      const base = prevEffective?.[k] ?? def[k];
++      if (base === undefined || Math.abs(v - base) < 1e-9) continue;
++      const tightened = k.startsWith('min') ? v > base : v < base;
++      diffs.push({ id: k, change: tightened ? 'tightened' : 'loosened', note: `${base} -> ${v}` });
++    }
++    return { criteriaSha256: criteriaFingerprint(eff), criteriaDiff: diffs };
++  } catch {
++    return {};
++  }
++}
++
++/** 从上一代 manifest 的 criteria_diff[].note 提取该代生效阈值，作为方向基准。 */
++export function prevEffectiveThresholds(row: { next_manifest_json: string | null } | undefined): Record<string, number> {
++  if (!row?.next_manifest_json) return {};
++  try {
++    const prev = JSON.parse(row.next_manifest_json) as { criteria_diff?: { id: string; note: string }[] };
++    const out: Record<string, number> = {};
++    for (const d of prev.criteria_diff ?? []) {
++      const note = d.note ?? '';
++      const mOld = /生效\s*([0-9.]+)/.exec(note);
++      const m = mOld ?? (/->\s*([0-9.]+)/.exec(note));
++
++      if (m) out[d.id] = Number(m[1]);
++    }
++    return out;
++  } catch {
++    return {};
++  }
++}
++
++/** 受控开关下 tool.success_rate 的阈值调整；null 表示本轮不动阈值。 */
++export function rateThresholdDelta(
++  failed: { criterion: string }[],
++  verdicts: { criterion: string; status: string }[],
++  current: number,
++): number | null {
++  if (failed.some((v) => v.criterion === 'tool.success_rate')) {
++    return Math.min(1, Math.round((current + 0.05) * 100) / 100);
++  }
++  if (verdicts.some((v) => v.criterion === 'tool.success_rate' && v.status === 'pass') && current > 0.6) {
++    return Math.max(0.6, Math.round((current - 0.05) * 100) / 100);
++  }
++  return null;
++}
+diff --git a/server/src/services/rsi/rsi-bridge.service.ts b/server/src/services/rsi/rsi-bridge.service.ts
+index 017fdda..4f7ba18 100644
+--- a/server/src/services/rsi/rsi-bridge.service.ts
++++ b/server/src/services/rsi/rsi-bridge.service.ts
+@@ -1,25 +1,10 @@
+ /**
+  * RSI bridge service — 双轨并存的"旁路对账件"。
+- *
+- * 职责：
+- *   1. 从 DB 取回上一轮成功判决的 AgentRunResult，重建 prev Manifest
+- *   2. 用 manifest-builder 把当前 run 的 verdicts 转成 next Manifest
+- *   3. spawn krsi CLI，喂 prev/next，拿四态 verdict
+- *   4. 写入 policy_rsi_runs 表（审计记录）
+- *
+- * 设计约束：
+- *   - 失败不阻断主流程：catch 所有异常，console.warn 就行（跟 JudgeService.judgeDeep 同口径）
+- *   - 首次运行（无 prev）→ skip，写 verdict=skipped，不走 krsi
+- *   - 每 session 独立落账本（ledger 文件放在 agentDb 旁边）
+- *
+- * 退出码语义（来自 krsi main.go）：
+- *   0 = improved（算数）
+- *   1 = not_improved（读数不支持）
+- *   2 = refused（拒收，点名哪条 R 判据）
+- *   3 = undecidable（量不到）
+- *
+- *   任何其他 exit code → 视为 bridge 自身故障（构建挂了 / 超时）
+- *   krsi 二进制不存在 → skipped（仪器没装，不做对账；不是判据故障）
++ * 职责：取回上一轮判决重建 prev Manifest；用 manifest-builder 把当前 verdicts 转成
++ * next Manifest；spawn krsi CLI 拿四态 verdict；写入 policy_rsi_runs 表。
++ * 设计：失败不阻断主流程（catch + warn，同 JudgeService.judgeDeep）；首次无 prev → skip；
++ * 每 session 独立落账本。退出码（krsi main.go）：0 improved / 1 not_improved /
++ * 2 refused / 3 undecidable；其它 → bridge 自身故障；二进制不存在 → skipped。
+  */
+ 
+ import { spawn } from 'node:child_process';
+@@ -28,9 +13,9 @@ import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
+ import path from 'node:path';
+ import { createHash } from 'node:crypto';
+ import type { Db } from '../../repositories/db.js';
+-import { buildManifest, criteriaFingerprint, hasScoredObjective, type RsiManifest, type RsiArtifact, type RsiCriterionDiff } from './manifest-builder.js';
++import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
+ import { canonicalJson } from './ledger-verify.js';
+-import { resolveThresholds, DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js'; // [controlled-release-exp5]
++import { releaseCriteria, prevEffectiveThresholds } from './controlled-release.js';
+ import type { CriterionVerdict } from '../judge/types.js';
+ import {
+   readSuiteScores,
+@@ -70,38 +55,6 @@ const DEFAULT_KRSI_PATH = '/tmp/krsi';
+ const DEFAULT_TIMEOUT_MS = 10_000;
+ const DEFAULT_PRODUCER = 'codelens-agentkernel';
+ 
+-// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
+-// OFF（旗标不存在）：返回空对象 → buildManifest 走官方回落 criteriaFingerprint() 无参 + diff=[]，函数级等价。
+-// ON （旗标存在）：读当前 π 生效阈值，经 resolveThresholds 归一化算真实指纹，并据实生成合法 criteriaDiff。
+-// 归一化是关键：criteriaFingerprint({}) 会得 9c6815ad…（把「没改判据」误报成「改了」），必须走 resolveThresholds。
+-const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+-interface ReleaseCriteria { criteriaSha256?: string; criteriaDiff?: RsiCriterionDiff[]; }
+-function releaseCriteria(
+-  db: { get<T>(sql: string, params?: unknown): T | undefined },
+-  prevEffective?: Record<string, number>,
+-): ReleaseCriteria {
+-  try {
+-    if (!existsSync(RSI_RELEASE_FLAG)) return {}; // OFF：函数级等价官方行为
+-    const row = db.get<{ policy_json: string }>(
+-      'SELECT policy_json FROM policy_versions ORDER BY version DESC LIMIT 1');
+-    let raw: Record<string, number> = {};
+-    try { raw = JSON.parse(row?.policy_json ?? '{}').thresholds ?? {}; } catch { raw = {}; }
+-    const eff = resolveThresholds(raw) as unknown as Record<string, number>;
+-    const def = DEFAULT_L0_THRESHOLDS as unknown as Record<string, number>;
+-    const diffs: RsiCriterionDiff[] = [];
+-    for (const [k, v] of Object.entries(eff)) {
+-      // 方向基准：优先用上一代生效值；无上一代（首次运行）或解析不到时回退默认 0.6。
+-      const base = prevEffective?.[k] ?? def[k];
+-      if (base === undefined || Math.abs(v - base) < 1e-9) continue;
+-      const tightened = k.startsWith('min') ? v > base : v < base; // min* 越大越严 / max* 越小越严
+-      diffs.push({ id: k, change: tightened ? 'tightened' : 'loosened', note: `${base} -> ${v}` });
+-    }
+-    return { criteriaSha256: criteriaFingerprint(eff), criteriaDiff: diffs };
+-  } catch {
+-    return {}; // 开关读取失败一律回落官方行为，绝不阻断主流程
+-  }
+-}
+-
+ /** policy_rsi_runs 表的最小 DB 表面（跟 schema.ts MigrationDb 同口径）。 */
+ interface RsiDb {
+   exec(sql: string): void;
+@@ -175,27 +128,6 @@ export class RsiBridgeService {
+     );
+     const prevGeneration = prevGenRow?.generation ?? 0;
+     const generation = prevGeneration + 1;
+-    // [controlled-release-exp5] 从上一代落库 manifest 原文的 criteria_diff[].note 提取生效阈值，
+-    // 作为本代 change 方向基准。解析失败回退空对象（调用方再回退默认 0.6），绝不阻断主流程。
+-    const prevEffectiveThresholds = (row: { next_manifest_json: string | null } | undefined): Record<string, number> => {
+-      if (!row?.next_manifest_json) return {};
+-      try {
+-        const prev = JSON.parse(row.next_manifest_json) as { criteria_diff?: { id: string; note: string }[] };
+-        const out: Record<string, number> = {};
+-        for (const d of prev.criteria_diff ?? []) {
+-          const note = d.note ?? '';
+-          // 旧格式 "默认 X -> 生效 Y"：Y 是该代生效值（必须优先，否则会被 -> 误取左侧 X）
+-          const mOld = /生效\s*([0-9.]+)/.exec(note);
+-          // 新格式 "A -> B"：B（右侧）是该代生效值
+-          const mNew = mOld ? null : /->\s*([0-9.]+)/.exec(note);
+-          const m = mOld ?? mNew;
+-          if (m) out[d.id] = Number(m[1]);
+-        }
+-        return out;
+-      } catch {
+-        return {};
+-      }
+-    };
+ 
+     const ledgerPath = path.join(this.rsiDir, `${safe(sessionId)}.jsonl`);
+     const reportPath = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}.txt`);
+@@ -305,7 +237,7 @@ export class RsiBridgeService {
+       const evidenceBytes = Buffer.byteLength(evidenceBody, 'utf8');
+ 
+       // ── 1. 构建 next Manifest ────────────────────────────────────────────────
+-      // [controlled-release-exp5] 开关 OFF 时 releaseCriteria() 返回 {}，展开后等价官方调用（不传字段）。
++      // 开关 OFF 时 releaseCriteria() 返回 {}，展开后等价官方调用（不传字段）。
+       const nextManifest = buildManifest({
+         producer: this.producer,
+         generation,

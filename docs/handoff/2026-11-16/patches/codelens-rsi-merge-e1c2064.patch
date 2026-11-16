@@ -1,0 +1,501 @@
+From e1c2064f40fe5683332d6aaad94b411fb27feac2 Mon Sep 17 00:00:00 2001
+From: lizehao521 <120114476+lizehao521@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 15:49:30 +0800
+Subject: [PATCH] =?UTF-8?q?feat(rsi):=20=E5=88=A4=E5=86=B3=E8=AF=81?=
+ =?UTF-8?q?=E6=8D=AE=E6=8C=89=E6=9C=AC=E4=BB=A3=E8=B5=B7=E7=82=B9=E5=8F=96?=
+ =?UTF-8?q?=E6=95=B0=20+=20=E5=8F=97=E6=8E=A7=E6=97=97=E6=A0=87=EF=BC=9B?=
+ =?UTF-8?q?=E6=96=B0=E5=A2=9E=E8=BF=90=E8=A1=8C=E6=9C=9F=E8=A7=86=E5=9B=BE?=
+ =?UTF-8?q?=E9=97=A8=E7=A6=81?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+移植本地实验环境的 RSI 改动（exp9–exp15）到 main 60ba1d3，按远端现状重新落地，
+保留 budget-kind 正料与 runLoop 重构：runStartedAt 作为 finish/maybeDepositLesson
+的尾部可选参（第 11 / 第 7 位），不挤占 budgetHit。
+
+- judge：JudgeRuntimeContext.runStartedAt；evidenceToolCalls 按 created_at >= 起点过滤，
+  旗标不存在时回落 listBySession 全量，函数级等价原行为
+- agent-loop：8 个 finish 调用点透传 budget.startedAt；判决 runtime 带上本代起点
+- replay：快照 context 记录 runStartedAt；旧快照缺该字段时退全量
+- update：受控开关控制是否按失败判据收紧 / 回退 minToolSuccessRate
+- rsi-bridge：受控开关下按上一代生效值算 criteriaSha256 与 criteriaDiff
+- scripts/check-runtime-view.mjs：.runtime_view/src 与 src 逐文件 sha256 门禁，
+  0 通过 / 1 漂移 / 2 前置不可得；已挂 check:runtime-view 并接进 test:acceptance 链尾
+
+验证：tsc --noEmit 0；vitest 1923 passed / 9 failed / 1 skipped，失败面与本轮改动无关
+（file-size-ratchet 行数漂移、code-check*、author-model-resolution）。
+---
+ server/package.json                           |  3 +-
+ server/scripts/check-runtime-view.mjs         | 69 +++++++++++++++++++
+ .../src/services/agent/agent-loop.service.ts  | 21 ++++--
+ server/src/services/agent/update.service.ts   | 38 +++++++++-
+ server/src/services/judge/judge.service.ts    | 24 +++++--
+ server/src/services/judge/replay.ts           |  1 +
+ server/src/services/rsi/rsi-bridge.service.ts | 58 +++++++++++++++-
+ 7 files changed, 199 insertions(+), 15 deletions(-)
+ create mode 100644 server/scripts/check-runtime-view.mjs
+
+diff --git a/server/package.json b/server/package.json
+index 9d97ee6..ac53b24 100644
+--- a/server/package.json
++++ b/server/package.json
+@@ -20,7 +20,7 @@
+     "check:coverage-floor": "node ../scripts/check-coverage-floor.mjs --package=server",
+     "check:coverage": "npm run test:coverage && npm run check:coverage-floor",
+     "check:file-size": "node ../scripts/check-file-size.mjs",
+-    "test:acceptance": "npm run typecheck && npm run test && npm run check:suite-floor && npm run check:task-metadata && npm run check:tool-contract && npm run check:file-size",
++    "test:acceptance": "npm run typecheck && npm run test && npm run check:suite-floor && npm run check:task-metadata && npm run check:tool-contract && npm run check:file-size && npm run check:runtime-view",
+     "check:task-metadata": "node ../scripts/check-task-metadata.mjs",
+     "check:tool-contract": "tsx ../scripts/assert-tool-registry-contract.mjs",
+     "check:mutation": "node ../scripts/mutation-probe.mjs",
+@@ -34,6 +34,7 @@
+     "rsi:verify": "tsx scripts/verify-rsi-ledger.ts",
+     "rsi:migrate-hash": "tsx scripts/migrate-rsi-hash-version.ts",
+     "check:rsi-contract": "tsx scripts/check-rsi-contract.mjs",
++    "check:runtime-view": "node scripts/check-runtime-view.mjs",
+     "check:suite-floor": "node scripts/check-suite-floor.mjs",
+     "check:self-upgrade": "node scripts/check-self-upgrade.mjs"
+   },
+diff --git a/server/scripts/check-runtime-view.mjs b/server/scripts/check-runtime-view.mjs
+new file mode 100644
+index 0000000..cfcfdc3
+--- /dev/null
++++ b/server/scripts/check-runtime-view.mjs
+@@ -0,0 +1,69 @@
++#!/usr/bin/env node
++/**
++ * check-runtime-view.mjs — 运行期源码视图与线上源码一致性门禁。
++ * 逐文件 sha256 比对 src/ 与 .runtime_view/src，报 missing/extra/differ；
++ * 任一非空 exit 1，全等 exit 0。默认只读；sync 覆盖视图侧并删 extra。
++ */
++import { createHash } from 'node:crypto';
++import { existsSync, lstatSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
++import { join, relative } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const ROOT = fileURLToPath(new URL('..', import.meta.url)); // server/
++const SRC = join(ROOT, 'src');                              // 线上源码
++const VIEW = join(ROOT, 'workspace', '.runtime_view', 'src'); // 运行期视图
++
++const args = process.argv.slice(2);
++const quiet = args.includes('--quiet');
++const sync = args.includes('sync');
++const vi = args.indexOf('--view');
++if (vi >= 0 && !args[vi + 1]) { console.error('runtime-view: --view 缺少路径参数'); process.exit(2); }
++const view = vi >= 0 ? args[vi + 1] : VIEW;
++const src = SRC; // 源码侧固定，--view 只覆盖视图侧
++
++function sha(p) { return createHash('sha256').update(readFileSync(p)).digest('hex'); }
++
++function walk(dir) {
++  const out = [];
++  for (const e of readdirSync(dir)) {
++    const p = join(dir, e);
++    if (lstatSync(p).isSymbolicLink()) continue;
++    if (statSync(p).isDirectory()) out.push(...walk(p));
++    else out.push(p);
++  }
++  return out;
++}
++
++if (!existsSync(view) || !statSync(view).isDirectory()) {
++  if (vi >= 0) {
++    console.error(`runtime-view: ${view} 不存在（未同步或未部署）`);
++    process.exit(2);
++  }
++  console.error('runtime-view: skipped (视图未部署)');
++  process.exit(0);
++}
++function scan() {
++  const s = walk(src).map(p => relative(src, p)).sort();
++  const v = walk(view).map(p => relative(view, p)).sort();
++  return {
++    missing: s.filter(f => !v.includes(f)),
++    extra: v.filter(f => !s.includes(f)),
++    differ: s.filter(f => v.includes(f) && sha(join(src, f)) !== sha(join(view, f))),
++  };
++}
++let r = scan();
++if (sync) {
++  for (const f of [...r.missing, ...r.differ]) {
++    const d = join(view, f);
++    mkdirSync(join(d, '..'), { recursive: true });
++    writeFileSync(d, readFileSync(join(src, f)));
++  }
++  for (const f of r.extra) rmSync(join(view, f), { recursive: true, force: true });
++  r = scan();
++}
++const bad = r.missing.length + r.extra.length + r.differ.length;
++if (!quiet) {
++  for (const [k, fs] of [['missing', r.missing], ['extra', r.extra], ['differ', r.differ]]) for (const f of fs) console.log(`${k}  ${f}`);
++  console.log(bad > 0 ? `runtime-view drift: ${r.missing.length} missing, ${r.extra.length} extra, ${r.differ.length} differ` : 'OK: runtime view matches src');
++}
++process.exit(bad > 0 ? 1 : 0);
+diff --git a/server/src/services/agent/agent-loop.service.ts b/server/src/services/agent/agent-loop.service.ts
+index 8eaa578..21f9e85 100644
+--- a/server/src/services/agent/agent-loop.service.ts
++++ b/server/src/services/agent/agent-loop.service.ts
+@@ -478,7 +478,7 @@ export class AgentLoopService {
+       const finishCancelled = (): void => {
+         const detail = describeCancel(cancel.reason);
+         sse.emitStage('aborted', detail);
+-        this.finish(sse, session, 'aborted', budget.iteration, usage, detail, undefined, budget.tokenBudget, firstTokenMs());
++        this.finish(sse, session, 'aborted', budget.iteration, usage, detail, undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
+       };
+ 
+       // ── AC-10 resume: rewind + re-execute one step ───────────────────────────
+@@ -616,7 +616,7 @@ export class AgentLoopService {
+           if (term.budget) {
+             this.deps.runState?.budget(runId, { ...term.budget, triggeredAt: Date.now() });
+           }
+-          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs(), term.budget);
++          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs(), term.budget, budget.startedAt);
+           return;
+         }
+ 
+@@ -645,6 +645,8 @@ export class AgentLoopService {
+             undefined,
+             budget.tokenBudget,
+             firstTokenMs(),
++            undefined,
++            budget.startedAt,
+           );
+           return;
+         }
+@@ -844,7 +846,7 @@ export class AgentLoopService {
+         for (const toolName of resolved.circuitBlocked) {
+           if (reportedCircuit.has(toolName)) {
+             // The model asked again after the breaker opened: stop the task.
+-            this.finish(sse, session, 'circuit_open', budget.iteration, usage, `工具 ${toolName} 已熔断，任务中止`, undefined, budget.tokenBudget, firstTokenMs());
++            this.finish(sse, session, 'circuit_open', budget.iteration, usage, `工具 ${toolName} 已熔断，任务中止`, undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
+             return { terminated: true };
+           }
+           reportedCircuit.add(toolName);
+@@ -949,7 +951,7 @@ export class AgentLoopService {
+         }
+ 
+         if (loopAbort) {
+-          this.finish(sse, session, 'aborted', budget.iteration, usage, '检测到循环调用，任务已中止', undefined, budget.tokenBudget, firstTokenMs());
++          this.finish(sse, session, 'aborted', budget.iteration, usage, '检测到循环调用，任务已中止', undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
+           return { terminated: true };
+         }
+ 
+@@ -971,6 +973,8 @@ export class AgentLoopService {
+                 undefined,
+                 budget.tokenBudget,
+                 firstTokenMs(),
++                undefined,
++                budget.startedAt,
+               );
+               return { terminated: true };
+             }
+@@ -1035,7 +1039,7 @@ export class AgentLoopService {
+             tokens: estimateAssistantTokens(turn.text, turn.reasoning, null),
+           });
+           this.deps.sessions.bumpCounters(session.id, 1, assistant.tokens);
+-          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs());
++          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
+           return;
+   }
+ 
+@@ -1107,7 +1111,7 @@ export class AgentLoopService {
+       }
+       if (budget.aborted) {
+         sse.emitStage('aborted', '任务已被用户中止');
+-        this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs());
++        this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
+         return { kind: 'terminated' };
+       }
+       if (channel === 'native' && ChannelRouter.shouldDegrade(err)) {
+@@ -1300,6 +1304,7 @@ export class AgentLoopService {
+     tokenBudget?: number,
+     firstTokenMs?: number | null,
+     budgetHit?: BudgetHit,
++    runStartedAt?: number,
+   ): void {
+     // 本任务 forge 的义肢在 Judge/汇报之前回收；能力库 .codelens 不动。
+     cleanupForgedTools(session.id, this.deps.sandboxRoot);
+@@ -1332,7 +1337,7 @@ export class AgentLoopService {
+     }
+ 
+     // 强化内核闭环：先由 Judge 产出结构化判决 r，再由 Update 消费 r 生成 π 增量。
+-    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0, budgetHit);
++    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0, budgetHit, runStartedAt);
+     // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
+     this.nonMeasureSessions.delete(session.id);
+     this.measureSampleCounts.delete(session.id);
+@@ -1371,6 +1376,7 @@ export class AgentLoopService {
+     usage: { promptTokens: number; completionTokens: number },
+     tokenBudget: number,
+     budgetHit?: BudgetHit,
++    runStartedAt?: number,
+   ): void {
+     if (!this.deps.policy) return;
+ 
+@@ -1388,6 +1394,7 @@ export class AgentLoopService {
+           // 熔断是本系统唯一以 circuit_open 收尾的路径；其它终止原因下
+           // 即使中途开过路，对最终判决也没有额外信息量。
+           circuitOpened: finishReason === 'circuit_open',
++          runStartedAt,
+         });
+         // 判决 span：判决是「这次任务到底算不算数」的答案，必须落在轨迹上。
+         this.recordSpan(traceId, {
+diff --git a/server/src/services/agent/update.service.ts b/server/src/services/agent/update.service.ts
+index c61ea43..2afdb46 100644
+--- a/server/src/services/agent/update.service.ts
++++ b/server/src/services/agent/update.service.ts
+@@ -14,6 +14,7 @@
+  * the agent system prompt (see system-prompt.ts buildSystemPrompt).
+  */
+ 
++import { existsSync } from 'node:fs'; // [controlled-release-exp5] 受控开关（文件旗标，实时读取）
+ import type { Db } from '../../repositories/db.js';
+ import {
+   PolicyRepository,
+@@ -80,6 +81,15 @@ const CRITERION_LESSON: Record<string, string> = {
+     '此前任务 token 消耗接近或超过预算。应减少冗余读取与重复调用，一次取够所需信息。',
+ };
+ 
++// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
++// OFF（旗标不存在）：applyFromJudge 只产 lessons，函数级等价官方行为。
++// ON （旗标存在）：tool.success_rate 失败时额外收紧 minToolSuccessRate。
++// 旗标由部署脚本增删，切换 off/on 无需重启进程（tsx watch 不重载 .flag）。
++const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
++function rsiReleaseOn(): boolean {
++  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
++}
++
+ export class UpdateService {
+   private readonly repo: PolicyRepository;
+ 
+@@ -204,9 +214,33 @@ export class UpdateService {
+       seen.add(lesson);
+       addLessons.push(lesson);
+     }
+-    if (addLessons.length === 0) return null;
++    // [controlled-release-exp5] OFF：函数级等价官方 —— 无新经验则不产版本
++    if (!rsiReleaseOn()) {
++      if (addLessons.length === 0) return null;
++      return this.applyUpdate({ addLessons }, `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`);
++    }
+ 
+-    return this.applyUpdate({ addLessons }, `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`);
++    // [controlled-release-exp5] ON：除 lessons 外，按失败判据收紧阈值并产出 setThresholds
++    // 收紧值落在 THRESHOLD_BOUNDS 内（resolveThresholds clamp 兜底）；只收紧不放宽。
++    const setThresholds: Record<string, number> = {};
++    if (failed.some((v) => v.criterion === 'tool.success_rate')) {
++      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
++      setThresholds.minToolSuccessRate = Math.min(1, Math.round((cur + 0.05) * 100) / 100);
++    } else if (
++      // [patch2-rollback] 对称回退：tool.success_rate 判 pass 时向默认 0.6 回落，抵消单向棘轮
++      run.verdicts.some((v) => v.criterion === 'tool.success_rate' && v.status === 'pass')
++    ) {
++      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
++      if (cur > 0.6) {
++        setThresholds.minToolSuccessRate = Math.max(0.6, Math.round((cur - 0.05) * 100) / 100);
++      }
++    }
++    // 关键：即使 addLessons 因去重为空，只要本轮该收紧阈值也要落版本（否则补不上 P2）
++    if (addLessons.length === 0 && Object.keys(setThresholds).length === 0) return null;
++    return this.applyUpdate(
++      { addLessons, ...(Object.keys(setThresholds).length ? { setThresholds } : {}) },
++      `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`,
++    );
+   }
+ 
+   /** 把一次判决换算成可读的经验增量（供展示/测试，不落库）。 */
+diff --git a/server/src/services/judge/judge.service.ts b/server/src/services/judge/judge.service.ts
+index d23f8fc..6c7090f 100644
+--- a/server/src/services/judge/judge.service.ts
++++ b/server/src/services/judge/judge.service.ts
+@@ -17,6 +17,7 @@
+  *    否则自证故障会被 Update 当成任务失败永久入库，污染经验有效性的分母。
+  */
+ 
++import { existsSync } from 'node:fs';
+ import type { Db } from '../../repositories/db.js';
+ import type { ToolCallRepository } from '../memory/tool-call.repository.js';
+ import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
+@@ -59,6 +60,13 @@ import {
+   type JudgeSummary,
+   type LayerProfile,
+ } from './types.js';
++
++// [controlled-release-exp13] 受控开关：OFF（旗标不存在）等价官方全量取数。
++const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
++function rsiReleaseOn(): boolean {
++  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
++}
++
+ /** 运行期上下文：loop 结束时才知道、且不在 τ 里的信息。 */
+ export interface JudgeRuntimeContext {
+   finishReason: string;
+@@ -68,6 +76,8 @@ export interface JudgeRuntimeContext {
+   usage: { promptTokens: number; completionTokens: number };
+   /** 本轮是否触发过熔断。 */
+   circuitOpened: boolean;
++  /** 本轮运行起点时间戳；缺失时证据取全量。 */
++  runStartedAt?: number;
+ }
+ export interface JudgeDeps {
+   db: Db;
+@@ -973,6 +983,7 @@ export class JudgeService {
+         tokenBudget: runtime.tokenBudget,
+         usage: runtime.usage,
+         circuitOpened: runtime.circuitOpened,
++        runStartedAt: rsiReleaseOn() ? runtime.runStartedAt : undefined,
+       },
+       canary: {
+         status: canary.verdict.status,
+@@ -997,7 +1008,7 @@ export class JudgeService {
+ 
+   /** 从 τ 抽取判据所需的证据快照。只取判据用得到的字段，不搬整行。 */
+   private collectEvidence(sessionId: string, runtime: JudgeRuntimeContext): JudgeEvidence {
+-    const toolCalls = this.evidenceToolCalls(sessionId);
++    const toolCalls = this.evidenceToolCalls(sessionId, runtime.runStartedAt);
+ 
+     const approvals = this.deps.db.all<{ status: string; decision: string | null }>(
+       `SELECT status, decision FROM approvals WHERE session_id = ?`,
+@@ -1026,7 +1037,7 @@ export class JudgeService {
+    * 只为 sys.exec 的行做这次 join，避免给判据路径引入全表解析开销。
+    * 解析失败 / 预览被截断到没有 exitCode ⇒ 记 null（未知），判据回落到 status 口径。
+    */
+-  private evidenceToolCalls(sessionId: string): JudgeEvidence['toolCalls'] {
++  private evidenceToolCalls(sessionId: string, runStartedAt?: number): JudgeEvidence['toolCalls'] {
+     const exitCodes = this.deps.db.all<{ tool_call_id: string; inline_preview: string | null }>(
+       `SELECT tr.tool_call_id AS tool_call_id, tr.inline_preview AS inline_preview
+          FROM tool_calls tc
+@@ -1052,7 +1063,12 @@ export class JudgeService {
+       }
+     }
+ 
+-    return this.deps.toolCalls.listBySession(sessionId).map((t) => ({
++    // [controlled-release-exp13] OFF：忽略 runStartedAt 走全量，函数级等价官方。
++    const effectiveStart = rsiReleaseOn() ? runStartedAt : undefined;
++    return this.deps.toolCalls
++      .listBySession(sessionId)
++      .filter((t) => effectiveStart === undefined || t.created_at >= effectiveStart)
++      .map((t) => ({
+       status: t.status as string,
+       display_name: t.display_name,
+       error_kind: t.error_kind,
+@@ -1106,7 +1122,7 @@ export class JudgeService {
+   private currentEvidenceDigest(sessionId: string, snapshot: JudgeRunContextSnapshot | null): string {
+     // 必须与 collectEvidence 用同一份映射（含 exit_code），否则 exec 会话的
+     // digest 会与快照恒不相等，被判成「证据漂移」的假红。
+-    const toolCalls = this.evidenceToolCalls(sessionId);
++    const toolCalls = this.evidenceToolCalls(sessionId, snapshot?.context?.runStartedAt ?? undefined);
+     const approvals = this.deps.db.all<{ status: string; decision: string | null }>(
+       `SELECT status, decision FROM approvals WHERE session_id = ?`,
+       [sessionId],
+diff --git a/server/src/services/judge/replay.ts b/server/src/services/judge/replay.ts
+index 43299a7..8dd3bd9 100644
+--- a/server/src/services/judge/replay.ts
++++ b/server/src/services/judge/replay.ts
+@@ -100,6 +100,7 @@ export interface JudgeRunContextSnapshot {
+     tokenBudget: number;
+     usage: { promptTokens: number; completionTokens: number };
+     circuitOpened: boolean;
++    runStartedAt?: number;
+   };
+   /** 必须存 status：只有分数无法区分「判据失效」和「判据判红」。 */
+   canary: { status: VerdictStatus; goodScore: number; badScore: number };
+diff --git a/server/src/services/rsi/rsi-bridge.service.ts b/server/src/services/rsi/rsi-bridge.service.ts
+index 70b79b8..017fdda 100644
+--- a/server/src/services/rsi/rsi-bridge.service.ts
++++ b/server/src/services/rsi/rsi-bridge.service.ts
+@@ -28,8 +28,9 @@ import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
+ import path from 'node:path';
+ import { createHash } from 'node:crypto';
+ import type { Db } from '../../repositories/db.js';
+-import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
++import { buildManifest, criteriaFingerprint, hasScoredObjective, type RsiManifest, type RsiArtifact, type RsiCriterionDiff } from './manifest-builder.js';
+ import { canonicalJson } from './ledger-verify.js';
++import { resolveThresholds, DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js'; // [controlled-release-exp5]
+ import type { CriterionVerdict } from '../judge/types.js';
+ import {
+   readSuiteScores,
+@@ -69,6 +70,38 @@ const DEFAULT_KRSI_PATH = '/tmp/krsi';
+ const DEFAULT_TIMEOUT_MS = 10_000;
+ const DEFAULT_PRODUCER = 'codelens-agentkernel';
+ 
++// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
++// OFF（旗标不存在）：返回空对象 → buildManifest 走官方回落 criteriaFingerprint() 无参 + diff=[]，函数级等价。
++// ON （旗标存在）：读当前 π 生效阈值，经 resolveThresholds 归一化算真实指纹，并据实生成合法 criteriaDiff。
++// 归一化是关键：criteriaFingerprint({}) 会得 9c6815ad…（把「没改判据」误报成「改了」），必须走 resolveThresholds。
++const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
++interface ReleaseCriteria { criteriaSha256?: string; criteriaDiff?: RsiCriterionDiff[]; }
++function releaseCriteria(
++  db: { get<T>(sql: string, params?: unknown): T | undefined },
++  prevEffective?: Record<string, number>,
++): ReleaseCriteria {
++  try {
++    if (!existsSync(RSI_RELEASE_FLAG)) return {}; // OFF：函数级等价官方行为
++    const row = db.get<{ policy_json: string }>(
++      'SELECT policy_json FROM policy_versions ORDER BY version DESC LIMIT 1');
++    let raw: Record<string, number> = {};
++    try { raw = JSON.parse(row?.policy_json ?? '{}').thresholds ?? {}; } catch { raw = {}; }
++    const eff = resolveThresholds(raw) as unknown as Record<string, number>;
++    const def = DEFAULT_L0_THRESHOLDS as unknown as Record<string, number>;
++    const diffs: RsiCriterionDiff[] = [];
++    for (const [k, v] of Object.entries(eff)) {
++      // 方向基准：优先用上一代生效值；无上一代（首次运行）或解析不到时回退默认 0.6。
++      const base = prevEffective?.[k] ?? def[k];
++      if (base === undefined || Math.abs(v - base) < 1e-9) continue;
++      const tightened = k.startsWith('min') ? v > base : v < base; // min* 越大越严 / max* 越小越严
++      diffs.push({ id: k, change: tightened ? 'tightened' : 'loosened', note: `${base} -> ${v}` });
++    }
++    return { criteriaSha256: criteriaFingerprint(eff), criteriaDiff: diffs };
++  } catch {
++    return {}; // 开关读取失败一律回落官方行为，绝不阻断主流程
++  }
++}
++
+ /** policy_rsi_runs 表的最小 DB 表面（跟 schema.ts MigrationDb 同口径）。 */
+ interface RsiDb {
+   exec(sql: string): void;
+@@ -142,6 +175,27 @@ export class RsiBridgeService {
+     );
+     const prevGeneration = prevGenRow?.generation ?? 0;
+     const generation = prevGeneration + 1;
++    // [controlled-release-exp5] 从上一代落库 manifest 原文的 criteria_diff[].note 提取生效阈值，
++    // 作为本代 change 方向基准。解析失败回退空对象（调用方再回退默认 0.6），绝不阻断主流程。
++    const prevEffectiveThresholds = (row: { next_manifest_json: string | null } | undefined): Record<string, number> => {
++      if (!row?.next_manifest_json) return {};
++      try {
++        const prev = JSON.parse(row.next_manifest_json) as { criteria_diff?: { id: string; note: string }[] };
++        const out: Record<string, number> = {};
++        for (const d of prev.criteria_diff ?? []) {
++          const note = d.note ?? '';
++          // 旧格式 "默认 X -> 生效 Y"：Y 是该代生效值（必须优先，否则会被 -> 误取左侧 X）
++          const mOld = /生效\s*([0-9.]+)/.exec(note);
++          // 新格式 "A -> B"：B（右侧）是该代生效值
++          const mNew = mOld ? null : /->\s*([0-9.]+)/.exec(note);
++          const m = mOld ?? mNew;
++          if (m) out[d.id] = Number(m[1]);
++        }
++        return out;
++      } catch {
++        return {};
++      }
++    };
+ 
+     const ledgerPath = path.join(this.rsiDir, `${safe(sessionId)}.jsonl`);
+     const reportPath = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}.txt`);
+@@ -251,10 +305,12 @@ export class RsiBridgeService {
+       const evidenceBytes = Buffer.byteLength(evidenceBody, 'utf8');
+ 
+       // ── 1. 构建 next Manifest ────────────────────────────────────────────────
++      // [controlled-release-exp5] 开关 OFF 时 releaseCriteria() 返回 {}，展开后等价官方调用（不传字段）。
+       const nextManifest = buildManifest({
+         producer: this.producer,
+         generation,
+         verdicts: enrichedVerdicts,
++        ...releaseCriteria(this.deps.db, prevEffectiveThresholds(prevGenRow)),
+         artifacts: [
+           {
+             // 路径要相对 **进程 cwd**：krsi 以继承的 cwd 解析产物路径做内容哈希复核。
+-- 
+2.43.0
+
