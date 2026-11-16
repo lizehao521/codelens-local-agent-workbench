@@ -643,10 +643,7 @@ export class AgentLoopService {
             usage,
             `上下文已满：压缩自检未通过（缺：${view.compactionFailed.join('、')}），任务已回退。建议：新建会话，或把任务拆小后重试`,
             undefined,
-            budget.tokenBudget,
-            firstTokenMs(),
-            undefined,
-            budget.startedAt,
+            budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt,
           );
           return;
         }
@@ -971,10 +968,7 @@ export class AgentLoopService {
                 usage,
                 `连续 ${config.agentConvergenceRounds} 轮无新增文件改动 / 证据 / 工具结果变化，我判断已到头`,
                 undefined,
-                budget.tokenBudget,
-                firstTokenMs(),
-                undefined,
-                budget.startedAt,
+                budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt,
               );
               return { terminated: true };
             }
