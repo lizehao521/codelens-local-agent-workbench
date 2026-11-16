@@ -1,5 +1,5 @@
 {
-  "createdAt": "2026-11-16T01:30:59.025Z",
+  "createdAt": "2026-11-16T02:48:20.549Z",
   "allowed": [
     "src/services/agent/approval.service.ts",
     "src/services/tools/executor.service.ts"
@@ -127,7 +127,7 @@
     "tests/self-upgrade/agent-loop-split.test.ts": "d2f4ba3a966e2b8fd26c26161f53be1ac135b456c9e93610729a90f0bb7383a0",
     "tests/self-upgrade/agent-verify.test.ts": "fed465ca9dd358f47533c97333e900ba67bf00a7505e4af9f9159ef86619e0c1",
     "tests/self-upgrade/approval-diff.test.ts": "e406e8e459dac4a6585bc701c2cd0ade268bc3da0320e7764da1407b807c2972",
-    "tests/self-upgrade/approval-expired-tool-success.test.ts": "721097420e0665dfbf7214534eb254d1b66529483c2d933b597858c35cd6658e",
+    "tests/self-upgrade/approval-expired-tool-success.test.ts": "7cf67301db0495ab8959cec5d03bf75710b7d52f7ca5c7aa111d36d638d8ecab",
     "tests/self-upgrade/approval-wait-budget.test.ts": "33dd98a3c48fe9379dea91cc030715208b12812363e67a557cf2c980f018c868",
     "tests/self-upgrade/budget-ceiling-attribution.test.ts": "476e9ea884eca5752ce1fd72a6c0e1e4202e2da55a0f91e864aad4fa4b2634fe",
     "tests/self-upgrade/code-check-column.test.ts": "364ad40a21261b6a5aae12a35bcb205831d366404f1b8aa5d0ce6e78b8933c78",
@@ -314,42 +314,5 @@
     "scripts/verify-rsi-ledger.ts": "65718c9481ff3080aec6ab1a2aaffdc4cdbe991937e528b94687a4e975b8ef7e",
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
-  "preexistingDirty": [
-    "src/config/env.ts",
-    "src/services/agent/agent-loop.service.ts",
-    "src/services/agent/budget-kind-evidence.ts",
-    "src/services/agent/exemplar-injection.ts",
-    "src/services/agent/loop-budget.test.ts",
-    "src/services/agent/loop-budget.ts",
-    "src/services/agent/project-instructions.ts",
-    "src/services/agent/run-budget-copy.ts",
-    "src/services/agent/run-services.ts",
-    "src/services/agent/run-state.service.ts",
-    "src/services/agent/system-prompt.ts",
-    "src/services/judge/criteria.ts",
-    "src/services/judge/judge.service.ts",
-    "src/services/judge/types.ts",
-    "src/services/rsi/scheduler.service.ts",
-    "src/services/tools/file-batch.ts",
-    "src/services/tools/forged-tool-lifecycle.ts",
-    "src/tools/builtin/fs-write.tool.ts",
-    "src/tools/builtin/tool-forge.tool.ts",
-    "src/types/agent-events.ts",
-    "src/types/run-state.ts",
-    "src/validators/agent.schema.ts",
-    "tests/fixtures/fake-llm.ts",
-    "tests/loop-guardrails.test.ts",
-    "tests/run-state.test.ts",
-    "tests/self-upgrade/agent-loop-split.test.ts",
-    "tests/self-upgrade/approval-expired-tool-success.test.ts",
-    "tests/self-upgrade/approval-wait-budget.test.ts",
-    "tests/self-upgrade/budget-ceiling-attribution.test.ts",
-    "tests/self-upgrade/file-batch-atomicity.test.ts",
-    "tests/self-upgrade/fs-write-error-next-action.test.ts",
-    "tests/self-upgrade/memory-convention-versioning.test.ts",
-    "tests/self-upgrade/memory-cross-session-inheritance.test.ts",
-    "tests/self-upgrade/memory-exemplar-injection.test.ts",
-    "tests/self-upgrade/orphan-tool-gate.test.ts",
-    "tests/self-upgrade/terminal-budget-kind.test.ts"
-  ]
+  "preexistingDirty": []
 }
