@@ -100,6 +100,7 @@ export interface JudgeRunContextSnapshot {
     tokenBudget: number;
     usage: { promptTokens: number; completionTokens: number };
     circuitOpened: boolean;
+    runStartedAt?: number;
   };
   /** 必须存 status：只有分数无法区分「判据失效」和「判据判红」。 */
   canary: { status: VerdictStatus; goodScore: number; badScore: number };

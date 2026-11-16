@@ -17,6 +17,7 @@
  *    否则自证故障会被 Update 当成任务失败永久入库，污染经验有效性的分母。
  */
 
+import { existsSync } from 'node:fs';
 import type { Db } from '../../repositories/db.js';
 import type { ToolCallRepository } from '../memory/tool-call.repository.js';
 import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
@@ -59,6 +60,13 @@ import {
   type JudgeSummary,
   type LayerProfile,
 } from './types.js';
+
+// [controlled-release-exp13] 受控开关：OFF（旗标不存在）等价官方全量取数。
+const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+function rsiReleaseOn(): boolean {
+  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+}
+
 /** 运行期上下文：loop 结束时才知道、且不在 τ 里的信息。 */
 export interface JudgeRuntimeContext {
   finishReason: string;
@@ -68,6 +76,8 @@ export interface JudgeRuntimeContext {
   usage: { promptTokens: number; completionTokens: number };
   /** 本轮是否触发过熔断。 */
   circuitOpened: boolean;
+  /** 本轮运行起点时间戳；缺失时证据取全量。 */
+  runStartedAt?: number;
 }
 export interface JudgeDeps {
   db: Db;
@@ -973,6 +983,7 @@ export class JudgeService {
         tokenBudget: runtime.tokenBudget,
         usage: runtime.usage,
         circuitOpened: runtime.circuitOpened,
+        runStartedAt: rsiReleaseOn() ? runtime.runStartedAt : undefined,
       },
       canary: {
         status: canary.verdict.status,
@@ -997,7 +1008,7 @@ export class JudgeService {
 
   /** 从 τ 抽取判据所需的证据快照。只取判据用得到的字段，不搬整行。 */
   private collectEvidence(sessionId: string, runtime: JudgeRuntimeContext): JudgeEvidence {
-    const toolCalls = this.evidenceToolCalls(sessionId);
+    const toolCalls = this.evidenceToolCalls(sessionId, runtime.runStartedAt);
 
     const approvals = this.deps.db.all<{ status: string; decision: string | null }>(
       `SELECT status, decision FROM approvals WHERE session_id = ?`,
@@ -1026,7 +1037,7 @@ export class JudgeService {
    * 只为 sys.exec 的行做这次 join，避免给判据路径引入全表解析开销。
    * 解析失败 / 预览被截断到没有 exitCode ⇒ 记 null（未知），判据回落到 status 口径。
    */
-  private evidenceToolCalls(sessionId: string): JudgeEvidence['toolCalls'] {
+  private evidenceToolCalls(sessionId: string, runStartedAt?: number): JudgeEvidence['toolCalls'] {
     const exitCodes = this.deps.db.all<{ tool_call_id: string; inline_preview: string | null }>(
       `SELECT tr.tool_call_id AS tool_call_id, tr.inline_preview AS inline_preview
          FROM tool_calls tc
@@ -1052,7 +1063,12 @@ export class JudgeService {
       }
     }
 
-    return this.deps.toolCalls.listBySession(sessionId).map((t) => ({
+    // [controlled-release-exp13] OFF：忽略 runStartedAt 走全量，函数级等价官方。
+    const effectiveStart = rsiReleaseOn() ? runStartedAt : undefined;
+    return this.deps.toolCalls
+      .listBySession(sessionId)
+      .filter((t) => effectiveStart === undefined || t.created_at >= effectiveStart)
+      .map((t) => ({
       status: t.status as string,
       display_name: t.display_name,
       error_kind: t.error_kind,
@@ -1106,7 +1122,7 @@ export class JudgeService {
   private currentEvidenceDigest(sessionId: string, snapshot: JudgeRunContextSnapshot | null): string {
     // 必须与 collectEvidence 用同一份映射（含 exit_code），否则 exec 会话的
     // digest 会与快照恒不相等，被判成「证据漂移」的假红。
-    const toolCalls = this.evidenceToolCalls(sessionId);
+    const toolCalls = this.evidenceToolCalls(sessionId, snapshot?.context?.runStartedAt ?? undefined);
     const approvals = this.deps.db.all<{ status: string; decision: string | null }>(
       `SELECT status, decision FROM approvals WHERE session_id = ?`,
       [sessionId],

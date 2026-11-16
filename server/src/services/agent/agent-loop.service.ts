@@ -478,7 +478,7 @@ export class AgentLoopService {
       const finishCancelled = (): void => {
         const detail = describeCancel(cancel.reason);
         sse.emitStage('aborted', detail);
-        this.finish(sse, session, 'aborted', budget.iteration, usage, detail, undefined, budget.tokenBudget, firstTokenMs());
+        this.finish(sse, session, 'aborted', budget.iteration, usage, detail, undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
       };
 
       // ── AC-10 resume: rewind + re-execute one step ───────────────────────────
@@ -616,7 +616,7 @@ export class AgentLoopService {
           if (term.budget) {
             this.deps.runState?.budget(runId, { ...term.budget, triggeredAt: Date.now() });
           }
-          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs(), term.budget);
+          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs(), term.budget, budget.startedAt);
           return;
         }
 
@@ -645,6 +645,8 @@ export class AgentLoopService {
             undefined,
             budget.tokenBudget,
             firstTokenMs(),
+            undefined,
+            budget.startedAt,
           );
           return;
         }
@@ -844,7 +846,7 @@ export class AgentLoopService {
         for (const toolName of resolved.circuitBlocked) {
           if (reportedCircuit.has(toolName)) {
             // The model asked again after the breaker opened: stop the task.
-            this.finish(sse, session, 'circuit_open', budget.iteration, usage, `工具 ${toolName} 已熔断，任务中止`, undefined, budget.tokenBudget, firstTokenMs());
+            this.finish(sse, session, 'circuit_open', budget.iteration, usage, `工具 ${toolName} 已熔断，任务中止`, undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
             return { terminated: true };
           }
           reportedCircuit.add(toolName);
@@ -949,7 +951,7 @@ export class AgentLoopService {
         }
 
         if (loopAbort) {
-          this.finish(sse, session, 'aborted', budget.iteration, usage, '检测到循环调用，任务已中止', undefined, budget.tokenBudget, firstTokenMs());
+          this.finish(sse, session, 'aborted', budget.iteration, usage, '检测到循环调用，任务已中止', undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
           return { terminated: true };
         }
 
@@ -971,6 +973,8 @@ export class AgentLoopService {
                 undefined,
                 budget.tokenBudget,
                 firstTokenMs(),
+                undefined,
+                budget.startedAt,
               );
               return { terminated: true };
             }
@@ -1035,7 +1039,7 @@ export class AgentLoopService {
             tokens: estimateAssistantTokens(turn.text, turn.reasoning, null),
           });
           this.deps.sessions.bumpCounters(session.id, 1, assistant.tokens);
-          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs());
+          this.finish(sse, session, 'stop', budget.iteration, usage, detail, assistant.id, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
           return;
   }
 
@@ -1107,7 +1111,7 @@ export class AgentLoopService {
       }
       if (budget.aborted) {
         sse.emitStage('aborted', '任务已被用户中止');
-        this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs());
+        this.finish(sse, session, 'aborted', budget.iteration, usage, '任务已被用户中止', undefined, budget.tokenBudget, firstTokenMs(), undefined, budget.startedAt);
         return { kind: 'terminated' };
       }
       if (channel === 'native' && ChannelRouter.shouldDegrade(err)) {
@@ -1300,6 +1304,7 @@ export class AgentLoopService {
     tokenBudget?: number,
     firstTokenMs?: number | null,
     budgetHit?: BudgetHit,
+    runStartedAt?: number,
   ): void {
     // 本任务 forge 的义肢在 Judge/汇报之前回收；能力库 .codelens 不动。
     cleanupForgedTools(session.id, this.deps.sandboxRoot);
@@ -1332,7 +1337,7 @@ export class AgentLoopService {
     }
 
     // 强化内核闭环：先由 Judge 产出结构化判决 r，再由 Update 消费 r 生成 π 增量。
-    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0, budgetHit);
+    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0, budgetHit, runStartedAt);
     // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
     this.nonMeasureSessions.delete(session.id);
     this.measureSampleCounts.delete(session.id);
@@ -1371,6 +1376,7 @@ export class AgentLoopService {
     usage: { promptTokens: number; completionTokens: number },
     tokenBudget: number,
     budgetHit?: BudgetHit,
+    runStartedAt?: number,
   ): void {
     if (!this.deps.policy) return;
 
@@ -1388,6 +1394,7 @@ export class AgentLoopService {
           // 熔断是本系统唯一以 circuit_open 收尾的路径；其它终止原因下
           // 即使中途开过路，对最终判决也没有额外信息量。
           circuitOpened: finishReason === 'circuit_open',
+          runStartedAt,
         });
         // 判决 span：判决是「这次任务到底算不算数」的答案，必须落在轨迹上。
         this.recordSpan(traceId, {

@@ -14,6 +14,7 @@
  * the agent system prompt (see system-prompt.ts buildSystemPrompt).
  */
 
+import { existsSync } from 'node:fs'; // [controlled-release-exp5] 受控开关（文件旗标，实时读取）
 import type { Db } from '../../repositories/db.js';
 import {
   PolicyRepository,
@@ -79,6 +80,15 @@ const CRITERION_LESSON: Record<string, string> = {
   'budget.efficiency':
     '此前任务 token 消耗接近或超过预算。应减少冗余读取与重复调用，一次取够所需信息。',
 };
+
+// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
+// OFF（旗标不存在）：applyFromJudge 只产 lessons，函数级等价官方行为。
+// ON （旗标存在）：tool.success_rate 失败时额外收紧 minToolSuccessRate。
+// 旗标由部署脚本增删，切换 off/on 无需重启进程（tsx watch 不重载 .flag）。
+const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+function rsiReleaseOn(): boolean {
+  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+}
 
 export class UpdateService {
   private readonly repo: PolicyRepository;
@@ -204,9 +214,33 @@ export class UpdateService {
       seen.add(lesson);
       addLessons.push(lesson);
     }
-    if (addLessons.length === 0) return null;
+    // [controlled-release-exp5] OFF：函数级等价官方 —— 无新经验则不产版本
+    if (!rsiReleaseOn()) {
+      if (addLessons.length === 0) return null;
+      return this.applyUpdate({ addLessons }, `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`);
+    }
 
-    return this.applyUpdate({ addLessons }, `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`);
+    // [controlled-release-exp5] ON：除 lessons 外，按失败判据收紧阈值并产出 setThresholds
+    // 收紧值落在 THRESHOLD_BOUNDS 内（resolveThresholds clamp 兜底）；只收紧不放宽。
+    const setThresholds: Record<string, number> = {};
+    if (failed.some((v) => v.criterion === 'tool.success_rate')) {
+      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
+      setThresholds.minToolSuccessRate = Math.min(1, Math.round((cur + 0.05) * 100) / 100);
+    } else if (
+      // [patch2-rollback] 对称回退：tool.success_rate 判 pass 时向默认 0.6 回落，抵消单向棘轮
+      run.verdicts.some((v) => v.criterion === 'tool.success_rate' && v.status === 'pass')
+    ) {
+      const cur = this.repo.getCurrent().policy.thresholds?.minToolSuccessRate ?? 0.6;
+      if (cur > 0.6) {
+        setThresholds.minToolSuccessRate = Math.max(0.6, Math.round((cur - 0.05) * 100) / 100);
+      }
+    }
+    // 关键：即使 addLessons 因去重为空，只要本轮该收紧阈值也要落版本（否则补不上 P2）
+    if (addLessons.length === 0 && Object.keys(setThresholds).length === 0) return null;
+    return this.applyUpdate(
+      { addLessons, ...(Object.keys(setThresholds).length ? { setThresholds } : {}) },
+      `judge:run:${runId}:${failed.map((v) => v.criterion).join(',')}`,
+    );
   }
 
   /** 把一次判决换算成可读的经验增量（供展示/测试，不落库）。 */
