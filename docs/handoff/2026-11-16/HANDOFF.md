@@ -151,8 +151,27 @@ CI 有 `file-size` 棘轮（只许缩不许涨）。e1c2064 让 5 个文件净�
 ```bash
 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/health   # codelens
 curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9999/health        # relay
-cd /tmp/push_codelens && git rev-parse --short HEAD                       # 应 eaa6dfa
+cd /tmp/push_codelens && git rev-parse --short origin/main                # 应 6877899
 cd /workspace/codelens && python3 -c "import sqlite3;print(sqlite3.connect('file:data/codelens.db?mode=ro',uri=True).execute('select count(*) from policy_versions').fetchone()[0])"  # 应 108
 ```
 
-四项对上，就可以从 §6 的 P0 接着干。
+四项对上后，按 §9 的合并后状态继续。
+
+---
+
+## 9. 合并后状态更新（2026-11-16 19:55 GMT+8）
+
+> 本节覆盖上文 §0、§2、§6 中已过时的“待推送 / CI 全红”描述。以本节为准。
+
+| 项 | 最终值 |
+|---|---|
+| 远端 `main` | `6877899`（`docs(handoff): 归档 RSI π 回归迭代交接材料`，变基合并后的提交） |
+| 远端分支 | `merge/local-rsi-2026-11-16` → `540327e`（已保留，PR #3 的 head） |
+| PR | [#3](https://github.com/lizehao521/codelens-local-agent-workbench/pull/3)，state=closed，merged=true，merge_method=rebase |
+| 远端 CI | `client (tsc + vitest + ui-static + browser e2e)` = **success**；`server (typecheck + acceptance + krsi)` = **success** |
+| GitHub 授权 | 设备码 `06B4-D20B` 已换取 `gho_`/`repo` 令牌；推送、建 PR、合并、复核均完成；令牌已按零落盘约定在使用后删除 |
+| DNS 绕行 | 沙箱 `github.com` 被污染到 `20.6.7.17`；所有 API 调用用 `--resolve github.com:443:20.205.243.166`，git 用本地 CONNECT 代理 `127.0.0.1:18444` 转发到官方 IP |
+
+§6 的 P0 已完成；P1（CI 真机复验）也已由远端双 job success 结案。仍待办的是 P1 的 π 连续性补验与 P2 的两项结构性/历史缺口——它们与交付分支无关，可在新项目里另起一轮。
+
+新机器接手时，直接 `git clone` 后取 `origin/main` 即可得到全部源码修复与交接材料；不必再 `git apply` 归档补丁（补丁仍保留作审计证据）。
