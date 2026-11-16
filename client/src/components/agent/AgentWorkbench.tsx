@@ -3,7 +3,7 @@
 // AC-10 干预：打断（输入框停止钮）/ 单步重试 / 从某步重跑 / 改参数（审批条内）全部接 agent/stream
 
 import { useCallback, useState } from 'react';
-import { TriangleAlert, Wrench } from 'lucide-react';
+import { Bug, BookOpen, Calculator, CheckCircle, FileText, Gauge, KeyRound, Search, Sparkles, TrendingUp, TriangleAlert, Wrench } from 'lucide-react';
 import type { AgentStreamRequest, SessionMessageRow, Task } from '../../types';
 import { buildAgentStreamRequest, rerunFromPatch, TASK_MODES } from '../../lib/agent-request';
 import { useServerSessionStore } from '../../stores/serverSessionStore';
@@ -24,16 +24,25 @@ import { ResumeConflictCard } from './ResumeConflictCard';
 import { AuditView } from './AuditView';
 import { SandboxGrantBar } from './SandboxGrantBar';
 import { cn } from '../../lib/cn';
-const SUGGESTIONS = [
-  '用计算工具算 (1234.5*87)/13，并说明每一步',
-  '读取 data 目录下的文件列表',
-  '生成一个 UUID 并格式化为 JSON',
+const SUGGESTIONS: Array<{ text: string; icon: typeof Calculator }> = [
+  { text: '用计算工具算 (1234.5*87)/13，并说明每一步', icon: Calculator },
+  { text: '读取 data 目录下的文件列表', icon: FileText },
+  { text: '生成一个 UUID 并格式化为 JSON', icon: Wrench },
 ];
 
 // 任务模式选择器选项：自动（缺省，模型自定）+ 四类核心能力
-const TASK_MODE_OPTIONS: Array<{ value: Task | null; label: string }> = [
-  { value: null, label: '自动' },
-  ...TASK_MODES.map((m) => ({ value: m.value, label: m.label })),
+const TASK_MODE_OPTIONS: Array<{ value: Task | null; label: string; icon: typeof Sparkles }> = [
+  { value: null, label: '自动', icon: Sparkles },
+  ...TASK_MODES.map((m) => {
+    const iconMap: Record<string, typeof Sparkles> = {
+      analyze: Search,
+      explain: BookOpen,
+      debug: Bug,
+      optimize: TrendingUp,
+      verify: CheckCircle,
+    };
+    return { value: m.value, label: m.label, icon: iconMap[m.value] ?? Gauge };
+  }),
 ];
 
 /** 错误的可行动指引：上游不可用时给出「哪类错误 + 建议动作 + 一键去配 Key」。 */
@@ -239,7 +248,7 @@ export function AgentWorkbench() {
         onRetryStep={handleRetryStep}
         onRerunFrom={handleRerunFrom}
         busy={streaming}
-        empty={<WorkbenchEmpty onPick={handleSend} hasKey={!!settings.apiKey.trim()} />}
+        empty={<WorkbenchEmpty onPick={handleSend} hasKey={!!settings.apiKey.trim()} onOpenSettings={() => setSettingsOpen(true)} />}
       />
 
       {/* 错误条：完整展示多行引导 + 错误码 + 建议动作（上游不可用时不白屏、不裸报错） */}
@@ -279,27 +288,32 @@ export function AgentWorkbench() {
       <RunReportCard />
 
       {/* 任务模式选择器：四类核心能力（AUDIT-006 接线） */}
-      <div className="flex shrink-0 items-center gap-1 border-t border-border px-3 py-2">
-        <span className="mr-1 text-xs text-text-tertiary">任务模式</span>
+      <div className="flex shrink-0 items-center gap-2 border-t border-border bg-bg-secondary/30 px-3 py-2">
+        <span className="shrink-0 text-[11px] font-medium text-text-tertiary">任务模式</span>
         <div className="flex flex-wrap gap-1">
-          {TASK_MODE_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              type="button"
-              disabled={streaming}
-              aria-pressed={taskKind === opt.value}
-              onClick={() => setTaskKind(opt.value)}
-              className={cn(
-                'rounded-md border px-2 py-1 text-xs transition-colors duration-150',
-                taskKind === opt.value
-                  ? 'border-accent bg-accent-subtle text-accent'
-                  : 'border-border text-text-secondary hover:border-accent hover:text-accent',
-                streaming && 'cursor-not-allowed opacity-50',
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {TASK_MODE_OPTIONS.map((opt) => {
+            const Icon = opt.icon;
+            const active = taskKind === opt.value;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                disabled={streaming}
+                aria-pressed={active}
+                onClick={() => setTaskKind(opt.value)}
+                className={cn(
+                  'flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-all duration-150',
+                  active
+                    ? 'border-accent bg-accent-subtle text-accent shadow-sm'
+                    : 'border-border bg-bg-primary text-text-secondary hover:border-accent/60 hover:text-accent',
+                  streaming && 'cursor-not-allowed opacity-50',
+                )}
+              >
+                <Icon size={13} className={cn(active && 'text-accent')} />
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -311,31 +325,60 @@ export function AgentWorkbench() {
   );
 }
 
-function WorkbenchEmpty({ onPick, hasKey }: { onPick: (text: string) => void; hasKey: boolean }) {
+function WorkbenchEmpty({ onPick, hasKey, onOpenSettings }: { onPick: (text: string) => void; hasKey: boolean; onOpenSettings: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-10">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-subtle">
-        <Wrench size={22} className="text-accent" />
+    <div className="flex h-full flex-col items-center justify-center gap-5 px-6 py-10">
+      {/* 视觉锚点：渐变环 + 图标 */}
+      <div className="relative">
+        <div className="absolute inset-0 -z-10 rounded-full bg-accent/20 blur-xl" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent-active shadow-lg">
+          <Wrench size={28} className="text-text-on-accent" />
+        </div>
       </div>
-      <div className="w-full max-w-md text-center">
-        <p className="text-sm font-medium text-text-primary">一句话交代，Agent 动手；每步可见，风险处你拍板</p>
-        <p className="mt-1 text-xs text-text-secondary">
+
+      <div className="w-full max-w-lg text-center">
+        <h2 className="text-lg font-semibold text-text-primary">一句话交代，Agent 动手</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
           工具调用、参数与结果都摊在界面上；写文件、执行命令等高风险动作按等级先请示你，密钥只留在本机（BYOK）。
-          {!hasKey && '未配置 Key 时可先用免费试用（上游与模型由服务端固定）；自带 Key 后即可自由切换上游与模型。'}
         </p>
       </div>
-      <div className="flex w-full max-w-md flex-col gap-1.5">
-        {SUGGESTIONS.map((text) => (
+
+      {/* API Key 状态条：缺 Key 时醒目提示并给一键入口 */}
+      {!hasKey && (
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          className="group flex w-full max-w-lg items-center gap-3 rounded-xl border border-warning/40 bg-warning-subtle px-4 py-3 text-left transition-colors duration-150 hover:border-warning"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15">
+            <KeyRound size={16} className="text-warning" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-text-primary">还未配置 API Key</p>
+            <p className="mt-0.5 text-xs text-text-secondary">前往设置填写后 Agent 即可调用模型；未配置时可先用免费试用</p>
+          </div>
+          <span className="shrink-0 rounded-md bg-warning/15 px-2.5 py-1 text-xs font-medium text-warning transition-colors group-hover:bg-warning group-hover:text-bg-primary">
+            去配置
+          </span>
+        </button>
+      )}
+
+      {/* 快捷示例：带图标的卡片 */}
+      <div className="flex w-full max-w-lg flex-col gap-2">
+        {SUGGESTIONS.map(({ text, icon: Icon }) => (
           <button
             key={text}
             type="button"
             onClick={() => onPick(text)}
             className={cn(
-              'rounded-md border border-border px-3 py-2 text-left text-xs text-text-secondary',
-              'transition-colors duration-150 hover:border-accent hover:text-accent',
+              'group flex items-center gap-3 rounded-xl border border-border bg-bg-secondary/50 px-4 py-3 text-left transition-all duration-150',
+              'hover:border-accent hover:bg-accent-subtle/40 hover:shadow-sm',
             )}
           >
-            {text}
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg-tertiary text-text-tertiary transition-colors group-hover:bg-accent group-hover:text-text-on-accent">
+              <Icon size={14} />
+            </div>
+            <span className="text-sm text-text-secondary transition-colors group-hover:text-text-primary">{text}</span>
           </button>
         ))}
       </div>
