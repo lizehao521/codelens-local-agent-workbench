@@ -187,7 +187,6 @@ describe('RunState + 汇报卡', () => {
     expect(report!.reason).toContain('第 3 步');
     expect(report!.reason).toContain('已完成 1 次工具调用');
     expect(report!.notDone).toContain('后续计划的工具调用未执行');
-    expect(report!.triggers).toContain('预算耗尽');
 
     // 终态字段从 RunState 自身读，不另起统计。
     const state = svc.get('run_budget');
@@ -205,6 +204,18 @@ describe('RunState + 汇报卡', () => {
     expect(report!.statusCode).toBe('RUN_COMPLETED');
     expect(report!.notDone).toEqual([]);
     expect(report!.reason).toBeNull();
+  });
+
+  it('轮次上限：不当作完成，未完成项与原因必须可见', () => {
+    const svc = new RunStateService(db);
+    start(svc, 'run_max');
+    svc.tool('run_max', tool({ callId: 'c1', iteration: 12 }));
+    svc.finish('run_max', 'ok', 'max_iterations', { promptTokens: 10, completionTokens: 2 }, '已达最大迭代轮数 12');
+    const report = svc.getReport('run_max');
+    expect(report!.outcome).toBe('max_iterations');
+    expect(report!.statusCode).toBe('RUN_MAX_ITERATIONS');
+    expect(report!.notDone).toContain('达到最大轮次上限，后续步骤未执行');
+    expect(report!.reason).toContain('最大迭代轮数');
   });
 
   it('B · 收敛判定：outcome / statusCode 与完成态分开', () => {

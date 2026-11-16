@@ -30,7 +30,6 @@ function meta(over: Partial<RunMeta> = {}): RunMeta {
     degraded: false,
     degradedReason: null,
     iteration: 1,
-    maxIterations: 8,
     ...over,
   };
 }

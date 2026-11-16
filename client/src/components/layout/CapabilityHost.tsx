@@ -4,6 +4,7 @@
 import { useEffect } from 'react';
 import { JudgePanelModal } from '../agent/JudgePanelModal';
 import { RsiDashboardModal } from '../agent/RsiDashboardModal';
+import { RsiSelfIterationDashboard } from '../agent/RsiSelfIterationDashboard';
 import { RsiIterationGate } from '../agent/RsiIterationGate';
 import { SandboxPermissionModal } from '../settings/SandboxPermissionModal';
 import { ToolSkillModal } from './ToolSkillModal';
@@ -34,6 +35,7 @@ export function CapabilityHost() {
     <>
       <JudgePanelModal open={activeModal === 'judge'} onClose={closeCapability} />
       <RsiDashboardModal open={activeModal === 'rsi'} onClose={closeCapability} sessionId={sessionId} />
+      <RsiSelfIterationDashboard open={activeModal === 'rsi-live'} onClose={closeCapability} />
       <SandboxPermissionModal open={activeModal === 'sandbox'} onClose={closeCapability} />
       <ToolSkillModal open={activeModal === 'skills'} onClose={closeCapability} />
       <Modal

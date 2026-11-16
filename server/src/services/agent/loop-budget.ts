@@ -30,12 +30,15 @@ export type Termination =
 
 export interface BudgetState {
   iteration: number;       // LLM calls made so far (1-based when running)
-  maxIterations: number;   // 5-30, default 12
   retriesUsed: number;     // task-level auto-retries consumed (budget 5)
   maxRetries: number;
   startedAt: number;
   totalBudgetMs: number;   // 180s task total
   tokenBudget: number;     // task total token cap (prompt+completion), derived from context window
+  /** 自适应软上限：达到 tokenBudget 后可逐级扩展到这里；缺省等于 tokenBudget。 */
+  tokenBudgetMax?: number;
+  /** 每次扩展的步长（通常为一个上下文窗口）；0/缺省 = 不扩展。 */
+  tokenBudgetStep?: number;
   /** 任务累计工具调用次数（每轮 executeBatch 后累加）。 */
   toolCallsUsed: number;
   /** 工具调用总次数上限；默认 40（12 轮 × 平均 3 次 + 余量）。 */
@@ -43,7 +46,6 @@ export interface BudgetState {
   aborted: boolean;
 }
 
-export const DEFAULT_MAX_ITERATIONS = 12;
 export const DEFAULT_MAX_RETRIES = 5;
 /** 180s：本地/远端首字节常 5–20s；正常 12 轮任务实测多在 60–150s。 */
 export const TASK_BUDGET_MS = 180_000;
@@ -62,12 +64,13 @@ export function deriveTokenBudget(contextWindow: number, factor = TOKEN_BUDGET_C
 export function createBudget(overrides: Partial<BudgetState> = {}): BudgetState {
   return {
     iteration: 0,
-    maxIterations: DEFAULT_MAX_ITERATIONS,
     retriesUsed: 0,
     maxRetries: DEFAULT_MAX_RETRIES,
     startedAt: Date.now(),
     totalBudgetMs: TASK_BUDGET_MS,
     tokenBudget: UNLIMITED_TOKEN_BUDGET,
+    tokenBudgetMax: UNLIMITED_TOKEN_BUDGET,
+    tokenBudgetStep: 0,
     toolCallsUsed: 0,
     maxToolCalls: DEFAULT_MAX_TOOL_CALLS,
     aborted: false,
@@ -77,6 +80,25 @@ export function createBudget(overrides: Partial<BudgetState> = {}): BudgetState 
 
 export function canRetry(state: BudgetState): boolean {
   return state.retriesUsed < state.maxRetries;
+}
+
+/**
+ * token 预算自适应：命中当前软上限后，按 step 扩到硬上限。
+ * 只在「有明确上限 + 有步长 + 还没到硬顶」时扩展；返回 null 表示不扩展。
+ */
+export function extendTokenBudget(
+  state: BudgetState,
+  usedTokens: number,
+): { from: number; to: number } | null {
+  const max = state.tokenBudgetMax ?? state.tokenBudget;
+  const step = state.tokenBudgetStep ?? 0;
+  if (state.tokenBudget === UNLIMITED_TOKEN_BUDGET || usedTokens < state.tokenBudget) return null;
+  if (step <= 0 || max <= state.tokenBudget) return null;
+  const to = Math.min(max, state.tokenBudget + step);
+  if (to <= state.tokenBudget) return null;
+  const from = state.tokenBudget;
+  state.tokenBudget = to;
+  return { from, to };
 }
 
 export function consumeRetry(state: BudgetState): void {
@@ -90,63 +112,6 @@ export function checkTermination(
   usedToolCalls = state.toolCallsUsed,
 ): Termination {
   if (state.aborted) return { kind: 'stop', finishReason: 'aborted', detail: '用户中止了任务' };
-
-  if (state.iteration >= state.maxIterations) {
-    return {
-      kind: 'stop',
-      finishReason: 'max_iterations',
-      detail: `已达最大迭代轮数 ${state.maxIterations}，基于已完成的结果输出总结`,
-      budget: {
-        kind: 'iterations',
-        limit: state.maxIterations,
-        used: state.iteration,
-        atStep: state.iteration,
-      },
-    };
-  }
-
-  if (usedToolCalls >= state.maxToolCalls) {
-    return {
-      kind: 'stop',
-      finishReason: 'budget_exhausted',
-      detail: `工具调用预算已用尽（${usedToolCalls}/${state.maxToolCalls}），基于已完成的结果输出总结`,
-      budget: {
-        kind: 'tool_calls',
-        limit: state.maxToolCalls,
-        used: usedToolCalls,
-        atStep: state.iteration,
-      },
-    };
-  }
-
-  if (state.tokenBudget !== UNLIMITED_TOKEN_BUDGET && usedTokens >= state.tokenBudget) {
-    return {
-      kind: 'stop',
-      finishReason: 'budget_exhausted',
-      detail: `任务 token 预算已用尽（${state.tokenBudget}）`,
-      budget: {
-        kind: 'tokens',
-        limit: state.tokenBudget,
-        used: usedTokens,
-        atStep: state.iteration,
-      },
-    };
-  }
-
-  const elapsed = Date.now() - state.startedAt;
-  if (elapsed >= state.totalBudgetMs) {
-    return {
-      kind: 'stop',
-      finishReason: 'budget_exhausted',
-      detail: `任务墙钟预算（${state.totalBudgetMs}ms）已用尽`,
-      budget: {
-        kind: 'wall_clock',
-        limit: state.totalBudgetMs,
-        used: elapsed,
-        atStep: state.iteration,
-      },
-    };
-  }
 
   return { kind: 'continue' };
 }

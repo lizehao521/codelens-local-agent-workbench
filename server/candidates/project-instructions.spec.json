@@ -11,7 +11,7 @@
   "judge": "tests/self-upgrade/project-instructions.test.ts",
   "mode": "red-baseline",
   "maxAttempts": 3,
-  "status": "draft",
+  "status": "adopted",
   "requireAllTargets": true,
   "attribution": "human",
   "gap": "CodeLens 完全不读仓库自己的操作约定。本仓库根就摆着 AGENTS.md（「先读手册」「tests/ 是人所有，改动必须 attribution=human」「未执行写 UNEXEC」），Agent 一条都看不到，只能靠用户在每条消息里手贴。主流 Agent 都把这件事当默认能力：Claude Code 读 CLAUDE.md，Codex / Cursor 读 AGENTS.md。这与 buildWorkspaceSection 修的是同一类缺陷——不是工具实现错了，是**模型缺少一个事实**；那处缺陷的实测代价是 10 轮工具调用 / 68123 prompt token 一个文件都没读到（见 system-prompt.ts:56-67 的现场记录）。Memory 维此前只有 SQLite 轨迹与经验库（src/services/memory/ 是仓储层），没有任何「仓库级长期约定」的入口，本题为它破零。",
@@ -36,5 +36,7 @@
     "本题是 D2：派单必须 trigger=manual + humanApproved=true；auto-adopt 的 A4 闸会拒绝，采纳只能由人做。",
     "promote 成 done 时补 verified 账本行，并把「Memory 维破零」写进 CODELENS-MANUAL §7 的四维读数。",
     "派单前确认 tests/workspace-context.test.ts 与 tests/kernel-centricity.test.ts 仍绿（前者钉 buildWorkspaceSection 输出，后者钉 src/ 每个 .ts 的文件级注释块）。"
-  ]
+  ],
+  "releasedIn": "2.20.0",
+  "adoptedAt": "2026-11-15T13:17:15.024Z"
 }

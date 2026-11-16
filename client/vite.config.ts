@@ -197,7 +197,7 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
-      include: ['tests/**/*.test.ts'],
+      include: ['tests/**/*.test.{ts,tsx}'],
       // jsdom 环境创建很贵（本机 6 次创建耗时 176s，占整轮 59%）。
       // 默认的 forks 池按文件 spawn worker，每个 worker 都要重建 jsdom，
       // 机器负载高时会偶发「Timeout waiting for worker to respond」——

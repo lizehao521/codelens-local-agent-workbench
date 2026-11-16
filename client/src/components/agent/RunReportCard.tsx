@@ -9,6 +9,7 @@
 import { Activity, FilePen, ShieldCheck, Wallet } from 'lucide-react';
 import { useRunStore } from '../../stores/runStore';
 import { cn } from '../../lib/cn';
+import { visibleTriggers } from '../../lib/run-report-view';
 import type { RunOutcome } from '../../types';
 
 /** A-3：完成 / 预算耗尽 / 收敛 / 中止 / 出错必须使用不同文案与颜色。 */
@@ -16,6 +17,7 @@ const OUTCOME_COPY: Record<RunOutcome, { label: string; tone: string }> = {
   completed: { label: '已完成', tone: 'text-success' },
   budget_exhausted: { label: '预算耗尽 · 未完成', tone: 'text-warning' },
   converged: { label: '收敛停止 · 未完成', tone: 'text-accent' },
+  max_iterations: { label: '轮次上限 · 未完成', tone: 'text-warning' },
   aborted: { label: '已中止', tone: 'text-text-secondary' },
   error: { label: '出错', tone: 'text-danger' },
 };
@@ -31,6 +33,7 @@ export function RunReportCard() {
   const totalTokens = report.promptTokens + report.completionTokens;
   const reviewTokens = report.reviewPromptTokens + report.reviewCompletionTokens;
   const outcome = OUTCOME_COPY[report.outcome] ?? OUTCOME_COPY.error;
+  const triggers = visibleTriggers(report.triggers);
 
   return (
     <div
@@ -66,7 +69,7 @@ export function RunReportCard() {
         </div>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-        {report.triggers.map((trigger) => (
+        {triggers.map((trigger) => (
           <span
             key={trigger}
             className={cn(

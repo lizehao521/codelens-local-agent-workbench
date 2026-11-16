@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import {
+  Activity,
   Boxes,
   ClipboardList,
   Gauge,
@@ -39,6 +40,7 @@ const CAPABILITY_ENTRIES: Array<{
 }> = [
   { id: 'judge', label: '判据塔', desc: '判决与自证', icon: Gauge },
   { id: 'rsi', label: 'RSI 曲线', desc: '通过率与代际', icon: LineChart },
+  { id: 'rsi-live', label: '自迭代雷达', desc: '逐轮调整与检索', icon: Activity },
   { id: 'iteration', label: '迭代闸门', desc: '去留决策', icon: ShieldCheck },
   { id: 'sandbox', label: '沙箱权限', desc: '目录与免审批', icon: ShieldAlert },
   { id: 'skills', label: '工具技能', desc: '工具 / 技能 / MCP', icon: Boxes },

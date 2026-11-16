@@ -35,7 +35,7 @@ import {
   consumeRetry,
   createBudget,
   deriveTokenBudget,
-  type BudgetState,
+  type BudgetHit, type BudgetState,
 } from './loop-budget.js';
 import { runNativeTurn } from './native-channel.js';
 import { renderToolCatalogue, runReactTurn } from './react-channel.js';
@@ -59,8 +59,10 @@ import type { SandboxGrantService } from '../tools/sandbox-grant.service.js';
 import type { ReviewService } from './review.service.js';
 import type { ReviewContext } from './review.service.js';
 import { buildReviewFacts } from './review-facts.js';
-import { prepareRun } from './run-assembly.js';
+import { budgetKindEvidence } from './budget-kind-evidence.js';
+import { prepareRun, type PreparedRun } from './run-assembly.js';
 import type { RunStateService } from './run-state.service.js';
+import { cleanupForgedTools } from '../tools/forged-tool-lifecycle.js';
 import type { ReviewFacts } from '../../types/tool.js';
 
 export interface AgentRunRequest {
@@ -83,7 +85,6 @@ export interface AgentRunRequest {
   rsiMeasure?: boolean;
   /** 测量采样次数（缺省 1）。>1 时 RSI 读数取最近 N 次同探针判决的均值。 */
   rsiMeasureSamples?: number;
-  maxIterations: number;
   temperature: number;
   maxTokens: number;
   resumeFromCallId?: string;
@@ -272,6 +273,33 @@ export function selectCreatedFiles(
   return [...paths];
 }
 
+interface RunLoopParams {
+  sse: SseWriter;
+  session: SessionRow;
+  req: AgentRunRequest;
+  apiKey: string;
+  budget: BudgetState;
+  usage: Usage;
+  firstTokenMs: () => number | null;
+  onFirstToken: (kind: 'reasoning' | 'content') => void;
+  runId: string;
+  decision: Awaited<ReturnType<ChannelRouter['decide']>>;
+  executor: PreparedRun['executor'];
+  contextManager: PreparedRun['contextManager'];
+  resolver: CallResolver;
+  breaker: CircuitBreaker;
+  detector: LoopDetector;
+  convergence: ConvergenceDetector;
+  reportedCircuit: Set<string>;
+  review: ReviewService | undefined;
+  reviewCtx: ReviewContext;
+  turnSignal: AbortSignal;
+  traceId: string | null;
+  userMsg: { id: string };
+  isFallback: boolean;
+  status: { value: 'ok' | 'error' };
+}
+
 export class AgentLoopService {
   readonly approvalService: ApprovalService;
   private readonly channelRouter: ChannelRouter;
@@ -395,7 +423,6 @@ export class AgentLoopService {
       .link(this.deps.shutdownSignal, 'shutdown');
     const turnSignal = cancel.signal;
     const budget: BudgetState = createBudget({
-      maxIterations: req.maxIterations,
       maxToolCalls: config.agentMaxToolCalls,
       totalBudgetMs: config.agentTaskBudgetMs,
     });
@@ -501,15 +528,37 @@ export class AgentLoopService {
         finishCancelled();
         return;
       }
+      const runStatus: { value: 'ok' | 'error' } = { value: traceStatus };
+      await this.runLoop({
+        sse, session, req, apiKey, budget, usage, firstTokenMs, onFirstToken,
+        runId, decision, executor, contextManager, resolver, breaker, detector,
+        convergence, reportedCircuit, review, reviewCtx, turnSignal, traceId,
+        userMsg, isFallback, status: runStatus,
+      });
+      traceStatus = runStatus.value;
+    } finally {
+      // 任何出口（正常 return、continue 到终点、或任一层抛错）都必须交还会话槽位，
+      // 否则该 session 之后每一个请求都要先空等 35s 再被秒退（AUDIT-004）。
+      this.finalizeRun({ runCancel: cancel, session, traceId, traceStatus, isFallback, clientIp, usage });
+    }
+  }
+
+  /** 主循环：终止判定、压缩、单轮执行与最终答案分发。 */
+  private async runLoop(p: RunLoopParams): Promise<void> {
+    const { sse, session, req, apiKey, budget, usage, firstTokenMs, onFirstToken, runId, decision, executor, contextManager, resolver, breaker, detector, convergence, reportedCircuit, review, reviewCtx, turnSignal, traceId, userMsg, isFallback, status } = p;
       let channel: Channel = decision.channel;
       let degraded = decision.degraded;
       let degradedReason = decision.degradedReason;
       const toolDefs = this.selectTools(req.tools);
       // AUDIT-028：任务累计 token 硬顶 = 上下文窗口推导（防止失控跑满）。
       budget.tokenBudget = deriveTokenBudget(decision.capabilities.contextWindow, config.agentTokenBudgetFactor);
+      budget.tokenBudgetMax = deriveTokenBudget(decision.capabilities.contextWindow, config.agentTokenBudgetMaxFactor);
+      budget.tokenBudgetStep = decision.capabilities.contextWindow;
       // A-01：兜底 Key 单任务 token 预算覆盖软闸（仅 fallback 请求，0 = 沿用软闸）。
       if (isFallback && this.deps.fallbackBudget.perTaskTokenLimit > 0) {
         budget.tokenBudget = Math.min(budget.tokenBudget, this.deps.fallbackBudget.perTaskTokenLimit);
+        budget.tokenBudgetMax = Math.min(budget.tokenBudgetMax, this.deps.fallbackBudget.perTaskTokenLimit);
+        budget.tokenBudgetStep = Math.min(budget.tokenBudgetStep, Math.max(0, budget.tokenBudgetMax - budget.tokenBudget));
       }
 
       const emitMeta = (iteration: number, switchedFrom: string | null, switchReason: string | null): void => {
@@ -522,7 +571,6 @@ export class AgentLoopService {
           degraded,
           degradedReason,
           iteration,
-          maxIterations: req.maxIterations,
           contextWindow: decision.capabilities.contextWindow,
           tokenBudget: budget.tokenBudget,
           estimatedPromptTokens: usage.promptTokens,
@@ -560,53 +608,33 @@ export class AgentLoopService {
       const policyForPrompt = injection ? { ...injection.policy, lessons: injection.lessons } : undefined;
 
       // ── main loop ────────────────────────────────────────────────────────────
-      // 自适应预算：推理型模型可能把 max_tokens 全花在 reasoning 上，导致
-      // finish_reason=length 但无正文/无工具调用。只重试一次（见下方分支）。
       let maxTokens = req.maxTokens;
       let budgetAdapted = false;
       for (;;) {
         const term = checkTermination(budget, usage.promptTokens + usage.completionTokens);
         if (term.kind === 'stop') {
-          // A-2：到顶不是抛错 —— 先把触顶记录写进 RunState，再走统一收尾。
           if (term.budget) {
             this.deps.runState?.budget(runId, { ...term.budget, triggeredAt: Date.now() });
           }
-          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs());
+          this.finish(sse, session, term.finishReason as AgentFinishReason, budget.iteration, usage, term.detail, undefined, budget.tokenBudget, firstTokenMs(), term.budget);
           return;
         }
 
-        // Rebuilt every turn so a mid-task MCP connect/disconnect stays reflected
-        // (same cadence the native turn already used).
         const providerTools = this.deps.registry.toProviderTools(req.tools, {
           sandboxRoot: this.deps.sandboxRoot,
           mcpConnected: false,
         });
-
-        // 注入视图在 run 级已求值一次（见 main loop 之前）：这里只消费结果，
-        // 不再重算 —— 一个 run 内注入的经验集合必须恒定，否则事后无法归因。
         const view = await contextManager.buildView(
           session.id,
           req.provider,
           req.model,
-          // 强化内核 Update 闭环：把当前 π' 注入本 run 的每一轮 Act（policy 未提供时退化为历史行为）。
-          // 再叠加工作目录声明：模型不知道自己在哪，就会靠猜路径试错（实测 10 轮烧掉 68K token
-          // 一个文件都没读到）。这段只在配置了沙箱根时追加，未配置时行为与历史一致。
           this.withWorkspace(
             buildSystemPrompt(req.taskKind, policyForPrompt, req.executionMode),
             this.deps.sandboxRoot,
           ),
-          // P1-3c: native turns ship the tool schemas in the request itself (often
-          // thousands of tokens); ReAct embeds its catalogue in the system prompt
-          // instead. Counting the schemas for the wrong channel would double-count
-          // or miss them entirely, skewing the 75% trigger.
-          // AUDIT-027：ReAct 的工具目录同样计入占用率估算（此前传 undefined 系统性低估，75% 触发滞后）。
-          // 目录来自 selectTools 的 toolDefs，与 runReactTurn 实际嵌入系统提示词的同一份。
           channel === 'native' ? providerTools : renderToolCatalogue(toolDefs),
         );
         if (view.compactionFailed) {
-          // AC-09: when the compaction summary fails its fidelity check the loop
-          // stops with "context full" — it must not silently send the over-window
-          // transcript upstream (which would only surface as an opaque 400).
           this.finish(
             sse,
             session,
@@ -640,12 +668,10 @@ export class AgentLoopService {
           continue;
         }
         if (turnResult.kind === 'terminated') {
-          if (turnResult.error) traceStatus = 'error';
+          if (turnResult.error) status.value = 'error';
           return;
         }
         const turn = turnResult.turn;
-
-        // ── final answer ───────────────────────────────────────────────────────
         if (turn.toolCalls.length === 0) {
           this.finishWithFinalAnswer({ sse, session, turn, budget, usage, firstTokenMs });
           return;
@@ -656,11 +682,6 @@ export class AgentLoopService {
         });
         if (round.terminated) return;
       }
-    } finally {
-      // 任何出口（正常 return、continue 到终点、或任一层抛错）都必须交还会话槽位，
-      // 否则该 session 之后每一个请求都要先空等 35s 再被秒退（AUDIT-004）。
-      this.finalizeRun({ runCancel: cancel, session, traceId, traceStatus, isFallback, clientIp, usage });
-    }
   }
 
   /** 统一的 run 收尾：会话槽位、轨迹、兜底 Key 记账。所有出口都走这里。 */
@@ -673,6 +694,7 @@ export class AgentLoopService {
     clientIp: string;
     usage: Usage;
   }): void {
+    cleanupForgedTools(p.session.id, this.deps.sandboxRoot);
     p.runCancel?.dispose();
     this.deps.abortRegistry.release(p.session.id);
     if (p.traceId) {
@@ -1277,7 +1299,10 @@ export class AgentLoopService {
     messageId?: string,
     tokenBudget?: number,
     firstTokenMs?: number | null,
+    budgetHit?: BudgetHit,
   ): void {
+    // 本任务 forge 的义肢在 Judge/汇报之前回收；能力库 .codelens 不动。
+    cleanupForgedTools(session.id, this.deps.sandboxRoot);
     // ── RunState 收尾 + 主动汇报卡 ──────────────────────────────────────────
     // 默认只在有实质变化（文件改动/不可逆/审批/错误/成本超阈值）时出卡；
     // 纯问答 no-tools 不插卡。RUN_REPORT_EVERY=1 时才每轮必报。
@@ -1307,7 +1332,7 @@ export class AgentLoopService {
     }
 
     // 强化内核闭环：先由 Judge 产出结构化判决 r，再由 Update 消费 r 生成 π 增量。
-    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0);
+    this.maybeDepositLesson(session, finishReason, iteration, usage, tokenBudget ?? 0, budgetHit);
     // 用完即清：同一 session 下一轮可能是测量轮（rsiMeasure=true）。
     this.nonMeasureSessions.delete(session.id);
     this.measureSampleCounts.delete(session.id);
@@ -1345,6 +1370,7 @@ export class AgentLoopService {
     iteration: number,
     usage: { promptTokens: number; completionTokens: number },
     tokenBudget: number,
+    budgetHit?: BudgetHit,
   ): void {
     if (!this.deps.policy) return;
 
@@ -1357,6 +1383,7 @@ export class AgentLoopService {
           finishReason,
           iteration,
           tokenBudget,
+          ...(budgetHit ? budgetKindEvidence(budgetHit) : {}),
           usage,
           // 熔断是本系统唯一以 circuit_open 收尾的路径；其它终止原因下
           // 即使中途开过路，对最终判决也没有额外信息量。
@@ -1516,3 +1543,5 @@ export class AgentLoopService {
       });
   }
 }
+
+// bridge RSI round: terminal budget kind is threaded into Judge runtime

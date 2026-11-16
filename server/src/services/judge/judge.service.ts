@@ -59,17 +59,16 @@ import {
   type JudgeSummary,
   type LayerProfile,
 } from './types.js';
-
 /** 运行期上下文：loop 结束时才知道、且不在 τ 里的信息。 */
 export interface JudgeRuntimeContext {
   finishReason: string;
   iteration: number;
   tokenBudget: number;
+  budgetKind?: 'iterations' | 'tokens' | 'tool_calls' | 'wall_clock'; budgetLimit?: number; budgetUsed?: number;
   usage: { promptTokens: number; completionTokens: number };
   /** 本轮是否触发过熔断。 */
   circuitOpened: boolean;
 }
-
 export interface JudgeDeps {
   db: Db;
   toolCalls: ToolCallRepository;
@@ -1010,6 +1009,7 @@ export class JudgeService {
       finishReason: runtime.finishReason,
       iteration: runtime.iteration,
       tokenBudget: runtime.tokenBudget,
+      ...(runtime.budgetKind ? { budgetKind: runtime.budgetKind, budgetLimit: runtime.budgetLimit, budgetUsed: runtime.budgetUsed } : {}),
       usage: runtime.usage,
       toolCalls,
       approvals,

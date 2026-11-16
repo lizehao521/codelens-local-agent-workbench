@@ -4,6 +4,9 @@ import { buildTaskSection, type TaskKind } from './task-prompts.js';
 import { buildExecutionModeSection, type ExecutionMode } from './execution-mode.js';
 import type { Policy } from '../../repositories/policy.repository.js';
 import { loadProjectInstructions } from './project-instructions.js';
+import { loadExemplars, renderExemplarBlock, selectExemplars } from './exemplar-injection.js';
+import { config } from '../../config/env.js';
+import path from 'node:path';
 
 /**
  * 基座提示词（native 与 react 通道共用；react 通道叠加文本协议段，不丢弃本段）。
@@ -86,9 +89,19 @@ export function buildWorkspaceSection(sandboxRoot: string): string {
  * 这是 agent-loop 注入 system 消息的唯一入口，保证 native 与 ReAct 两通道同源。
  * 无指令文件时与 buildWorkspaceSection 逐字相同（向后兼容锚）。
  */
-export function buildRuntimeSections(sandboxRoot: string): string {
+export function buildRuntimeSections(
+  sandboxRoot: string,
+  exemplarPath: string = config.nodeEnv === 'test'
+    ? ''
+    : path.join(process.cwd(), '..', '.self-upgrade', 'exemplars.jsonl'),
+): string {
   const workspace = buildWorkspaceSection(sandboxRoot);
   const instructions = loadProjectInstructions(sandboxRoot);
-  if (!instructions) return workspace;
-  return `${workspace}\n\n${instructions}`;
+  const base = instructions ? `${workspace}\n\n${instructions}` : workspace;
+  if (!exemplarPath) return base;
+  const loaded = loadExemplars(exemplarPath);
+  const exemplars = selectExemplars(loaded.records, { maxItems: 5, maxChars: 800 });
+  const block = renderExemplarBlock(exemplars);
+  return block ? `${base}\n\n${block}` : base;
 }
+// bridge RSI round: exemplar runtime injection verified

@@ -45,3 +45,12 @@ test('插件安装后常驻右栏，刷新仍可见', async ({ page }) => {
   await page.getByRole('tab', { name: '插件' }).click();
   await expect(page.getByText('E2E 插件')).toBeVisible();
 });
+
+test('自迭代雷达打开并显示实时状态', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '自迭代' }).click();
+  const dialog = page.getByRole('dialog', { name: '自迭代雷达' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('实时监控中')).toBeVisible();
+  await expect(dialog.getByText('逐轮计算与调整')).toBeVisible();
+});

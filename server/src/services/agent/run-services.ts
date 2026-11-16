@@ -39,6 +39,7 @@ export function buildToolExecutor(
     ...base,
     canRetry: () => canRetry(budget),
     onRetryConsumed: () => consumeRetry(budget),
+    approvalDeadline: budget.startedAt + budget.totalBudgetMs,
     runId,
     dedup: new ApprovalDedupService(),
     onApprovalDedup: ({ toolCall, reusedGrantId, reusedStep }) => {

@@ -77,16 +77,34 @@ describe('run() 接线', () => {
     expect(src).not.toContain('affectedPaths: effect.items');
   });
 
-  it('run() 长度已从 851 行降到 500 行以内（工具循环已移出）', () => {
+  it('run() ≤200 行，只保留 prepare → runLoop → finalize', () => {
     const lines = src.split(/\r?\n/);
     const start = lines.findIndex((l) => l.includes('async run(req'));
     const end = lines.findIndex((l, i) => i > start && /^  private /.test(l));
-    expect(end - start).toBeLessThanOrEqual(500);
+    expect(end - start).toBeLessThanOrEqual(200);
     const body = lines.slice(start, end).join('\n');
-    expect(body).toContain('this.executeToolRound({');
+    expect(body).toContain('this.prepareSession({');
+    expect(body).toContain('this.runLoop({');
+    expect(body).toContain('this.finalizeRun({');
+    expect(body).not.toContain('this.runTurn({');
+    expect(body).not.toContain('this.executeToolRound({');
+    expect(body).not.toContain('this.finishWithFinalAnswer(');
+    expect(body).not.toContain('checkTermination(');
+    expect(body).not.toContain('contextManager.buildView(');
+  });
+
+  it('runLoop() 保留终止、压缩、单轮、最终答案与工具分发', () => {
+    const lines = src.split(/\r?\n/);
+    const start = lines.findIndex((l) => l.includes('private async runLoop('));
+    expect(start).toBeGreaterThan(0);
+    const end = lines.findIndex((l, i) => i > start && /^  private /.test(l));
+    const body = lines.slice(start, end).join('\n');
+    expect(body).toContain('checkTermination(');
+    expect(body).toContain('contextManager.buildView(');
+    expect(body).toContain('view.compactionFailed');
+    expect(body).toContain('this.runTurn({');
     expect(body).toContain('this.finishWithFinalAnswer(');
-    expect(body).not.toContain('executor.executeBatch');
-    expect(body).not.toContain('resolver.resolve(');
+    expect(body).toContain('this.executeToolRound({');
   });
 
   it('executeToolRound 已落地并保留熔断/循环/收敛三个提前收尾', () => {
@@ -104,7 +122,7 @@ describe('run() 接线', () => {
   it('runTurn 已落地：native/react、降级与空响应重试都在方法内', () => {
     expect(src).toContain('private async runTurn(');
     const lines = src.split(/\r?\n/);
-    const runStart = lines.findIndex((l) => l.includes('async run(req'));
+    const runStart = lines.findIndex((l) => l.includes('private async runLoop('));
     const runEnd = lines.findIndex((l, i) => i > runStart && /^  private /.test(l));
     const runBody = lines.slice(runStart, runEnd).join('\n');
     expect(runBody).toContain('this.runTurn({');

@@ -32,7 +32,7 @@ export const AgentRequestSchema = z.object({
    * 只在 rsiMeasure=true 时生效。
    */
   rsiMeasureSamples: z.number().int().min(1).max(9).default(1),
-  maxIterations: z.number().int().min(5).max(30).default(12),
+  // 轮次不再作为任务停止条件。
   temperature: z.number().min(0).max(2).default(0.3),
   maxTokens: z.number().int().min(64).max(8192).default(2048),
   // AC-10 intervention fields: single-step retry (callId only) and run-from-step

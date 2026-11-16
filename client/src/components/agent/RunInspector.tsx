@@ -6,6 +6,7 @@ import { TriangleAlert, Gauge, ListOrdered, Sparkles, Wrench } from 'lucide-reac
 import { useRunStore } from '../../stores/runStore';
 import { countUnsuccessful, useToolCallStore } from '../../stores/toolCallStore';
 import { fmtTokens, formatDuration } from '../../lib/tool-format';
+import { visibleTriggers } from '../../lib/run-report-view';
 import { cn } from '../../lib/cn';
 
 export function RunInspector() {
@@ -15,6 +16,7 @@ export function RunInspector() {
   const error = useRunStore((s) => s.error);
   const stages = useRunStore((s) => s.stageHistory);
   const report = useRunStore((s) => s.report);
+  const triggers = report ? visibleTriggers(report.triggers) : [];
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -44,11 +46,11 @@ export function RunInspector() {
         {/* F：风险项 —— 汇报卡的触发项与失败工具集中呈现 */}
         <section className="mb-4" aria-live="polite" aria-label="风险项">
           <GroupTitle icon={TriangleAlert} title="风险项" />
-          {(report?.triggers.length ?? 0) === 0 && !error ? (
+          {triggers.length === 0 && !error ? (
             <p className="text-xs text-text-tertiary">暂无风险项。</p>
           ) : (
             <ul className="space-y-0.5 text-xs">
-              {report?.triggers.map((trigger) => (
+              {triggers.map((trigger) => (
                 <li key={trigger} className="text-warning">
                   · {trigger}
                 </li>
@@ -74,7 +76,7 @@ export function RunInspector() {
               }
             />
             {meta.degradedReason && <Row label="降级原因" value={meta.degradedReason} />}
-            <Row label="轮次" value={`${meta.iteration} / ${meta.maxIterations}`} mono />
+            <Row label="轮次" value={String(meta.iteration)} mono />
             {typeof meta.toolCount === 'number' && <Row label="可用工具" value={String(meta.toolCount)} mono />}
             {typeof meta.contextWindow === 'number' && (
               <Row label="上下文窗口" value={fmtTokens(meta.contextWindow)} mono />

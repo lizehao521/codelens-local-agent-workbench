@@ -14,7 +14,6 @@
  *   · 宏的组合面已经覆盖「把多次调用固化成一次」这个真实需求；
  *   · 宏的每一步都是既有工具，审计口径与主链路完全一致。
  */
-
 import { mkdir, readFile, writeFile, rm, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolDefinition, ToolExecutionContext, ToolOutcome } from '../../types/tool.js';
@@ -25,13 +24,11 @@ import { jsonFormatTool } from './json-format.tool.js';
 import { textDiffTool } from './text-diff.tool.js';
 import { timeNowTool } from './time-now.tool.js';
 import { uuidGenerateTool } from './uuid-generate.tool.js';
-
+import { recordForgedTool, markForgedToolUsed, markForgedToolRecycled } from '../../services/tools/forged-tool-lifecycle.js';
 /** 允许被宏调用的工具（读/算类）。刻意排除 sys.exec / http.request / fs.write：
  *  宏是「复用读算能力」，不是「批量执行副作用」的通道。 */
 const STEP_TOOLS = [fsReadTool, fsListTool, calcEvaluateTool, jsonFormatTool, textDiffTool, timeNowTool, uuidGenerateTool];
-
 const STEP_BY_WIRE = new Map(STEP_TOOLS.map((t) => [t.wireName, t]));
-
 const OPERATIONS = ['create', 'use', 'recycle'] as const;
 
 /** 工具名：小写字母开头，只允许小写字母/数字/下划线，3-32 位。 */
@@ -272,6 +269,7 @@ export const toolForgeTool: ToolDefinition = {
       }
       await mkdir(scopeDir(ctx), { recursive: true });
       await writeFile(file, `${JSON.stringify(v.spec, null, 2)}\n`, 'utf8');
+      recordForgedTool(ctx.sessionId, v.spec.name, file);
       await appendEvent(ctx, 'tool_created', {
         name: v.spec.name,
         why: v.spec.why_not_existing,
@@ -349,6 +347,7 @@ export const toolForgeTool: ToolDefinition = {
         summaries.push(`第 ${i + 1} 步：${outcome.summary}`);
       }
       await appendEvent(ctx, 'tool_used', { name, steps: spec.steps.length, from_library: fromLibrary });
+      markForgedToolUsed(ctx.sessionId, name);
       return {
         ok: true,
         summary: `${name} 执行成功（${spec.steps.length} 步${fromLibrary ? '，复用能力库' : ''}）：${prev}`.slice(0, 800),
@@ -381,6 +380,7 @@ export const toolForgeTool: ToolDefinition = {
     }
 
     await rm(file, { force: true });
+    markForgedToolRecycled(ctx.sessionId, name);
     await appendEvent(ctx, 'tool_removed', { name });
     await appendEvent(ctx, 'lesson', { name, text: lesson.lesson });
     return {

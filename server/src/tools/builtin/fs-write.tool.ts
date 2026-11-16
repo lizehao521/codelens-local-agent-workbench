@@ -12,19 +12,14 @@ const OPERATIONS = ['create', 'overwrite', 'append', 'rename', 'delete', 'purge'
 /** `fs.write` 碰到 git 执行面时的统一建议。 */
 const GIT_SURFACE_SUGGESTION =
   '请用 sys.exec 的 git config（本地作用域）修改仓库配置；hooks 目录不允许直接写入';
+/** 失败时给模型的下一步。 */
+const NEXT_ACTION = {
+  operation: '从 create/overwrite/append/rename/delete/purge/replace 中选择一个；新建用 create，改已有文件用 overwrite 或 replace。', path: '改用沙箱相对路径（例如 src/app.ts），或使用已在「沙箱权限」中授权的目录内绝对路径。', exists: '改用 overwrite 覆盖，或 append 追加；只改局部请用 replace。', contentTooLarge: '把内容拆成多次 create/append，或先用 replace 改局部；单次上限 2,000,000 字符。', replaceMissing: '先用 fs.read 确认 path 是否存在，再决定 create 还是 overwrite。', missing: '确认 path 拼写与大小写；目标不存在时先用 create/overwrite 创建。', replaceTextTooLarge: '缩小 oldText/newText，或拆成多次 replace；单段上限 200,000 字符。', noop: '修改 newText 后再调用；若本来就不需要改动，跳过这次工具调用。', emptyOld: '提供文件中真实存在的一段非空文本作为 oldText，可先用 fs.read 复制原文。', noMatch: '先用 fs.read 查看原文（含缩进/换行），再复制一段唯一片段；CRLF 会自动归一化。', ambiguous: '给 oldText 增加上下文使其只命中一处；已给出命中 line/col，可据此选取更长的唯一片段。', renameMissing: 'rename 必须同时提供 newPath，且目标路径要在沙箱或授权目录内。', sourceMissing: '确认源 path 拼写；源文件不存在时先用 create 创建。', purgeMissing: '确认目录存在；purge 只清空目录内容，不会创建目录。', purgeNotDir: 'purge 只适用于目录；删除普通文件请用 delete。', deleteMissing: '确认 path 拼写；目标已经不存在时无需再删除。', deleteDir: '传 recursive: true 删除整个目录；只想清空内容请用 purge。',
+};
 
 /**
- * `.git` 内的「执行面」：hooks 目录与 config 文件。
- *
- * 为什么要拦：`fs.write` 只是 soft 审批，而写一个 `.git/hooks/pre-commit`、或往
- * `.git/config` 里塞 `diff.external=<cmd>` / `[alias] x = !<cmd>`，就等于用低审批档
- * 换到命令执行 —— 把 `sys.exec` 的 hard/two_step 整个绕过。这是安全模型的洞，
- * 所以**拒绝**而不是升审批档（升档也拦不住随手点确认的人）。
- *
- * 判定用**路径段**而不是 `includes('.git')`：
- *  - `.gitignore` / `.gitattributes` / `.gitmodules` 是普通仓库文件，必须继续可写；
- *  - `src/.github/workflows/ci.yml` 同理。
- * 只有「`.git` 段」且紧随 `hooks`（任意深度）或精确的 `config` 才算命中。
+ * `.git` 执行面：hooks 与 config 可配置成命令执行，直接拒绝。
+ * 用路径段判定，避免误伤 .gitignore/.gitattributes/.github。
  */
 export function gitExecutableSurfaceRejection(absolutePath: string): string | null {
   const segments = path
@@ -96,6 +91,7 @@ export const fsWriteTool: ToolDefinition = {
           code: 'TOOL_INVALID_ARGS',
           kind: 'invalid_args',
           message: `operation 必须是 ${OPERATIONS.join('/')}`,
+          suggestion: NEXT_ACTION.operation,
         },
       };
     }
@@ -104,7 +100,7 @@ export const fsWriteTool: ToolDefinition = {
       return {
         ok: false,
         summary: jail.message,
-        error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: jail.message, retryable: false },
+        error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: jail.message, retryable: false, suggestion: NEXT_ACTION.path },
       };
     }
     const targetExists = existsSync(jail.absolutePath);
@@ -122,6 +118,7 @@ export const fsWriteTool: ToolDefinition = {
           code: 'TOOL_INVALID_ARGS',
           kind: 'invalid_args',
           message: `目标已存在：${jail.sandboxRelative}，create 不覆盖已有文件`,
+          suggestion: NEXT_ACTION.exists,
         },
       };
     }
@@ -136,6 +133,7 @@ export const fsWriteTool: ToolDefinition = {
             code: 'PAYLOAD_TOO_LARGE',
             kind: 'invalid_args',
             message: `内容超过 ${MAX_CONTENT_CHARS} 字符上限`,
+            suggestion: NEXT_ACTION.contentTooLarge,
           },
         };
       }
@@ -158,7 +156,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: `目标不存在：${jail.sandboxRelative}`,
-          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}` },
+          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}`, suggestion: NEXT_ACTION.missing },
         };
       }
       const oldText = String(args.oldText ?? '');
@@ -167,14 +165,14 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: 'oldText/newText 超过 200000 字符上限',
-          error: { code: 'PAYLOAD_TOO_LARGE', kind: 'invalid_args', message: 'oldText/newText 超过 200000 字符上限' },
+          error: { code: 'PAYLOAD_TOO_LARGE', kind: 'invalid_args', message: 'oldText/newText 超过 200000 字符上限', suggestion: NEXT_ACTION.replaceTextTooLarge },
         };
       }
       if (oldText === newText) {
         return {
           ok: false,
           summary: 'oldText 与 newText 相同，空操作',
-          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'oldText 与 newText 相同，未发生任何修改' },
+          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'oldText 与 newText 相同，未发生任何修改', suggestion: NEXT_ACTION.noop },
         };
       }
       const original = await readFile(jail.absolutePath, 'utf8');
@@ -190,6 +188,7 @@ export const fsWriteTool: ToolDefinition = {
             code: 'TOOL_INVALID_ARGS',
             kind: 'invalid_args',
             message: 'oldText 不能为空：空串会匹配任意位置且无法前进，替换无意义',
+            suggestion: NEXT_ACTION.emptyOld,
           },
         };
       }
@@ -216,7 +215,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: `未在 ${jail.sandboxRelative} 中找到匹配片段`,
-          error: { code: 'REPLACE_NO_MATCH', kind: 'invalid_args', message: 'oldText 在文件中未命中任何位置' },
+          error: { code: 'REPLACE_NO_MATCH', kind: 'invalid_args', message: 'oldText 在文件中未命中任何位置', suggestion: NEXT_ACTION.noMatch },
         };
       }
       if (count > 1) {
@@ -224,7 +223,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: `oldText 在 ${jail.sandboxRelative} 中命中 ${count} 处，请提供更长上下文`,
-          error: { code: 'REPLACE_AMBIGUOUS', kind: 'invalid_args', message: `oldText 命中 ${count} 处（${locations}），拒绝模糊替换` },
+          error: { code: 'REPLACE_AMBIGUOUS', kind: 'invalid_args', message: `oldText 命中 ${count} 处（${locations}），拒绝模糊替换`, suggestion: NEXT_ACTION.ambiguous },
           // matches 是既有契约（命中次数，字符串化后等于 '3'），位置信息必须另开键。
           // 实测教训：为了给位置信息复用 matches 会撞坏 fs-write-replace 的 C3 ——
           // 新能力不许改变既有字段的含义与类型，只能加新键。
@@ -251,7 +250,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: 'rename 需要 newPath',
-          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'rename 需要 newPath 参数' },
+          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'rename 需要 newPath 参数', suggestion: NEXT_ACTION.renameMissing },
         };
       }
       const newJail = await resolveInSandboxAsync(ctx.sandboxRoot, String(args.newPath), true, undefined, ctx.allowedDirs);
@@ -259,7 +258,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: newJail.message,
-          error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: newJail.message, retryable: false },
+          error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: newJail.message, retryable: false, suggestion: NEXT_ACTION.path },
         };
       }
       // rename 的目标同样不能落在 git 执行面上（否则「挪进 .git/hooks」就是绕过）。
@@ -269,7 +268,7 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: `源文件不存在：${jail.sandboxRelative}`,
-          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `源文件不存在：${jail.sandboxRelative}` },
+          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `源文件不存在：${jail.sandboxRelative}`, suggestion: NEXT_ACTION.sourceMissing },
         };
       }
       await mkdir(path.dirname(newJail.absolutePath), { recursive: true });
@@ -288,14 +287,14 @@ export const fsWriteTool: ToolDefinition = {
         return {
           ok: false,
           summary: `目标不存在：${jail.sandboxRelative}`,
-          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}` },
+          error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}`, suggestion: NEXT_ACTION.missing },
         };
       }
       if (!statSync(jail.absolutePath).isDirectory()) {
         return {
           ok: false,
           summary: `purge 仅适用于目录：${jail.sandboxRelative}`,
-          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'purge 仅适用于目录' },
+          error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: 'purge 仅适用于目录', suggestion: NEXT_ACTION.purgeNotDir },
         };
       }
       ctx.reportProgress('writing', `清空 ${jail.sandboxRelative}`);
@@ -314,7 +313,7 @@ export const fsWriteTool: ToolDefinition = {
       return {
         ok: false,
         summary: `目标不存在：${jail.sandboxRelative}`,
-        error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}` },
+        error: { code: 'TOOL_NOT_FOUND', kind: 'not_found', message: `目标不存在：${jail.sandboxRelative}`, suggestion: NEXT_ACTION.missing },
       };
     }
     const isDirectory = statSync(jail.absolutePath).isDirectory();
@@ -330,6 +329,7 @@ export const fsWriteTool: ToolDefinition = {
           code: 'TOOL_INVALID_ARGS',
           kind: 'invalid_args',
           message: '删除目录必须指定 recursive=true',
+          suggestion: NEXT_ACTION.deleteDir,
         },
       };
     }

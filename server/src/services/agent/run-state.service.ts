@@ -8,8 +8,10 @@
  */
 
 import type { Db } from '../../repositories/db.js';
+import { budgetUnfinished } from './run-budget-copy.js';
 import type {
   RunApprovalRecord,
+  RunBudgetAdjustmentRecord,
   RunBudgetRecord,
   RunCostRecord,
   RunCutoffRecord,
@@ -60,6 +62,7 @@ const DEFAULT_STATE = (input: RunStateStartInput): RunStateData => ({
     durationMs: 0,
   },
   budget: null,
+  budgetAdjustments: [],
   cutoff: null,
 });
 
@@ -76,19 +79,6 @@ const BUDGET_STATUS_CODE: Record<RunBudgetRecord['kind'], string> = {
   tokens: 'RUN_BUDGET_TOKENS',
   wall_clock: 'RUN_BUDGET_WALL_CLOCK',
 };
-
-function budgetUnfinished(budget: RunBudgetRecord): string[] {
-  switch (budget.kind) {
-    case 'iterations':
-      return ['模型未继续生成后续步骤'];
-    case 'tool_calls':
-      return ['后续计划的工具调用未执行'];
-    case 'tokens':
-      return ['后续轮次因 token 上限未执行'];
-    case 'wall_clock':
-      return ['后续轮次因墙钟上限未执行'];
-  }
-}
 
 export class RunStateService {
   private readonly everyRun: boolean;
@@ -195,6 +185,14 @@ export class RunStateService {
     this.write(state);
   }
 
+  /** A：记录一次自适应 token 预算扩展；旧 state 缺字段时就地补空数组。 */
+  budgetAdjustment(runId: string, record: RunBudgetAdjustmentRecord): void {
+    const state = this.read(runId);
+    if (!state) return;
+    (state.budgetAdjustments ??= []).push(record);
+    this.write(state);
+  }
+
   /**
    * 收尾：无论正常/错误/中止都走这里；返回的 report 是唯一对外结论来源。
    */
@@ -218,12 +216,11 @@ export class RunStateService {
 
     // A：收尾截止点 —— 从 RunState 自身事实推导，不另起统计。
     const budget = state.budget;
-    const lastStage = state.stages[state.stages.length - 1];
     const cutoff: RunCutoffRecord = {
-      lastStage: lastStage?.stage ?? null,
+      lastStage: state.stages[state.stages.length - 1]?.stage ?? null,
       completedToolCalls: state.tools.length,
       completedFileChanges: state.fileChanges.length,
-      unfinished: budget ? budgetUnfinished(budget) : [],
+      unfinished: budget ? budgetUnfinished(budget) : state.finishReason === 'max_iterations' ? ['达到最大轮次上限，后续步骤未执行'] : [],
     };
     state.cutoff = cutoff;
 
@@ -234,12 +231,12 @@ export class RunStateService {
 
   /** A：终态码与完成态严格分离（预算耗尽不得冒充完成）。 */
   private resolveOutcome(state: RunStateData): { outcome: RunOutcome; statusCode: string } {
-    const reason = state.finishReason;
     if (state.budget) {
       return { outcome: 'budget_exhausted', statusCode: BUDGET_STATUS_CODE[state.budget.kind] };
     }
-    if (reason === 'converged') return { outcome: 'converged', statusCode: 'RUN_CONVERGED' };
-    if (reason === 'aborted') return { outcome: 'aborted', statusCode: 'RUN_ABORTED' };
+    if (state.finishReason === 'max_iterations') return { outcome: 'max_iterations', statusCode: 'RUN_MAX_ITERATIONS' };
+    if (state.finishReason === 'converged') return { outcome: 'converged', statusCode: 'RUN_CONVERGED' };
+    if (state.finishReason === 'aborted') return { outcome: 'aborted', statusCode: 'RUN_ABORTED' };
     if (state.status === 'error') return { outcome: 'error', statusCode: 'RUN_ERROR' };
     return { outcome: 'completed', statusCode: 'RUN_COMPLETED' };
   }
@@ -260,21 +257,18 @@ export class RunStateService {
   buildReport(state: RunStateData, detail?: string | null): RunReport {
     const triggers: string[] = [];
     const irreversibleCount = state.tools.filter((t) => t.effectReversible === false).length;
-    const totalTokens = state.cost.promptTokens + state.cost.completionTokens
-      + state.cost.reviewPromptTokens + state.cost.reviewCompletionTokens;
+    const totalTokens = state.cost.promptTokens + state.cost.completionTokens + state.cost.reviewPromptTokens + state.cost.reviewCompletionTokens;
 
     if (state.fileChanges.length > 0) triggers.push('文件改动');
     if (irreversibleCount > 0) triggers.push('不可逆操作');
     if (state.approvals.length > 0) triggers.push('审批');
     if (state.errors.length > 0) triggers.push('错误/降级');
-    if (totalTokens >= this.costTokenThreshold) triggers.push('成本超阈值');
     if (state.status === 'error' || state.status === 'aborted') {
       // context_full 的 reason 已经写明「上下文已满…安全回退」，再挂通用「异常终止」
       // 会在同一张卡上出现互相冲突的措辞。换成同义但准确的标签，且保持 triggers
       // 非空 —— 否则 hasMaterialChange 变 false，汇报卡反而整个不显示。
       triggers.push(state.finishReason === 'context_full' ? '上下文已满' : '异常终止');
     }
-    if (state.budget) triggers.push('预算耗尽');
     if (state.finishReason === 'converged') triggers.push('收敛判定');
 
     const hasMaterialChange = this.everyRun || triggers.length > 0;
@@ -286,7 +280,9 @@ export class RunStateService {
         : state.finishReason === 'context_full'
           ? detail?.trim() ||
             '上下文已满：压缩自检未通过，任务已安全回退（未把超窗对话继续发给模型）。建议：新建会话，或把任务拆小后重试'
-          : null;
+          : state.finishReason === 'max_iterations'
+            ? detail?.trim() || '达到最大轮次上限，后续步骤未执行'
+            : null;
     const notDone = state.cutoff?.unfinished ?? [];
     const durationMs = state.cost.durationMs;
     const seconds = (durationMs / 1000).toFixed(1);
@@ -301,7 +297,6 @@ export class RunStateService {
     if (state.tools.length > 0) parts.push(`工具调用 ${state.tools.length} 次`);
     parts.push(`耗时 ${seconds}s`);
     parts.push(`token ${totalTokens}（复核 ${state.cost.reviewPromptTokens + state.cost.reviewCompletionTokens}）`);
-
     return {
       runId: state.runId,
       sessionId: state.sessionId,
@@ -312,6 +307,7 @@ export class RunStateService {
       hasMaterialChange,
       triggers,
       finishReason: state.finishReason,
+      budget: state.budget,
       fileChangeCount: new Set(state.fileChanges.map((f) => f.path)).size,
       irreversibleCount,
       approvalCount: state.approvals.length,
@@ -321,6 +317,7 @@ export class RunStateService {
       completionTokens: state.cost.completionTokens,
       durationMs,
       summary: parts.join('；'),
+      budgetAdjustments: state.budgetAdjustments ?? [],
     };
   }
 

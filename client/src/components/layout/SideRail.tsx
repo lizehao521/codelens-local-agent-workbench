@@ -2,6 +2,7 @@
 // 只负责打开：视图写 workspaceView，能力写 activeModal，实际挂载统一在 CapabilityHost。
 
 import {
+  Activity,
   Boxes,
   Gauge,
   History,
@@ -22,6 +23,7 @@ const VIEWS: Array<{ id: WorkspaceView; label: string; icon: typeof MessageSquar
 const CAPABILITIES: Array<{ id: CapabilityModal; label: string; icon: typeof Gauge; hint: string }> = [
   { id: 'judge', label: '判据塔', icon: Gauge, hint: '判决历史、自证状态与经验有效性' },
   { id: 'rsi', label: 'RSI', icon: LineChart, hint: '套件通过率、分母基线与代际曲线' },
+  { id: 'rsi-live', label: '自迭代', icon: Activity, hint: '逐轮参数/信号变化与同类检索证据' },
   { id: 'iteration', label: '迭代', icon: ShieldCheck, hint: '逐轮量化判据、去留决策与人工处置' },
   { id: 'sandbox', label: '沙箱', icon: ShieldAlert, hint: '放开沙箱外目录与免审批' },
   { id: 'skills', label: '技能', icon: Boxes, hint: '工具、技能库、MCP 与运行时能力' },

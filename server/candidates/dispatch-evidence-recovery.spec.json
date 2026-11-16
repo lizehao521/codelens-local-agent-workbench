@@ -1,0 +1,19 @@
+{
+  "id": "dispatch-evidence-recovery",
+  "title": "派单证据落盘回读：超时/迟到写入不再被误判为空报告",
+  "strengthens": "Judge",
+  "package": "server",
+  "allowed": [
+    "../scripts/self-upgrade-loop.ts",
+    "../scripts/lib/dispatch-evidence.mjs",
+    "../scripts/failure-attribution.ts",
+    "tests/self-upgrade/dispatch-evidence-recovery.test.ts"
+  ],
+  "judge": "tests/self-upgrade/dispatch-evidence-recovery.test.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "adopted",
+  "releasedIn": "2.22.0",
+  "adoptedAt": "2026-11-15T13:17:15.024Z",
+  "note": "候选判据 17/17 通过；由 D4 人工 promote，沿用既有实现，不新增代码。"
+}

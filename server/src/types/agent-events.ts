@@ -13,7 +13,6 @@ export interface SseMetaPayload {
   degraded: boolean;
   degradedReason: string | null;
   iteration: number;
-  maxIterations: number;
   contextWindow: number;
   /** 任务累计 token 硬顶（上下文窗口 × TOKEN_BUDGET_CONTEXT_FACTOR）。 */
   tokenBudget: number;

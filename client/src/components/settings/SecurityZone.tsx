@@ -1,5 +1,5 @@
 // 设置分区 ④ —— 安全边界（只读展示）：这些阈值由服务端锁定，前端改不动也不该改
-// 展示口径与 spec §10 / 架构 §7.6 一致：HTTP 白名单、文件 jail、超时、重试预算、轮次上限
+// 展示口径与 spec §10 / 架构 §7.6 一致：HTTP 白名单、文件 jail、超时、重试预算、上下文压缩
 
 import { FileLock, Globe, ShieldCheck, Timer } from 'lucide-react';
 
@@ -28,7 +28,6 @@ const BUDGET_ROWS: BoundaryRow[] = [
   { label: '任务重试预算', value: '5 次 / 任务', note: '网络类仅幂等操作自动重试一次' },
   { label: '每工具熔断', value: '连续 3 次失败', note: '第 4 次直接返回熔断提示，不触发 LLM 调用' },
   { label: '循环检测', value: '同名同参 2 次警告 / 3 次中止', note: '警告注入上下文，不消耗重试预算' },
-  { label: '最大轮次', value: '12 轮（可调 5-30）', note: '达到上限输出未完成项，不静默截断' },
   { label: '上下文压缩', value: '占用 >75% 触发', note: '三层压缩 + 九段摘要 + 保真自检，失败回退不截断' },
 ];
 
