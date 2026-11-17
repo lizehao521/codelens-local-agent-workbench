@@ -8,13 +8,21 @@
  *   4) 值里允许再出现 "="（只在第一个 "=" 处切分）；
  *   5) 同一键重复出现时，后出现的覆盖先出现的。
  *
- * 当前实现没做 trim、没跳过空段、没用第一个 "=" 切分 —— 都是真实缺陷。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
 function parseKV(input) {
   const out = {};
-  for (const part of String(input).split(';')) {
-    const [k, v] = part.split('=');
+  const segs = String(input).split(';');
+  for (const raw of segs) {
+    const seg = raw.trim();
+    if (seg === '') continue;
+    const idx = seg.indexOf('=');
+    if (idx === -1) {
+      out[seg] = '';
+      continue;
+    }
+    const k = seg.slice(0, idx).trim();
+    const v = seg.slice(idx + 1).trim();
     out[k] = v;
   }
   return out;

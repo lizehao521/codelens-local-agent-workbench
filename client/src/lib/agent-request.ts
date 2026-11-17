@@ -21,6 +21,7 @@ export function buildAgentStreamRequest(
     model: settings.model,
     message,
     channelMode: settings.channelMode ?? 'auto',
+    maxIterations: 12,
     temperature: 0.3,
     maxTokens: 2048,
   };

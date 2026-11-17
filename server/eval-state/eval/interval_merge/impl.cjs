@@ -7,18 +7,25 @@
  *   3) start > end 的非法区间直接忽略；
  *   4) 不许修改入参数组，返回全新数组。
  *
- * 当前实现没有排序，且把「相接」漏掉了 —— 都是真实缺陷。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
 function mergeIntervals(list) {
-  const out = [];
-  for (const item of list) {
+  const valid = [];
+  for (const item of Array.isArray(list) ? list : []) {
     if (!Array.isArray(item) || item.length !== 2) continue;
     const [s, e] = item;
     if (!Number.isFinite(s) || !Number.isFinite(e) || s > e) continue;
+    valid.push([s, e]);
+  }
+  valid.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const out = [];
+  for (const [s, e] of valid) {
     const last = out[out.length - 1];
-    if (last && s < last[1]) last[1] = Math.max(last[1], e);
-    else out.push([s, e]);
+    if (last && s <= last[1]) {
+      last[1] = Math.max(last[1], e);
+    } else {
+      out.push([s, e]);
+    }
   }
   return out;
 }

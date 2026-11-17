@@ -8,6 +8,9 @@
  *
  * 用法：timeout 1800 node --import tsx scripts/seed-agent-loop.ts 12
  *   → 连续 12 轮，推到 generation=11（gen1=skipped, gen2..gen12=compared）
+ * 人当模型（AITL）模式：追加 --aitl —— 去掉测量轮/6s 硬等/墙钟预算，每轮只派 1 个
+ *   修复 Agent 停在本机代理(9999)上，由"我"（AI 助手）通过 Read pending + Write responses
+ *   文件握手当模型应答。真实通过率由 harness 进程内 runEvalBattery 复算（权威），按轮数记 gN。
  */
 
 import http from 'node:http';
@@ -669,6 +672,7 @@ async function main() {
   const codeMode = process.argv.includes('--code');
   const proposeMode = process.argv.includes('--propose');
   const autoMode = process.argv.includes('--auto');
+  const aitlMode = process.argv.includes('--aitl');
   const selfMode = process.argv.includes('--self') || depthMode;
   // 沙箱可能被回收重来：先把快照接回来，再补齐缺失的夹具。
   if (codeMode || autoMode) {
@@ -885,6 +889,10 @@ ${feedback}`
 
     console.log(`\n── ROUND ${i + 1}/${target} ──`);
     console.log(`▶ ${task.slice(0, 80)}…`);
+    if (aitlMode) {
+      console.log(`🔔 [AITL] 本轮回合会一直等待，直到你通过代理把 Agent 步骤答完（无墙钟预算）。`);
+      console.log(`   取请求：GET http://127.0.0.1:9999/next → 读完整对话 + 工具目录 → POST /respond 回 <tool_call> 文本`);
+    }
 
     // 代际边界。第 1 轮 sessionId 还没拿到，不写 checkpoint；
     // 此时窗口 = 全部事件，正好就是第一代自己产生的那些。
@@ -928,7 +936,10 @@ ${feedback}`
     //
     // 代价必须说清：改采样次数 = 改测量协议 = 换尺子。均值读数与单样本协议的旧链
     // 不可直接相减，接手旧链会得到虚假的 improved。所以协议一旦改动就要另起新链。
-    const probeSamples = PROBE_SAMPLES;
+    // AITL 模式（人当模型）：去掉冗余测量轮 —— 每次采样都是停在代理上等我手答的
+    // 额外负担，而真实通过率已由下方 harness 进程内 runEvalBattery 复算（权威读数），
+    // 测量轮只为未编译的 krsi 服务，留着只会拖慢"我当模型"的节奏。
+    const probeSamples = aitlMode ? 0 : PROBE_SAMPLES;
     let okSamples = 0;
     for (let s = 1; s <= probeSamples; s++) {
       // 每次采样都从空上下文开始：否则前一次的回答会成为后一次的提示词，
@@ -962,7 +973,8 @@ ${feedback}`
 
     // 等 JudgeService + RsiBridge 跑完（同步执行，但 RsiBridge 里有 spawn krsi），
     // 同时给上游留出限流窗口：连续 12 轮密集请求很容易触发网关熔断。
-    await new Promise((r) => setTimeout(r, 6000));
+    // AITL 模式下去掉这次硬等：测量轮已不派（无 krsi 要等），省得干等 6s。
+    if (!aitlMode) await new Promise((r) => setTimeout(r, 6000));
 
     // ── 本代真实读数：判据重跑，不信 Agent 的报告 ────────────────────────────
     if (codeMode || autoMode) {

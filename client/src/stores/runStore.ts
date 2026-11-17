@@ -20,6 +20,7 @@ export interface RunMeta {
   degraded: boolean;
   degradedReason: string | null;
   iteration: number;
+  maxIterations: number;
   contextWindow?: number;
   estimatedPromptTokens?: number;
   toolCount?: number;
@@ -102,6 +103,7 @@ export const useRunStore = create<RunState>((set) => ({
         degraded: meta.degraded ?? false,
         degradedReason: meta.degradedReason ?? null,
         iteration: meta.iteration ?? 1,
+        maxIterations: meta.maxIterations ?? 12,
         contextWindow: meta.contextWindow,
         estimatedPromptTokens: meta.estimatedPromptTokens,
         toolCount: meta.toolCount,

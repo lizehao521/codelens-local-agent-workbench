@@ -6,14 +6,16 @@
  *   2) 不足一块的剩余元素必须保留成最后一块；
  *   3) 空数组返回空数组。
  *
- * 当前实现有两个真实缺陷：丢弃余数；size<=0 时静默返回空数组而不是报错。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
 function chunk(list, size) {
-  if (size <= 0) return [];
+  if (!Number.isInteger(size) || size <= 0) {
+    throw new Error('size must be a positive integer');
+  }
   const out = [];
-  for (let i = 0; i + size <= list.length; i += size) {
-    out.push(list.slice(i, i + size));
+  const arr = Array.isArray(list) ? list : [];
+  for (let i = 0; i < arr.length; i += size) {
+    out.push(arr.slice(i, i + size));
   }
   return out;
 }

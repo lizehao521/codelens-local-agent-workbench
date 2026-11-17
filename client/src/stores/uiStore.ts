@@ -11,7 +11,7 @@ export type ToastVariant = 'info' | 'success' | 'error';
 export type WorkspaceView = 'chat' | 'audit';
 
 /** 能力面板：统一由 AppShell 挂载，导航与右栏都只负责“打开” */
-export type CapabilityModal = 'judge' | 'rsi' | 'rsi-live' | 'iteration' | 'sandbox' | 'skills';
+export type CapabilityModal = 'judge' | 'rsi' | 'iteration' | 'sandbox' | 'skills';
 
 export interface Toast {
   id: string;

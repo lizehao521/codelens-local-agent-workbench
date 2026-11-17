@@ -9,10 +9,7 @@
       "targetHint": "src/tools/builtin/tool-forge.tool.ts",
       "size": "中",
       "agentActionable": true,
-      "source": "charter §10 UNEXEC",
-      "status": "done",
-      "releasedIn": "2.21.0",
-      "note": "任务收尾自动清理未回收义肢；4/4 判据通过。"
+      "source": "charter §10 UNEXEC"
     },
     {
       "id": "exec-partial-on-timeout",
@@ -33,10 +30,7 @@
       "targetHint": "src/tools/builtin/fs-write.tool.ts",
       "size": "小",
       "agentActionable": true,
-      "source": "实测：字面量改错那几轮，反馈里只有「未找到」，没有「你给的第 3 行在文件里是第 5 行」",
-      "status": "done",
-      "releasedIn": "2.21.0",
-      "note": "fs.write 失败路径补 suggestion；7/7 判据通过。"
+      "source": "实测：字面量改错那几轮，反馈里只有「未找到」，没有「你给的第 3 行在文件里是第 5 行」"
     },
     {
       "id": "batch-atomicity",
@@ -45,10 +39,7 @@
       "targetHint": "src/tools/builtin/fs-write.tool.ts",
       "size": "中",
       "agentActionable": true,
-      "source": "实测：integration/FULL_SUITE_RED 两轮均为多文件改动",
-      "status": "done",
-      "releasedIn": "2.21.0",
-      "note": "批次失败时逆序恢复 fs.write 已写文件；2/2 判据通过。"
+      "source": "实测：integration/FULL_SUITE_RED 两轮均为多文件改动"
     },
     {
       "id": "judge-mutation-probe",
@@ -94,12 +85,10 @@
       "size": "中",
       "agentActionable": false,
       "source": "S6 交接 2026-11-14",
-      "status": "done",
+      "status": "drafted",
       "taskId": "agent-loop-run-loop",
       "draftedAt": "2026-11-14",
-      "blockedBy": "靶子在 src/services/agent（D2，首次需人批）且判据在 tests/self-upgrade（D4）",
-      "releasedIn": "2.21.0",
-      "note": "run() 主循环抽成 runLoop()；run() ≤200 行，保留 prepareSession → prepareRun → runLoop → finalizeRun。agent-loop-split 10/10、agent-loop-e2e 10/10、server acceptance exit 0。"
+      "blockedBy": "靶子在 src/services/agent（D2，首次需人批）且判据在 tests/self-upgrade（D4）"
     },
     {
       "id": "agent-loop-e2e-unexec",
@@ -120,90 +109,6 @@
       "agentActionable": false,
       "source": "S6 交接 2026-11-14",
       "blockedBy": "账本是外部人工/采纳流程，Agent 写不到"
-    },
-    {
-      "id": "memory-exemplar-injection",
-      "title": "正例回灌样本只有 3 条",
-      "why": "exemplars 当前只有 3 条，且没有从 exemplars 到系统提示词的稳定注入判据；需要覆盖选取、排序、预算与去重。",
-      "targetHint": "src/services/agent/project-instructions.ts",
-      "size": "中",
-      "agentActionable": true,
-      "status": "done",
-      "source": "Memory dimension gap",
-      "taskId": "memory-exemplar-injection",
-      "note": "对应 task 已 done / 2.23.0；backlog 状态归位。"
-    },
-    {
-      "id": "memory-convention-versioning",
-      "title": "长期约定没有版本化",
-      "why": "AGENTS.md/CLAUDE.md 只按当前内容注入，无法回答“这条约定何时生效/变了什么”；需要约定版本与变更证据。",
-      "targetHint": "src/services/agent/project-instructions.ts",
-      "size": "中",
-      "agentActionable": true,
-      "status": "done",
-      "source": "Memory dimension gap",
-      "taskId": "memory-convention-versioning",
-      "note": "RSI bridge 围栏 PASS；新判据 5/5；版本 2.25.0。"
-    },
-    {
-      "id": "memory-cross-session-inheritance",
-      "title": "跨会话指令继承未验证",
-      "why": "新会话只继承仓库指令，不继承上一会话确认的长期约定；需要明确继承边界、去重与撤销。",
-      "targetHint": "src/services/agent/agent-loop.service.ts",
-      "size": "中",
-      "agentActionable": true,
-      "status": "done",
-      "source": "Memory dimension gap",
-      "taskId": "memory-cross-session-inheritance",
-      "note": "RSI bridge 围栏 PASS；跨会话判据 2/2；版本 2.26.0。"
-    },
-    {
-      "id": "approval-expired-not-tool-failure",
-      "title": "审批过期被算成工具失败",
-      "why": "审批过期调用未执行，却进入 tool.success_rate 分母，g3 的 1→0.923 由此产生。",
-      "targetHint": "src/services/tools/executor.service.ts",
-      "size": "小",
-      "agentActionable": true,
-      "status": "done",
-      "source": "RSI gen3 证据链",
-      "taskId": "approval-expired-not-tool-failure",
-      "note": "已修复并经 bridge 2.27.0 验证；其他两项已登记 draft。"
-    },
-    {
-      "id": "terminal-budget-kind",
-      "title": "task.terminal 把 wall-clock 预算耗尽写成 token 预算耗尽",
-      "why": "g3 实际触发 wall_clock（471721/180000ms），task.terminal detail 却固定写“token 预算耗尽”，会误导归因。",
-      "targetHint": "src/services/judge/criteria.ts",
-      "size": "小",
-      "agentActionable": true,
-      "status": "done",
-      "source": "RSI gen3 证据链",
-      "note": "已授权修复并经 bridge 2.28.0 验证；task.terminal 按真实预算种类出 detail。",
-      "taskId": "terminal-budget-kind"
-    },
-    {
-      "id": "approval-wait-exceeds-budget",
-      "title": "审批等待可越过任务 wall-clock 预算",
-      "why": "g3 在 180s 预算耗尽后仍 parked 等待审批至 300s TTL，最终以过期结束；预算闸只在轮次间检查，审批等待没有 budget/abort 边界。",
-      "targetHint": "src/services/tools/executor.service.ts / src/services/agent/approval.service.ts",
-      "size": "中",
-      "agentActionable": true,
-      "status": "done",
-      "source": "RSI gen3 证据链",
-      "taskId": "approval-wait-exceeds-budget",
-      "note": "已修复并经 bridge 2.29.0 验证；审批等待不得越过任务 wall-clock。"
-    },
-    {
-      "id": "approval-prolong-budget",
-      "title": "人工 prolong 审批可越过 wall-clock",
-      "why": "prolong() 重新签发审批时没有沿用任务 deadline；首次审批已修，但人工延长仍是漏洞。",
-      "targetHint": "src/services/agent/approval.service.ts",
-      "size": "小",
-      "agentActionable": true,
-      "status": "done",
-      "source": "approval-wait 后续审计",
-      "taskId": "approval-prolong-budget",
-      "note": "已修复并经 bridge 2.30.0 验证；人工 prolong 也受任务 wall-clock deadline 限制。"
     }
   ]
 }

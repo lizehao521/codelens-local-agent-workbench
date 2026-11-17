@@ -1,7 +1,9 @@
 {
   "generation": 2,
-  "passed": 58,
-  "total": 126,
-  "score": 0.46,
-  "savedAt": "2026-11-10T13:20:00.000Z"
+  "passed": 153,
+  "total": 161,
+  "score": 0.95,
+  "savedAt": "2026-11-16T09:30:39.213Z",
+  "treeHash": "a2e2821c59c506aaa87b18029758e25cf005ad66fa95c94abc7265fb5aeb0b05",
+  "fileCount": 19
 }

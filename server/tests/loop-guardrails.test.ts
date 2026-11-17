@@ -4,29 +4,50 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  TASK_BUDGET_MS,
+  TOKEN_BUDGET_CONTEXT_FACTOR,
+  UNLIMITED_TOKEN_BUDGET,
   canRetry,
   checkTermination,
   circuitOpenTermination,
   consumeRetry,
   createBudget,
+  deriveTokenBudget,
 } from '../src/services/agent/loop-budget.js';
 import { CircuitBreaker } from '../src/services/agent/circuit-breaker.js';
 import { LoopDetector } from '../src/services/agent/loop-detector.js';
 
 describe('loop-budget', () => {
-  it('默认值：5 次重试', () => {
+  it('默认值：12 轮迭代 / 5 次重试 / 180s 总预算', () => {
     const state = createBudget();
+    expect(state.maxIterations).toBe(12);
     expect(state.maxRetries).toBe(5);
+    expect(state.totalBudgetMs).toBe(TASK_BUDGET_MS);
     expect(checkTermination(state).kind).toBe('continue');
   });
 
-  it('token 用量与墙钟耗尽不再触发停止', () => {
-    const state = createBudget({ startedAt: Date.now() - 10_000_000, tokenBudget: 1 });
-    expect(checkTermination(state, 999_999).kind).toBe('continue');
+  it('达到最大迭代 → max_iterations（带总结语义）', () => {
+    const state = createBudget({ maxIterations: 3 });
+    state.iteration = 2;
+    expect(checkTermination(state).kind).toBe('continue');
+    state.iteration = 3;
+    const result = checkTermination(state);
+    expect(result.kind).toBe('stop');
+    if (result.kind !== 'stop') return;
+    expect(result.finishReason).toBe('max_iterations');
+    expect(result.detail).toContain('总结');
+  });
+
+  it('总预算用尽 → budget_exhausted', () => {
+    const state = createBudget({ startedAt: Date.now() - TASK_BUDGET_MS - 1 });
+    const result = checkTermination(state);
+    expect(result.kind).toBe('stop');
+    if (result.kind !== 'stop') return;
+    expect(result.finishReason).toBe('budget_exhausted');
   });
 
   it('aborted 优先于其他终止条件', () => {
-    const state = createBudget({ startedAt: 0, aborted: true });
+    const state = createBudget({ maxIterations: 1, startedAt: 0, aborted: true });
     state.iteration = 99;
     const result = checkTermination(state);
     expect(result.kind).toBe('stop');
@@ -34,7 +55,7 @@ describe('loop-budget', () => {
     expect(result.finishReason).toBe('aborted');
   });
 
-  it('retry budget 5 次用尽后 canRetry 为 false', () => {
+  it('重试预算：5 次用尽后 canRetry 为 false', () => {
     const state = createBudget({ maxRetries: 5 });
     for (let i = 0; i < 5; i += 1) {
       expect(canRetry(state)).toBe(true);
@@ -52,6 +73,28 @@ describe('loop-budget', () => {
     expect(result.detail).toContain('http.request');
   });
 
+  it('deriveTokenBudget：上下文窗口 × 2，非正数回退为不限额', () => {
+    expect(TOKEN_BUDGET_CONTEXT_FACTOR).toBe(2);
+    expect(deriveTokenBudget(10_000)).toBe(20_000);
+    expect(deriveTokenBudget(0)).toBe(UNLIMITED_TOKEN_BUDGET);
+    expect(deriveTokenBudget(Number.NaN)).toBe(UNLIMITED_TOKEN_BUDGET);
+  });
+
+  it('token 硬顶：累计用量达上限 → budget_exhausted（破坏夹具）', () => {
+    const state = createBudget({ startedAt: Date.now(), tokenBudget: 50_000 });
+    expect(checkTermination(state, 49_999).kind).toBe('continue');
+    const result = checkTermination(state, 50_000);
+    expect(result.kind).toBe('stop');
+    if (result.kind !== 'stop') return;
+    expect(result.finishReason).toBe('budget_exhausted');
+    expect(result.detail).toContain('50000');
+  });
+
+  it('token 硬顶默认不限额（未推导上下文窗口时软闸关闭）', () => {
+    const state = createBudget({ startedAt: Date.now() });
+    expect(state.tokenBudget).toBe(UNLIMITED_TOKEN_BUDGET);
+    expect(checkTermination(state, Number.MAX_SAFE_INTEGER - 1).kind).toBe('continue');
+  });
 });
 
 describe('circuit-breaker', () => {

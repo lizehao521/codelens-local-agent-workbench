@@ -4,9 +4,6 @@ import { buildTaskSection, type TaskKind } from './task-prompts.js';
 import { buildExecutionModeSection, type ExecutionMode } from './execution-mode.js';
 import type { Policy } from '../../repositories/policy.repository.js';
 import { loadProjectInstructions } from './project-instructions.js';
-import { loadExemplars, renderExemplarBlock, selectExemplars } from './exemplar-injection.js';
-import { config } from '../../config/env.js';
-import path from 'node:path';
 
 /**
  * 基座提示词（native 与 react 通道共用；react 通道叠加文本协议段，不丢弃本段）。
@@ -19,6 +16,15 @@ export const AGENT_BASE_PROMPT = `你是 CodeLens Agent，一个通过调用工�
 2. 每次只调用当前步骤需要的工具，观察结果后再决定下一步。
 3. 工具结果以 observation 形式回喂给你；失败时根据错误类型调整策略（换参数/换工具/重试），不要重复同一个失败调用。
 4. 回答语言跟随用户消息的语言。
+
+【预算与行动纪律】
+你有充足的 token，不要为预算焦虑。你的 token 预算优先用于「完成动作」，而不是「复述推理」——把动作排在完美思考之前，宁可早落盘，也不要想完再落盘。不要因为担心预算不够而缩手缩脚、反复斟酌、迟迟不落地；真正浪费预算的，不是「做得太多」，而是「想得太多却没做」。把每一次工具调用都当作推进任务的一步，而不是证明你在思考的证据。你不需要向任何人证明你在思考，你只需要把结果做出来。
+
+1. 第一动作落盘：需要产出文件时，第一个工具调用就是 fs.write，不要先调研、先复述、先规划。
+2. 零调研优先：原文改动都在题面里时，照抄即可，不读大文件、不重复读取已知内容。
+3. 结论先行：第一句话给判定/结论，禁止以「Let me...」或任何推理流水账开头。
+4. 只读工具限额：只读类工具（读文件、搜索、列目录）最多使用 4 次，达到即停，直接给结论。
+5. 禁止流水账：不向用户复述推理过程，只给结论和动作；不写「I will...」「Let me read...」这类过程性废话。
 
 【硬性规则】
 1. 只能调用工具列表里存在的工具，禁止编造工具名。
@@ -89,19 +95,9 @@ export function buildWorkspaceSection(sandboxRoot: string): string {
  * 这是 agent-loop 注入 system 消息的唯一入口，保证 native 与 ReAct 两通道同源。
  * 无指令文件时与 buildWorkspaceSection 逐字相同（向后兼容锚）。
  */
-export function buildRuntimeSections(
-  sandboxRoot: string,
-  exemplarPath: string = config.nodeEnv === 'test'
-    ? ''
-    : path.join(process.cwd(), '..', '.self-upgrade', 'exemplars.jsonl'),
-): string {
+export function buildRuntimeSections(sandboxRoot: string): string {
   const workspace = buildWorkspaceSection(sandboxRoot);
   const instructions = loadProjectInstructions(sandboxRoot);
-  const base = instructions ? `${workspace}\n\n${instructions}` : workspace;
-  if (!exemplarPath) return base;
-  const loaded = loadExemplars(exemplarPath);
-  const exemplars = selectExemplars(loaded.records, { maxItems: 5, maxChars: 800 });
-  const block = renderExemplarBlock(exemplars);
-  return block ? `${base}\n\n${block}` : base;
+  if (!instructions) return workspace;
+  return `${workspace}\n\n${instructions}`;
 }
-// bridge RSI round: exemplar runtime injection verified

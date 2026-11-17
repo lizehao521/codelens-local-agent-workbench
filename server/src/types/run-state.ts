@@ -60,15 +60,6 @@ export interface RunApprovalRecord {
   reusedStep?: number | null;
 }
 
-/** A：自适应 token 预算的一次扩展记录。 */
-export interface RunBudgetAdjustmentRecord {
-  kind: 'tokens';
-  from: number;
-  to: number;
-  atStep: number;
-  at: number;
-}
-
 /** A：触顶的是哪一道预算、上限、已用、在第几步触发。 */
 export interface RunBudgetRecord {
   kind: 'iterations' | 'tool_calls' | 'tokens' | 'wall_clock';
@@ -129,13 +120,11 @@ export interface RunStateData {
   cost: RunCostRecord;
   /** A：非 null 表示本次因预算触顶而收尾。 */
   budget: RunBudgetRecord | null;
-  /** A：运行中自适应扩展过的 token 预算（可为空）。 */
-  budgetAdjustments: RunBudgetAdjustmentRecord[];
   /** A：收尾截止点；正常完成时也为完整记录（unfinished 为空）。 */
   cutoff: RunCutoffRecord | null;
 }
 
-export type RunOutcome = 'completed' | 'budget_exhausted' | 'aborted' | 'error' | 'converged' | 'max_iterations';
+export type RunOutcome = 'completed' | 'budget_exhausted' | 'aborted' | 'error' | 'converged';
 
 export interface RunReport {
   runId: string;
@@ -144,8 +133,6 @@ export interface RunReport {
   outcome: RunOutcome;
   /** 机器可读状态码：RUN_COMPLETED / RUN_BUDGET_TOOL_CALLS / … */
   statusCode: string;
-  /** A：收尾时命中的预算（无则 null）；与 RunState 同源。 */
-  budget?: RunBudgetRecord | null;
   /** 收尾原因（预算耗尽时写明哪道、第几步、已做什么、没做什么）。 */
   reason: string | null;
   /** 未完成项（正常完成时为空数组）。 */
@@ -164,6 +151,4 @@ export interface RunReport {
   durationMs: number;
   /** 由 RunState 数字模板化生成的结论。 */
   summary: string;
-  /** A：自适应 token 预算扩展历史（旧报告可能缺省）。 */
-  budgetAdjustments?: RunBudgetAdjustmentRecord[];
 }

@@ -9,14 +9,36 @@
  *   5) "+" 视为空格；
  *   6) 同一键重复出现时，后出现的覆盖先出现的。
  *
- * 当前实现不剥 "?"、不解码、不处理 "+"、缺 "=" 时值为 undefined —— 都是真实缺陷。
+ * 修复：补齐上述全部规范。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
 function parseQuery(input) {
+  let s = String(input == null ? '' : input);
+  if (s.startsWith('?')) s = s.slice(1);
+
   const out = {};
-  for (const part of String(input).split('&')) {
-    const [k, v] = part.split('=');
-    out[k] = v;
+  const decode = (str) => {
+    // 先按规范把 "+" 视为空格，再解码；解码失败时保留当前字符串（不抛错）。
+    const plus = String(str).replace(/\+/g, ' ');
+    try {
+      return decodeURIComponent(plus);
+    } catch (_e) {
+      return plus;
+    }
+  };
+
+  for (const part of s.split('&')) {
+    if (part === '') continue; // 空段跳过
+    const eq = part.indexOf('=');
+    let k, v;
+    if (eq === -1) {
+      k = part;
+      v = '';
+    } else {
+      k = part.slice(0, eq);
+      v = part.slice(eq + 1);
+    }
+    out[decode(k)] = decode(v); // 同键后覆盖先
   }
   return out;
 }

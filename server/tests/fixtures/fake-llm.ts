@@ -23,8 +23,6 @@ export interface FakeStep {
   hang?: boolean;
   /** R3: accept the request but never even send response headers（模拟上游长尾无响应）。 */
   stall?: boolean;
-  /** 测试用量覆盖：默认 tool 轮 120/30、文本轮 160/12。 */
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens?: number };
 }
 
 export interface SseEvent {
@@ -224,7 +222,7 @@ export class FakeLlm {
       chunk({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson.slice(mid) } }] } }] });
       chunk({
         choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-        usage: step.usage ?? { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 },
+        usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 },
       });
     } else {
       if (step.reasoning) {
@@ -235,7 +233,7 @@ export class FakeLlm {
       chunk({ choices: [{ index: 0, delta: { role: 'assistant', content: step.text ?? '' } }] });
       chunk({
         choices: [{ index: 0, delta: {}, finish_reason: step.finishReason ?? 'stop' }],
-        usage: step.usage ?? { prompt_tokens: 160, completion_tokens: 12, total_tokens: 172 },
+        usage: { prompt_tokens: 160, completion_tokens: 12, total_tokens: 172 },
       });
     }
     res.write('data: [DONE]\n\n');

@@ -1,18 +1,20 @@
 /**
  * 单行解析。规范见入口 impl.cjs 头部注释。
- *
- * 当前实现只做了「按逗号切开 + Number()」，没有 trim，也没有校验 qty / 价格 /
- * 折扣的合法区间 —— 这些缺陷会让非法行混进台账。
  */
 function parseRow(line) {
-  const parts = String(line).split(',');
-  if (parts.length < 3) return null;
-  return {
-    sku: parts[0],
-    qty: Number(parts[1]),
-    unitPrice: Number(parts[2]),
-    discount: parts.length > 3 ? Number(parts[3]) : 0,
-  };
+  const parts = String(line).split(',').map((p) => p.trim());
+  // 合法列数为 3（sku,qty,unitPrice）或 4（多一个 discount）；多列视为非法行。
+  if (parts.length < 3 || parts.length > 4) return null;
+  const sku = parts[0];
+  const qtyNum = Number(parts[1]);
+  const priceNum = Number(parts[2]);
+  const discNum = parts.length > 3 ? Number(parts[3]) : 0;
+  const finite = (n) => typeof n === 'number' && Number.isFinite(n);
+  if (!sku) return null;
+  if (!finite(qtyNum) || !Number.isInteger(qtyNum) || qtyNum < 1) return null;
+  if (!finite(priceNum) || priceNum < 0) return null;
+  if (!finite(discNum) || discNum < 0 || discNum > 1) return null;
+  return { sku, qty: qtyNum, unitPrice: priceNum, discount: discNum };
 }
 
 function isBlank(line) {

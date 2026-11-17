@@ -50,10 +50,6 @@ export interface JudgeEvidence {
   finishReason: string;
   iteration: number;
   tokenBudget: number;
-  /** 本次 task.terminal 判据读取的真实预算种类与用量（budget_exhausted 时）。 */
-  budgetKind?: 'iterations' | 'tokens' | 'tool_calls' | 'wall_clock';
-  budgetLimit?: number;
-  budgetUsed?: number;
   usage: { promptTokens: number; completionTokens: number };
   /** τ：本轮全部工具调用（只取判据需要的字段，避免把整行塞进判决）。 */
   toolCalls: Array<{

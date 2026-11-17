@@ -19,30 +19,134 @@
  *
  * 返回 { rows: string[][], errors: [{ line, message }] }。
  *
- * 当前实现是「按行拆分 + 按逗号拆分」的天真版本 —— 这是真实缺陷，不是注释错误。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
 function parseCsv(input) {
-  const text = String(input).replace(/^\uFEFF/, '');
+  const text = String(input)
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
   const rows = [];
   const errors = [];
-  let expected;
+  const n = text.length;
+  let i = 0;
+  let line = 1; // 下一个待消费字符所在的物理行号（从 1 开始）
+  let expected; // 第一条成功记录的列数
 
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i += 1) {
-    const raw = lines[i];
-    if (raw.trim() === '') continue;
-    const fields = raw.split(',').map((f) => f.trim());
-    if (expected === undefined) {
-      expected = fields.length;
-    } else if (fields.length !== expected) {
+  const closeRecord = (fields, startLine, recErr) => {
+    if (recErr) {
+      errors.push(recErr);
+      return;
+    }
+    if (expected === undefined) expected = fields.length;
+    if (fields.length !== expected) {
       errors.push({
-        line: i + 1,
+        line: startLine,
         message: `列数不一致（期望 ${expected}，实际 ${fields.length}）`,
       });
-      continue;
+      return;
     }
     rows.push(fields);
+  };
+
+  while (i < n) {
+    // —— 记录边界：跳过空行 / 纯空白行（不计行、不算错误）——
+    let j = i;
+    while (j < n && text[j] !== '\n') j++;
+    if (text.slice(i, j).trim() === '') {
+      i = j + 1;
+      line += 1;
+      continue;
+    }
+
+    // —— 解析一条记录 ——
+    let recordStartLine = line;
+    let fields = [];
+    let field = '';
+    let inQuotes = false;
+    let fieldQuoted = false;
+    let startedField = false;
+    let quoteJustClosed = false;
+    let recordError = null;
+
+    while (i < n) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') {
+            field += '"';
+            i += 2;
+            continue;
+          }
+          inQuotes = false;
+          quoteJustClosed = true;
+          i += 1;
+          continue;
+        }
+        if (c === '\n') line += 1;
+        field += c;
+        i += 1;
+        continue;
+      }
+
+      // 不在引号内
+      if (c === '"') {
+        if (!startedField) {
+          startedField = true;
+          recordStartLine = line;
+        }
+        inQuotes = true;
+        fieldQuoted = true;
+        i += 1;
+        continue;
+      }
+      if (c === ',') {
+        if (!startedField) {
+          startedField = true;
+          recordStartLine = line;
+        }
+        fields.push(fieldQuoted ? field : field.trim());
+        field = '';
+        fieldQuoted = false;
+        quoteJustClosed = false;
+        i += 1;
+        continue;
+      }
+      if (c === '\n') {
+        i += 1;
+        line += 1;
+        if (startedField) {
+          fields.push(fieldQuoted ? field : field.trim());
+          closeRecord(fields, recordStartLine, recordError);
+          startedField = false;
+        }
+        break; // 回到外层处理边界（含空行跳过）
+      }
+      // 普通字符（含未引用字段内的空白）
+      if (!startedField) {
+        startedField = true;
+        recordStartLine = line;
+      }
+      if (quoteJustClosed) {
+        // 闭合引号后紧跟的非分隔符字符 → 「引号闭合后出现多余字符」
+        if (!recordError) {
+          recordError = { line: recordStartLine, message: '引号闭合后出现多余字符' };
+        }
+        quoteJustClosed = false;
+      }
+      field += c;
+      i += 1;
+    }
+
+    if (startedField) {
+      // 文件结束仍未遇到换行：收尾当前记录
+      if (inQuotes) {
+        errors.push({ line: recordStartLine, message: '引号未闭合' });
+      } else {
+        fields.push(fieldQuoted ? field : field.trim());
+        closeRecord(fields, recordStartLine, recordError);
+      }
+    }
   }
 
   return { rows, errors };

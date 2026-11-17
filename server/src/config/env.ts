@@ -65,9 +65,12 @@ export const envSchema = z.object({
    * 实测多在 60–150s；180s 是「明显异常」而非「正常偏慢」的分界。
    */
   AGENT_TASK_BUDGET_MS: z.coerce.number().int().min(1000).max(3_600_000).default(180_000),
-  /** token 硬顶 = 上下文窗口 × 系数（默认 2）；自适应硬顶默认 ×4。 */
+  /**
+   * token 硬顶 = 上下文窗口 × 该系数（默认 2）。
+   * 依据：沿用既有 TOKEN_BUDGET_CONTEXT_FACTOR —— 允许跨多轮正常对话，
+   * 同时防止单任务把上下文与费用无限放大。
+   */
   AGENT_TOKEN_BUDGET_FACTOR: z.coerce.number().min(1).max(10).default(2),
-  AGENT_TOKEN_BUDGET_MAX_FACTOR: z.coerce.number().min(1).max(10).default(4),
   /**
    * 收敛判定：连续 N 轮无新增文件改动 / 证据 / 工具结果变化即停（默认 3）。
    * 依据：1 轮可能是模型在确认，2 轮仍可能重试；3 轮同签名基本可判空转。0 = 关闭。
@@ -189,7 +192,6 @@ export interface AppConfig {
   agentTaskBudgetMs: number;
   /** token 硬顶系数（上下文窗口 × N）。 */
   agentTokenBudgetFactor: number;
-  agentTokenBudgetMaxFactor: number;
   /** 连续 N 轮无变化即判收敛；0 = 关闭。 */
   agentConvergenceRounds: number;
   /** /api 全局限速（每 IP 每分钟）；0 = 不限。 */
@@ -353,7 +355,6 @@ function buildConfig(source: NodeJS.ProcessEnv): AppConfig {
     agentMaxToolCalls: env.AGENT_MAX_TOOL_CALLS,
     agentTaskBudgetMs: env.AGENT_TASK_BUDGET_MS,
     agentTokenBudgetFactor: env.AGENT_TOKEN_BUDGET_FACTOR,
-    agentTokenBudgetMaxFactor: env.AGENT_TOKEN_BUDGET_MAX_FACTOR,
     agentConvergenceRounds: env.AGENT_CONVERGENCE_ROUNDS,
     apiRateLimitPerMin: env.API_RATE_LIMIT_PER_MIN,
     recoveryRateLimitPerMin: env.RECOVERY_RATE_LIMIT_PER_MIN,

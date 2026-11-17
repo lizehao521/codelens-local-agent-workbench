@@ -1,10 +1,25 @@
 /**
  * RSI bridge service — 双轨并存的"旁路对账件"。
- * 职责：取回上一轮判决重建 prev Manifest；用 manifest-builder 把当前 verdicts 转成
- * next Manifest；spawn krsi CLI 拿四态 verdict；写入 policy_rsi_runs 表。
- * 设计：失败不阻断主流程（catch + warn，同 JudgeService.judgeDeep）；首次无 prev → skip；
- * 每 session 独立落账本。退出码（krsi main.go）：0 improved / 1 not_improved /
- * 2 refused / 3 undecidable；其它 → bridge 自身故障；二进制不存在 → skipped。
+ *
+ * 职责：
+ *   1. 从 DB 取回上一轮成功判决的 AgentRunResult，重建 prev Manifest
+ *   2. 用 manifest-builder 把当前 run 的 verdicts 转成 next Manifest
+ *   3. spawn krsi CLI，喂 prev/next，拿四态 verdict
+ *   4. 写入 policy_rsi_runs 表（审计记录）
+ *
+ * 设计约束：
+ *   - 失败不阻断主流程：catch 所有异常，console.warn 就行（跟 JudgeService.judgeDeep 同口径）
+ *   - 首次运行（无 prev）→ skip，写 verdict=skipped，不走 krsi
+ *   - 每 session 独立落账本（ledger 文件放在 agentDb 旁边）
+ *
+ * 退出码语义（来自 krsi main.go）：
+ *   0 = improved（算数）
+ *   1 = not_improved（读数不支持）
+ *   2 = refused（拒收，点名哪条 R 判据）
+ *   3 = undecidable（量不到）
+ *
+ *   任何其他 exit code → 视为 bridge 自身故障（构建挂了 / 超时）
+ *   krsi 二进制不存在 → skipped（仪器没装，不做对账；不是判据故障）
  */
 
 import { spawn } from 'node:child_process';
@@ -13,9 +28,9 @@ import { writeFile, mkdir, rm, appendFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Db } from '../../repositories/db.js';
-import { buildManifest, hasScoredObjective, type RsiManifest, type RsiArtifact } from './manifest-builder.js';
+import { buildManifest, criteriaFingerprint, hasScoredObjective, type RsiManifest, type RsiArtifact, type RsiCriterionDiff } from './manifest-builder.js';
 import { canonicalJson } from './ledger-verify.js';
-import { releaseCriteria, prevEffectiveThresholds } from './controlled-release.js';
+import { resolveThresholds, DEFAULT_L0_THRESHOLDS } from '../judge/criteria.js'; // [controlled-release-exp5]
 import type { CriterionVerdict } from '../judge/types.js';
 import {
   readSuiteScores,
@@ -54,6 +69,38 @@ export interface RsiBridgeDeps {
 const DEFAULT_KRSI_PATH = '/tmp/krsi';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_PRODUCER = 'codelens-agentkernel';
+
+// [controlled-release-exp5] 默认关闭的可复用受控开关（文件旗标，实时读取、不缓存）
+// OFF（旗标不存在）：返回空对象 → buildManifest 走官方回落 criteriaFingerprint() 无参 + diff=[]，函数级等价。
+// ON （旗标存在）：读当前 π 生效阈值，经 resolveThresholds 归一化算真实指纹，并据实生成合法 criteriaDiff。
+// 归一化是关键：criteriaFingerprint({}) 会得 9c6815ad…（把「没改判据」误报成「改了」），必须走 resolveThresholds。
+const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+interface ReleaseCriteria { criteriaSha256?: string; criteriaDiff?: RsiCriterionDiff[]; }
+function releaseCriteria(
+  db: { get<T>(sql: string, params?: unknown): T | undefined },
+  prevEffective?: Record<string, number>,
+): ReleaseCriteria {
+  try {
+    if (!existsSync(RSI_RELEASE_FLAG)) return {}; // OFF：函数级等价官方行为
+    const row = db.get<{ policy_json: string }>(
+      'SELECT policy_json FROM policy_versions ORDER BY version DESC LIMIT 1');
+    let raw: Record<string, number> = {};
+    try { raw = JSON.parse(row?.policy_json ?? '{}').thresholds ?? {}; } catch { raw = {}; }
+    const eff = resolveThresholds(raw) as unknown as Record<string, number>;
+    const def = DEFAULT_L0_THRESHOLDS as unknown as Record<string, number>;
+    const diffs: RsiCriterionDiff[] = [];
+    for (const [k, v] of Object.entries(eff)) {
+      // 方向基准：优先用上一代生效值；无上一代（首次运行）或解析不到时回退默认 0.6。
+      const base = prevEffective?.[k] ?? def[k];
+      if (base === undefined || Math.abs(v - base) < 1e-9) continue;
+      const tightened = k.startsWith('min') ? v > base : v < base; // min* 越大越严 / max* 越小越严
+      diffs.push({ id: k, change: tightened ? 'tightened' : 'loosened', note: `${base} -> ${v}` });
+    }
+    return { criteriaSha256: criteriaFingerprint(eff), criteriaDiff: diffs };
+  } catch {
+    return {}; // 开关读取失败一律回落官方行为，绝不阻断主流程
+  }
+}
 
 /** policy_rsi_runs 表的最小 DB 表面（跟 schema.ts MigrationDb 同口径）。 */
 interface RsiDb {
@@ -128,6 +175,27 @@ export class RsiBridgeService {
     );
     const prevGeneration = prevGenRow?.generation ?? 0;
     const generation = prevGeneration + 1;
+    // [controlled-release-exp5] 从上一代落库 manifest 原文的 criteria_diff[].note 提取生效阈值，
+    // 作为本代 change 方向基准。解析失败回退空对象（调用方再回退默认 0.6），绝不阻断主流程。
+    const prevEffectiveThresholds = (row: { next_manifest_json: string | null } | undefined): Record<string, number> => {
+      if (!row?.next_manifest_json) return {};
+      try {
+        const prev = JSON.parse(row.next_manifest_json) as { criteria_diff?: { id: string; note: string }[] };
+        const out: Record<string, number> = {};
+        for (const d of prev.criteria_diff ?? []) {
+          const note = d.note ?? '';
+          // 旧格式 "默认 X -> 生效 Y"：Y 是该代生效值（必须优先，否则会被 -> 误取左侧 X）
+          const mOld = /生效\s*([0-9.]+)/.exec(note);
+          // 新格式 "A -> B"：B（右侧）是该代生效值
+          const mNew = mOld ? null : /->\s*([0-9.]+)/.exec(note);
+          const m = mOld ?? mNew;
+          if (m) out[d.id] = Number(m[1]);
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    };
 
     const ledgerPath = path.join(this.rsiDir, `${safe(sessionId)}.jsonl`);
     const reportPath = path.join(this.rsiDir, `${safe(sessionId)}-gen${generation}.txt`);
@@ -237,7 +305,7 @@ export class RsiBridgeService {
       const evidenceBytes = Buffer.byteLength(evidenceBody, 'utf8');
 
       // ── 1. 构建 next Manifest ────────────────────────────────────────────────
-      // 开关 OFF 时 releaseCriteria() 返回 {}，展开后等价官方调用（不传字段）。
+      // [controlled-release-exp5] 开关 OFF 时 releaseCriteria() 返回 {}，展开后等价官方调用（不传字段）。
       const nextManifest = buildManifest({
         producer: this.producer,
         generation,

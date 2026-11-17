@@ -156,6 +156,16 @@ describe('金丝雀：这些都不该喊「调预算」', () => {
 });
 
 describe('识别串必须与生产者同源，且循环真的消费 raise_budget', () => {
+  it('三道顶的识别串逐字出自 loop-budget.ts（生产者改文案，这里必须跟着红）', () => {
+    const src = readFileSync(
+      fileURLToPath(new URL('../../src/services/agent/loop-budget.ts', import.meta.url)),
+      'utf8',
+    );
+    expect(src.includes('任务 token 预算已用尽')).toBe(true);
+    expect(src.includes('墙钟预算')).toBe(true);
+    expect(src.includes('工具调用预算')).toBe(true);
+  });
+
   it('三个旋钮名真的是 env 配置项，不是编出来的', () => {
     const src = readFileSync(fileURLToPath(new URL('../../src/config/env.ts', import.meta.url)), 'utf8');
     for (const knob of ['AGENT_TOKEN_BUDGET_FACTOR', 'AGENT_TASK_BUDGET_MS', 'AGENT_MAX_TOOL_CALLS']) {
@@ -207,6 +217,14 @@ describe('真实链路：取证尾部必须把 maxIterations 送到归因手里'
     'event: done\n' +
     'data: {"finishReason":"budget_exhausted","iteration":20,"toolCallCount":25,' +
     '"usage":{"promptTokens":374820,"completionTokens":4016},"tokenBudget":512000,"messageId":"","firstTokenMs":1490}\n\n';
+
+  it('maxIterations 在真实流里只出现一次，且在 meta 里（钉住生产者形状）', () => {
+    expect((REAL_SSE.match(/maxIterations/g) ?? []).length).toBe(1);
+    expect(REAL_SSE.indexOf('maxIterations')).toBeLessThan(REAL_SSE.indexOf('event: run_report'));
+    const types = readFileSync(fileURLToPath(new URL('../../src/types/agent-events.ts', import.meta.url)), 'utf8');
+    const meta = types.slice(types.indexOf('interface SseMetaPayload'), types.indexOf('interface SseDeltaPayload'));
+    expect(meta.includes('maxIterations: number;')).toBe(true);
+  });
 
   it('尾部必须留住 meta，否则守卫的右操作数丢失', () => {
     const tail = buildDispatchTail(REAL_SSE);

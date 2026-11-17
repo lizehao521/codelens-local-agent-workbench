@@ -1,0 +1,71 @@
+{
+  "id": "parse_iso_date",
+  "title": "ISO 日期字符串解析与校验：闰年（含世纪年/400年规则）、大小月、无效日期拒绝",
+  "implPath": "eval/parse_iso_date/impl.cjs",
+  "exportName": "parseIsoDate",
+  "publicCases": [
+    {
+      "name": "normal date",
+      "args": [
+        "2024-01-05"
+      ],
+      "expected": {
+        "year": 2024,
+        "month": 1,
+        "day": 5
+      }
+    },
+    {
+      "name": "century non-leap rejected",
+      "args": [
+        "1900-02-29"
+      ],
+      "throws": "Invalid date"
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "another century non-leap rejected",
+      "args": [
+        "2100-02-29"
+      ],
+      "throws": "Invalid date"
+    },
+    {
+      "name": "leap year feb 29",
+      "args": [
+        "2024-02-29"
+      ],
+      "expected": {
+        "year": 2024,
+        "month": 2,
+        "day": 29
+      }
+    },
+    {
+      "name": "400-year leap accepted",
+      "args": [
+        "2000-02-29"
+      ],
+      "expected": {
+        "year": 2000,
+        "month": 2,
+        "day": 29
+      }
+    },
+    {
+      "name": "non-leap feb 29 rejected",
+      "args": [
+        "2023-02-29"
+      ],
+      "throws": "Invalid date"
+    },
+    {
+      "name": "april 31 rejected",
+      "args": [
+        "2024-04-31"
+      ],
+      "throws": "Invalid date"
+    }
+  ]
+}

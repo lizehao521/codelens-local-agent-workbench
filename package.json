@@ -1,6 +1,6 @@
 {
   "name": "codelens",
-  "version": "2.30.0",
+  "version": "2.21.0",
   "verify": [
     "check:config"
   ],

@@ -227,7 +227,7 @@ export interface ReviewResult {
   promptVersion: string;
 }
 
-export type RunOutcome = 'completed' | 'budget_exhausted' | 'aborted' | 'error' | 'converged' | 'max_iterations';
+export type RunOutcome = 'completed' | 'budget_exhausted' | 'aborted' | 'error' | 'converged';
 
 export interface RunReport {
   runId: string;
@@ -255,9 +255,9 @@ export interface RunReport {
   hasMaterialChange: boolean;
   triggers: string[];
   summary: string;
-  budgetAdjustments?: Array<{ kind: 'tokens'; from: number; to: number; atStep: number; at: number }>; budget?: { kind: 'iterations' | 'tool_calls' | 'tokens' | 'wall_clock'; limit: number; used: number; atStep: number; triggeredAt: number } | null;
   at: number;
 }
+
 export interface SandboxGrantRequest {
   requestId: string;
   dir: string;
@@ -471,6 +471,7 @@ export interface SecurityBoundary {
   fsRoot: string;
   toolTimeoutMs: number;
   taskRetryBudget: number;
+  maxIterations: number;
 }
 
 // ── SSE 事件（事件名一律下划线，见 spec §11 已知坑） ──────────
@@ -518,6 +519,7 @@ export interface AgentMetaPayload {
   degraded?: boolean;
   degradedReason?: string | null;
   iteration?: number;
+  maxIterations?: number;
   contextWindow?: number;
   estimatedPromptTokens?: number;
   toolCount?: number;
@@ -626,6 +628,7 @@ export interface AgentStreamRequest {
   message: string;
   tools?: string[];
   channelMode?: 'auto' | 'native' | 'react';
+  maxIterations?: number;
   temperature?: number;
   maxTokens?: number;
   /** AC-10：从该 callId 重跑（其后步骤置 skipped） */
@@ -669,7 +672,8 @@ export interface Settings {
   apiKey: string;
   customBaseUrl?: string;
   theme: ThemeMode;
-  /** Agent 通道偏好（AC-01：auto 时跟随服务端能力探测） */ channelMode?: 'auto' | 'native' | 'react';
+  /** Agent 通道偏好（AC-01：auto 时跟随服务端能力探测） */
+  channelMode?: 'auto' | 'native' | 'react';
 }
 
 /** 模型调用限制（/providers limits 字段）。null = 上游未标注。 */

@@ -106,25 +106,6 @@ export const toolSuccessRate: L0Criterion = (evidence, thresholds) => {
   };
 };
 
-const BUDGET_LABEL: Record<NonNullable<JudgeEvidence['budgetKind']>, string> = {
-  wall_clock: '墙钟',
-  tokens: 'token ',
-  tool_calls: '工具调用次数',
-  iterations: '迭代轮数',
-};
-
-function budgetExhaustedDetail(evidence: JudgeEvidence): string {
-  const kind = evidence.budgetKind;
-  if (!kind) return '预算耗尽而任务未完成（预算种类未记录）';
-  const used = evidence.budgetUsed;
-  const limit = evidence.budgetLimit;
-  const amount =
-    typeof used === 'number' && typeof limit === 'number'
-      ? `（${used}/${limit}${kind === 'wall_clock' ? ' ms' : ''}）`
-      : '';
-  return `${BUDGET_LABEL[kind]}预算耗尽${amount}而任务未完成`;
-}
-
 /**
  * 终止性：任务是否以「正常结束」收尾。
  * 四类非正常终止各自对应一种真实故障，都必须判 fail 而不是含糊放过。
@@ -150,7 +131,7 @@ export const taskTerminal: L0Criterion = (evidence) => {
         layer: 'L0',
         criterion: 'task.terminal',
         status: 'fail',
-        detail: budgetExhaustedDetail(evidence),
+        detail: 'token 预算耗尽而任务未完成',
       };
     case 'aborted':
       return {

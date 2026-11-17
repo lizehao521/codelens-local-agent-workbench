@@ -115,18 +115,10 @@ if curl -sf "$BASE/api/health" >/dev/null 2>&1; then bad "服务未能停止"; e
 
 echo "== 9. 浏览器级交互（Playwright）=="
 if ( cd "$ROOT/client" && npx playwright test >/tmp/e2e-playwright.log 2>&1 ); then
-  ok "Playwright：Tab 填草稿 + 插件安装常驻 + 自迭代雷达"
+  ok "Playwright：Tab 填草稿 + 插件安装常驻"
 else
   bad "Playwright（见 /tmp/e2e-playwright.log）"
   tail -20 /tmp/e2e-playwright.log
-fi
-
-echo "== 9.1 agent-loop token 预算自适应 =="
-if ( cd "$ROOT/server" && npx vitest run tests/adaptive-token-budget.e2e.test.ts --reporter=dot >/tmp/e2e-budget.log 2>&1 ); then
-  ok "agent-loop：256k → 384k budget_adapted"
-else
-  bad "agent-loop token 自适应（见 /tmp/e2e-budget.log）"
-  tail -20 /tmp/e2e-budget.log
 fi
 
 echo ""

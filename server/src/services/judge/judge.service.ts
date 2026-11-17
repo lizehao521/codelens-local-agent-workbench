@@ -1,13 +1,23 @@
 /**
- * Judge service — 闭环的 `Judge` 一步（强化内核宣言第 1、3 节）：
+ * Judge service — 闭环的 `Judge` 一步（强化内核宣言第 1、3 节）。
+ *
  *   Improve(π) = π --Act--> τ --Judge--> r --Update--> π'
- * 做三件事：从 τ 抽证据；跑判据塔 L0–L3 产出 r（含 unexec）；按覆盖率定档。
- * 关键：L1 金丝雀不能证明判别力则 L0 降级 unexec（C3）；覆盖率只算 available 层；
- * 判决可复算（证据/阈值/金丝雀进 context_json 快照）；塔自身故障判 inconclusive，
- * 绝不写成「任务失败」（否则污染经验有效性分母）。
+ *
+ * 它做三件事，缺一不可：
+ *   1. 从 τ（tool_calls / approvals / messages / 运行期元数据）抽取证据；
+ *   2. 跑判据塔 L0–L3，产出结构化 r（含 unexec，不把「没测」说成「通过」）；
+ *   3. 计算覆盖率并按门槛定档 —— 覆盖率不足时只能 inconclusive。
+ *
+ * 关键设计：
+ *  - L1 金丝雀若不能证明判据具备判别力，本轮 L0 结论整体降级为 unexec。
+ *    判据不可信时，它给出的任何绿都不算数（C3）。
+ *  - v2：覆盖率分母只算 available 层；不可用层既不给绿也不占名额。
+ *  - v2：判决必须可复算 —— 证据、阈值、金丝雀状态全部进 context_json 快照。
+ *  - v2：判据塔自身故障（L1 fail）判 inconclusive，绝不写成「任务失败」。
+ *    否则自证故障会被 Update 当成任务失败永久入库，污染经验有效性的分母。
  */
 
-import { generationStart } from '../rsi/controlled-release.js';
+import { existsSync } from 'node:fs';
 import type { Db } from '../../repositories/db.js';
 import type { ToolCallRepository } from '../memory/tool-call.repository.js';
 import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
@@ -31,6 +41,12 @@ import {
 } from './replay.js';
 import { assessDeep, DEEP_ASSESSOR_ID, DEEP_CRITERION, type DeepAssessMeta, type DeepAssessOutcome } from './deep-assessor.js';
 import { adversarialClaimEvidence } from './red-team.js';
+
+// [controlled-release-exp13] 受控开关：OFF（旗标不存在）等价官方全量取数。
+const RSI_RELEASE_FLAG = '/workspace/codelens/server/workspace/.runtime_view/controlled-release.flag';
+function rsiReleaseOn(): boolean {
+  try { return existsSync(RSI_RELEASE_FLAG); } catch { return false; }
+}
 import {
   aggregateInsight,
   DEFAULT_INSIGHT_LIMIT,
@@ -56,13 +72,13 @@ export interface JudgeRuntimeContext {
   finishReason: string;
   iteration: number;
   tokenBudget: number;
-  budgetKind?: 'iterations' | 'tokens' | 'tool_calls' | 'wall_clock'; budgetLimit?: number; budgetUsed?: number;
   usage: { promptTokens: number; completionTokens: number };
   /** 本轮是否触发过熔断。 */
   circuitOpened: boolean;
   /** 本轮运行起点时间戳；缺失时证据取全量。 */
   runStartedAt?: number;
 }
+
 export interface JudgeDeps {
   db: Db;
   toolCalls: ToolCallRepository;
@@ -967,7 +983,7 @@ export class JudgeService {
         tokenBudget: runtime.tokenBudget,
         usage: runtime.usage,
         circuitOpened: runtime.circuitOpened,
-        runStartedAt: generationStart(runtime.runStartedAt),
+        runStartedAt: rsiReleaseOn() ? runtime.runStartedAt : undefined,
       },
       canary: {
         status: canary.verdict.status,
@@ -1004,7 +1020,6 @@ export class JudgeService {
       finishReason: runtime.finishReason,
       iteration: runtime.iteration,
       tokenBudget: runtime.tokenBudget,
-      ...(runtime.budgetKind ? { budgetKind: runtime.budgetKind, budgetLimit: runtime.budgetLimit, budgetUsed: runtime.budgetUsed } : {}),
       usage: runtime.usage,
       toolCalls,
       approvals,
@@ -1047,16 +1062,21 @@ export class JudgeService {
       }
     }
 
-    const start = generationStart(runStartedAt);
-    return this.deps.toolCalls.listBySession(sessionId)
-      .filter((t) => start === undefined || t.created_at >= start)
+    // [controlled-release-exp13] OFF：忽略 runStartedAt 走全量，函数级等价官方。
+    const effectiveStart = rsiReleaseOn() ? runStartedAt : undefined;
+    return this.deps.toolCalls
+      .listBySession(sessionId)
+      .filter((t) => effectiveStart === undefined || t.created_at >= effectiveStart)
       .map((t) => ({
-        status: t.status as string,
-        display_name: t.display_name,
-        error_kind: t.error_kind,
-        // 非 exec 会话 digest 必须字节不变；含 exec 的 drift 是真实新增退出码。
-        exit_code: byToolCall.get(t.id) ?? undefined,
-      }));
+      status: t.status as string,
+      display_name: t.display_name,
+      error_kind: t.error_kind,
+      // 只有 sys.exec 行才有值。undefined 会被 canonicalJson 直接丢弃，
+      // 因此**非 exec 会话的 evidence digest 必须保持字节级不变**（加了字段也不许漂移）。
+      // 会变的只有含 exec 调用的会话：那是证据本身真的多了「真实退出码」，
+      // 跨版本 replay 时显示一次 drift 是诚实反映，不是 bug。
+      exit_code: byToolCall.get(t.id) ?? undefined,
+    }));
   }
 
   /**

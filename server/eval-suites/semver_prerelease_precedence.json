@@ -1,0 +1,98 @@
+{
+  "id": "semver_prerelease_precedence",
+  "title": "语义化版本预发布优先级：数字标识符按数值比较且低于字母标识符",
+  "implPath": "eval/semver_prerelease_precedence/impl.cjs",
+  "exportName": "semverCompare",
+  "publicCases": [
+    {
+      "name": "numeric_gt_string",
+      "args": [
+        "1.0.0-alpha.10",
+        "1.0.0-alpha.2"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "numeric_lt_alpha",
+      "args": [
+        "1.0.0-alpha.1",
+        "1.0.0-alpha.beta"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "prerelease_lt_release",
+      "args": [
+        "1.0.0-alpha",
+        "1.0.0"
+      ],
+      "expected": -1
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "equal_numeric",
+      "args": [
+        "1.0.0-alpha.2",
+        "1.0.0-alpha.2"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "alpha_lt_numeric",
+      "args": [
+        "1.0.0-alpha.beta",
+        "1.0.0-alpha.2"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "multi_ident_numeric",
+      "args": [
+        "1.0.0-alpha.1.10",
+        "1.0.0-alpha.1.2"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "build_ignored",
+      "args": [
+        "1.0.0+build.1",
+        "1.0.0+build.2"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "leading_zero_reject",
+      "args": [
+        "1.0.01",
+        "1.0.1"
+      ],
+      "throws": "invalid version"
+    },
+    {
+      "name": "valid_multidigit",
+      "args": [
+        "10.2.3",
+        "9.2.3"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "shorter_prerelease",
+      "args": [
+        "1.0.0-alpha.1",
+        "1.0.0-alpha.1.2"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "equal_full",
+      "args": [
+        "1.2.3",
+        "1.2.3"
+      ],
+      "expected": 0
+    }
+  ]
+}

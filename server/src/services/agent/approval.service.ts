@@ -35,8 +35,8 @@ export interface ApprovalChallengeRequest {
   effect?: EffectPreview | null;
   /** E：审批行创建后回调 id，供去重登记「沿用的是哪一次授权」。 */
   onIssued?: (approvalId: string) => void;
-  deadline?: number; // 任务 wall-clock 绝对截止时间（epoch ms）
 }
+
 export type ParkedDecision =
   | 'allow_once'
   | 'allow_session'
@@ -48,7 +48,6 @@ export type ParkedDecision =
 interface CallPark {
   resolve: (decision: ParkedDecision) => void;
   timer: NodeJS.Timeout;
-  deadline?: number;
 }
 
 export interface SubmitDecisionResult {
@@ -135,7 +134,7 @@ export class ApprovalService {
       toolCallId: req.toolCall.id,
       toolName: req.toolCall.tool_name,
       argsDigestValue: req.digest,
-      expiresAt: Math.min(Date.now() + APPROVAL_TTL_MS, req.deadline ?? Infinity),
+      expiresAt: Date.now() + APPROVAL_TTL_MS,
     });
     const row = this.approvals.insert({
       sessionId: req.sessionId,
@@ -182,7 +181,6 @@ export class ApprovalService {
       const park: CallPark = {
         resolve,
         timer: this.armExpiry(row.id, key, expiresAt, resolve),
-        deadline: req.deadline,
       };
       this.callParks.set(key, park);
     });
@@ -316,22 +314,24 @@ export class ApprovalService {
       throw new AppError('APPROVAL_EXPIRED', '审批已过期（5 分钟有效期）');
     }
 
-    const key = this.approvalToPark.get(row.id); const park = key ? this.callParks.get(key) : undefined;
-    const boundedExpiry = park?.deadline ? Math.min(Date.now() + APPROVAL_TTL_MS, park.deadline) : 0;
     const { token: newToken, tokenHash, expiresAt } = issueApprovalToken({
       sessionId: row.session_id,
       toolCallId: row.tool_call_id,
       toolName: row.tool_name,
       argsDigestValue: row.args_digest,
-      expiresAt: boundedExpiry,
+      expiresAt: 0,
     });
     this.approvals.reissue(row.id, tokenHash, expiresAt);
 
     // Re-arm the in-memory expiry timer so the parked executor keeps waiting
     // for the (now-extended) decision instead of resolving as 'expired'.
-    if (park) {
-      clearTimeout(park.timer);
-      park.timer = this.armExpiry(row.id, key!, expiresAt, park.resolve);
+    const key = this.approvalToPark.get(row.id);
+    if (key) {
+      const park = this.callParks.get(key);
+      if (park) {
+        clearTimeout(park.timer);
+        park.timer = this.armExpiry(row.id, key, expiresAt, park.resolve);
+      }
     }
 
     return { approvalId: row.id, approvalToken: newToken, expiresAt };

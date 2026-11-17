@@ -16,31 +16,126 @@
  *   7) 其它 op → 抛 Error('不支持的操作')。
  *   8) 依次执行全部操作，输入文档不能被就地修改（返回的是新文档）。
  *
- * 当前实现是「按 '/' 直接拆分、不处理转义、不做存在性校验」的天真版本 ——
- * 这是真实缺陷，不是注释错误。
  * 文件是 CommonJS：必须保持 `module.exports = { ... }`，不要改成 ESM。
  */
+
+function unescapePointer(p) {
+  if (p === '') return []; // 空指针指向整个文档
+  const raw = p.split('/').slice(1);
+  return raw.map((t) => {
+    if (t.indexOf('~') !== -1) {
+      if (/~(?!0|1)/.test(t)) throw new Error('非法路径转义');
+      return t.replace(/~1/g, '/').replace(/~0/g, '~');
+    }
+    return t;
+  });
+}
+
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a && b && typeof a === 'object') {
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    const ka = Object.keys(a);
+    const kb = Object.keys(b);
+    if (ka.length !== kb.length) return false;
+    for (const k of ka) {
+      if (!deepEqual(a[k], b[k])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function getChild(container, token) {
+  if (Array.isArray(container)) {
+    const idx = Number(token);
+    if (!Number.isInteger(idx)) throw new Error('路径不存在');
+    return container[idx];
+  }
+  if (container && typeof container === 'object') {
+    if (!Object.prototype.hasOwnProperty.call(container, token)) {
+      throw new Error('路径不存在');
+    }
+    return container[token];
+  }
+  throw new Error('路径不存在');
+}
+
 function applyPatch(doc, ops) {
-  const out = JSON.parse(JSON.stringify(doc));
-  for (const op of Array.isArray(ops) ? ops : []) {
-    const tokens = String(op.path).split('/').slice(1);
-    const last = tokens.pop();
-    let parent = out;
-    for (const token of tokens) parent = parent[token];
-    if (op.op === 'add') {
-      if (Array.isArray(parent)) parent.splice(Number(last) + 1, 0, op.value);
-      else parent[last] = op.value;
-    } else if (op.op === 'remove') {
-      if (Array.isArray(parent)) parent.splice(Number(last), 1);
-      else delete parent[last];
-    } else if (op.op === 'replace') {
-      parent[last] = op.value;
-    } else if (op.op === 'test') {
-      /* 不校验：只要调用方说 test 就当作通过 */
+  let root = JSON.parse(JSON.stringify(doc)); // 深拷贝，不改动入参
+  const list = Array.isArray(ops) ? ops : [];
+  for (const raw of list) {
+    const o = raw && typeof raw === 'object' ? raw : {};
+    const tokens = unescapePointer(String(o.path === undefined ? '' : o.path));
+    if (tokens.length === 0) {
+      // 空指针：replace 整个文档
+      if (o.op === 'replace') {
+        root = JSON.parse(JSON.stringify(o.value));
+        continue;
+      }
+      throw new Error('不支持的操作');
+    }
+
+    // 导航到父容器
+    let parent = root;
+    for (let k = 0; k < tokens.length - 1; k += 1) {
+      parent = getChild(parent, tokens[k]);
+    }
+    const last = tokens[tokens.length - 1];
+
+    if (o.op === 'add') {
+      if (Array.isArray(parent)) {
+        if (last === '-') {
+          parent.push(o.value);
+        } else {
+          const idx = Number(last);
+          if (!Number.isInteger(idx) || idx < 0 || idx > parent.length) {
+            throw new Error('数组下标越界');
+          }
+          parent.splice(idx, 0, o.value);
+        }
+      } else {
+        parent[last] = o.value;
+      }
+    } else if (o.op === 'remove') {
+      if (Array.isArray(parent)) {
+        const idx = Number(last);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= parent.length) {
+          throw new Error('路径不存在');
+        }
+        parent.splice(idx, 1);
+      } else {
+        if (!Object.prototype.hasOwnProperty.call(parent, last)) {
+          throw new Error('路径不存在');
+        }
+        delete parent[last];
+      }
+    } else if (o.op === 'replace') {
+      if (Array.isArray(parent)) {
+        const idx = Number(last);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= parent.length) {
+          throw new Error('路径不存在');
+        }
+        parent[idx] = o.value;
+      } else {
+        if (!Object.prototype.hasOwnProperty.call(parent, last)) {
+          throw new Error('路径不存在');
+        }
+        parent[last] = o.value;
+      }
+    } else if (o.op === 'test') {
+      const current = Array.isArray(parent)
+        ? parent[Number(last)]
+        : parent[last];
+      if (!deepEqual(current, o.value)) {
+        throw new Error('test 校验失败');
+      }
     } else {
-      parent[last] = op.value;
+      throw new Error('不支持的操作');
     }
   }
-  return out;
+  return root;
 }
+
 module.exports = { applyPatch };

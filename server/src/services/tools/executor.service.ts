@@ -5,6 +5,7 @@
  * offload → audit persistence → tool_result SSE event.
  * Parallel calls run 4-at-a-time; anything beyond is serialized.
  */
+
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,13 +26,14 @@ import type { ApprovalService } from '../agent/approval.service.js';
 import type { ApprovalDedupService } from '../agent/approval-dedup.service.js';
 import { RETRYABLE_KINDS } from '../../types/error-kind.js';
 import { renderToolObservation, serializeToolData } from './observation-render.js';
-import { collectWriteSnapshots, restoreWriteSnapshots } from './file-batch.js';
+
 /**
  * 回灌渲染（「模型看到什么」）已拆到 `observation-render.ts`：那段逻辑决定了
  * 模型能读到多少原文，混在 700 行执行器里既改不动也测不动。这里保留 re-export，
  * 是因为既有用例与调用方从这里取这两个符号，对外契约不变。
  */
 export { clipToTokenBudget, OBSERVATION_MAX_TOKENS } from './observation-render.js';
+
 export interface ExecuteItemInput {
   toolCall: ToolCallRow;
   definition: ToolDefinition;
@@ -41,6 +43,7 @@ export interface ExecuteItemInput {
   channel: 'native' | 'react';
   iteration: number;
 }
+
 export interface ExecutorDeps {
   toolCalls: import('../memory/tool-call.repository.js').ToolCallRepository;
   toolResults: ToolResultRepository;
@@ -52,8 +55,6 @@ export interface ExecutorDeps {
   /** Task-level retry budget (5 per task); consumed once per auto-retry. */
   canRetry: () => boolean;
   onRetryConsumed: () => void;
-  /** 任务 wall-clock deadline：审批 park 不得超过它。 */
-  approvalDeadline?: number;
   /** 不可逆调用的同步复核（关键路径等待结论）。 */
   reviewIrreversible?: (facts: ReviewFacts) => Promise<ReviewResult | null>;
   /** E：当前 run 标识（去重键的一部分）。 */
@@ -73,6 +74,7 @@ export interface ExecutorDeps {
     decision: 'allow_once' | 'allow_session' | 'reject' | 'expired' | 'aborted' | 'revised_direct';
   }) => void;
 }
+
 /** What the loop feeds back to the LLM as the `role: tool` message content. */
 export interface ExecutionOutcome {
   callId: string;
@@ -83,10 +85,12 @@ export interface ExecutionOutcome {
   observation: string;
   errorKind: string | null;
 }
+
 const INLINE_PREVIEW_CHARS = 4000;
 const PARALLEL_LIMIT = 4;
 /** AUDIT-005: how many independent confirmations a `two_step` verdict needs. */
 const TWO_STEP_PASSES = 2;
+
 /**
  * AUDIT-005: labels the confirmation step so the approval card can say which
  * one of the two the user is looking at. A silent identical second prompt reads
@@ -97,6 +101,7 @@ function passReason(reason: string | undefined, pass: number, requiredPasses: nu
   if (requiredPasses <= 1) return base;
   return pass === requiredPasses ? `最终确认（第 ${pass}/${requiredPasses} 步）：${base}` : `第 ${pass}/${requiredPasses} 步确认：${base}`;
 }
+
 /**
  * P2-3: result integrity checksum. The column shipped but was hardwired to
  * null at both insert points, so the audit chain had no way to detect a
@@ -107,6 +112,7 @@ function sha256Of(serialized: string): string | null {
   if (!serialized) return null;
   return createHash('sha256').update(serialized, 'utf8').digest('hex');
 }
+
 /**
  * 执行后的存在性 / 字节数投影。
  *
@@ -124,6 +130,7 @@ function projectAfter(
 ): { afterExists: boolean; afterBytes: number | null } {
   // 非 fs.write 只枚举 cwd 一类路径，预览不预测其变化，照原样陈述。
   if (toolName !== 'fs.write') return { afterExists: it.exists, afterBytes: it.bytes };
+
   const contentBytes = Buffer.byteLength(String(args.content ?? ''), 'utf8');
   switch (operation) {
     case 'create':
@@ -145,6 +152,7 @@ function projectAfter(
       return { afterExists: it.exists, afterBytes: it.bytes };
   }
 }
+
 /**
  * 把「执行前」的后果预览转成复核事实。
  * 只放事实（路径/操作/存在性/条目数/命令），不携带主脑推理与计划。
@@ -190,20 +198,10 @@ export class ToolExecutor {
    */
   async executeBatch(items: ExecuteItemInput[], signal?: AbortSignal): Promise<Map<string, ExecutionOutcome>> {
     const outcomes = new Map<string, ExecutionOutcome>();
-    const snapshots = await collectWriteSnapshots(items, this.deps.sandboxRoot);
-    let failed = false;
     for (let start = 0; start < items.length; start += PARALLEL_LIMIT) {
       const chunk = items.slice(start, start + PARALLEL_LIMIT);
       const results = await Promise.all(chunk.map((item) => this.executeOne(item, signal)));
       for (const outcome of results) if (outcome) outcomes.set(outcome.callId, outcome);
-      failed = results.some((outcome) => outcome !== null && outcome.status !== 'success' && outcome.status !== 'skipped');
-      if (failed) break;
-    }
-    if (failed && snapshots.length > 0) {
-      const restored = await restoreWriteSnapshots(snapshots);
-      if (restored > 0) {
-        for (const outcome of outcomes.values()) outcome.summary += `；本批次失败，已回滚 ${restored} 个文件`;
-      }
     }
     return outcomes;
   }
@@ -271,7 +269,6 @@ export class ToolExecutor {
             digest: item.digest,
             reason: passReason(item.verdict.reason, pass, requiredPasses),
             effect: item.verdict.effect ?? null,
-            deadline: this.deps.approvalDeadline,
             onIssued: (approvalId) => {
               issuedGrantId = approvalId;
               issuedStep = item.iteration;
@@ -293,9 +290,32 @@ export class ToolExecutor {
                 : '审批已被中止，调用未执行';
           const message =
             requiredPasses > 1 ? `两步确认未走完（第 ${pass}/${requiredPasses} 步）：${base}` : base;
-          const code = decision === 'reject' ? 'TOOL_REJECTED' : 'TOOL_APPROVAL_EXPIRED';
-          const kind: 'not_found' | 'timeout' = decision === 'reject' ? 'not_found' : 'timeout';
-          return this.rejectOutcome(toolCall, message, code, kind);
+          this.deps.toolCalls.markFinished(toolCall.id, { status: 'rejected', errorKind: 'revised', errorMsg: message });
+          this.deps.sse.emit('tool_result', {
+            callId: toolCall.call_id,
+            name: toolCall.tool_name,
+            status: 'rejected',
+            summary: message,
+            data: null,
+            truncated: false,
+            durationMs: 0,
+            resultId: '',
+            error: {
+              code: decision === 'reject' ? 'TOOL_REJECTED' : 'TOOL_APPROVAL_EXPIRED',
+              kind: decision === 'reject' ? 'not_found' : 'timeout',
+              message,
+              retryable: false,
+            },
+          });
+          return {
+            callId: toolCall.call_id,
+            toolCallId: toolCall.id,
+            toolName: toolCall.tool_name,
+            status: 'rejected',
+            summary: message,
+            observation: `工具 ${toolCall.tool_name} 未执行：${message}`,
+            errorKind: decision === 'reject' ? 'not_found' : 'timeout',
+          };
         }
         // A parameter revision re-arms the challenge under the SAME park, so an
         // allow decision may now refer to a successor row carrying NEW arguments
@@ -389,7 +409,6 @@ export class ToolExecutor {
               digest: item.digest,
               reason: `复核提示（风险升级，需重新确认）：${findings}`,
               effect,
-              deadline: this.deps.approvalDeadline,
             },
             this.deps.sse,
           );
@@ -430,17 +449,11 @@ export class ToolExecutor {
     code: string,
     kind: 'not_found' | 'timeout',
   ): ExecutionOutcome {
-    const skipped = code === 'TOOL_APPROVAL_EXPIRED';
-    const status = skipped ? 'skipped' : 'rejected';
-    this.deps.toolCalls.markFinished(toolCall.id, {
-      status,
-      errorKind: skipped ? 'approval_expired' : 'revised',
-      errorMsg: message,
-    });
+    this.deps.toolCalls.markFinished(toolCall.id, { status: 'rejected', errorKind: 'revised', errorMsg: message });
     this.deps.sse.emit('tool_result', {
       callId: toolCall.call_id,
       name: toolCall.tool_name,
-      status,
+      status: 'rejected',
       summary: message,
       data: null,
       truncated: false,
@@ -452,10 +465,10 @@ export class ToolExecutor {
       callId: toolCall.call_id,
       toolCallId: toolCall.id,
       toolName: toolCall.tool_name,
-      status,
+      status: 'rejected',
       summary: message,
       observation: `工具 ${toolCall.tool_name} 未执行：${message}`,
-      errorKind: skipped ? 'approval_expired' : kind,
+      errorKind: kind,
     };
   }
 
@@ -735,9 +748,3 @@ export class ToolExecutor {
     }
   }
 }
-
-// bridge RSI round: expired approval is skipped, not a tool failure
-
-// bridge RSI round: approval wait is capped by task wall-clock deadline
-
-// bridge RSI round: prolonged approval stays within task wall-clock

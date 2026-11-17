@@ -112,11 +112,3 @@ server/scratch/dsh-pkg-1/
 # Playwright 浏览器 e2e 产物（test-results / report 可重跑）
 client/test-results/
 client/playwright-report/
-
-# 并行会话留在工作区根的一次性探针（45 份，正文只有 "probe N"）与两份本机草稿：
-# .arts/ 是外部工具的 settings.json（clawMode），acct-data/ 只有一行 "acct" 笔记。
-# 三条都锚在根（前导斜杠），不用宽 glob：server/ 下 probe-rubric.ts、
-# probe-fix-hint.test.ts 等 7 个受跟踪同名族件必须继续被看见。
-/probe-*.txt
-/.arts/
-/acct-data/

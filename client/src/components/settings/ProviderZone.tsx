@@ -137,6 +137,7 @@ export function ProviderZone() {
           model: settings.model,
           apiKey: key,
           message: 'ping',
+          maxIterations: 5,
           maxTokens: 64,
           ...(settings.customBaseUrl?.trim() ? { customBaseUrl: settings.customBaseUrl.trim() } : {}),
         },
