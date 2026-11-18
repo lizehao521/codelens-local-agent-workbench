@@ -1,0 +1,120 @@
+{
+  "id": "verify_citation",
+  "title": "引用真伪校验：声称的路径/行号/数值必须与工具原始证据一致",
+  "implPath": "eval/verify_citation/impl.cjs",
+  "exportName": "verifyCitation",
+  "publicCases": [
+    {
+      "name": "exact_match",
+      "args": [
+        {
+          "path": "eval/semver_compare/impl.cjs",
+          "line": 3,
+          "value": "return 1"
+        },
+        {
+          "path": "eval/semver_compare/impl.cjs",
+          "line": 3,
+          "value": "return 1"
+        }
+      ],
+      "expected": {
+        "consistent": true,
+        "reason": "ok"
+      }
+    },
+    {
+      "name": "value_mismatch",
+      "args": [
+        {
+          "path": "p.cjs",
+          "line": 2,
+          "value": "100%"
+        },
+        {
+          "path": "p.cjs",
+          "line": 2,
+          "value": "0.75"
+        }
+      ],
+      "expected": {
+        "consistent": false,
+        "reason": "value_mismatch"
+      }
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "line_offset",
+      "args": [
+        {
+          "path": "p.cjs",
+          "line": 5,
+          "value": "x"
+        },
+        {
+          "path": "p.cjs",
+          "line": 6,
+          "value": "x"
+        }
+      ],
+      "expected": {
+        "consistent": false,
+        "reason": "line_mismatch"
+      }
+    },
+    {
+      "name": "path_mismatch",
+      "args": [
+        {
+          "path": "a.cjs",
+          "line": 1,
+          "value": "x"
+        },
+        {
+          "path": "b.cjs",
+          "line": 1,
+          "value": "x"
+        }
+      ],
+      "expected": {
+        "consistent": false,
+        "reason": "path_mismatch"
+      }
+    },
+    {
+      "name": "no_evidence",
+      "args": [
+        {
+          "path": "a.cjs",
+          "line": 1,
+          "value": "x"
+        },
+        null
+      ],
+      "expected": {
+        "consistent": false,
+        "reason": "no_evidence"
+      }
+    },
+    {
+      "name": "unit_equivalent",
+      "args": [
+        {
+          "path": "p.cjs",
+          "line": 2,
+          "value": "75%"
+        },
+        {
+          "path": "p.cjs",
+          "line": 2,
+          "value": "0.75"
+        }
+      ],
+      "expected": {
+        "consistent": true,
+        "reason": "ok"
+      }
+    }
+  ]
+}

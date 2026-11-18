@@ -1,0 +1,122 @@
+{
+  "id": "semver_compare",
+  "title": "语义化版本优先级比较：数字段按数值、预发布标识符数值优先于字母、build 元数据忽略、严格拒绝前导零",
+  "implPath": "eval/semver_compare/impl.cjs",
+  "exportName": "compareVersions",
+  "publicCases": [
+    {
+      "name": "numeric prerelease identifier compared numerically",
+      "args": [
+        "1.0.0-beta.11",
+        "1.0.0-beta.2"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "release is higher than its prerelease",
+      "args": [
+        "1.0.0",
+        "1.0.0-rc.1"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "build metadata is ignored",
+      "args": [
+        "1.2.3+build.9",
+        "1.2.3+build.10"
+      ],
+      "expected": 0
+    },
+    {
+      "name": "leading zero in patch is rejected",
+      "args": [
+        "1.02.3",
+        "1.2.3"
+      ],
+      "throws": "Invalid semantic version"
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "numeric identifier lower than alphanumeric",
+      "args": [
+        "1.0.0-alpha",
+        "1.0.0-1"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "shorter prerelease list has lower precedence",
+      "args": [
+        "1.0.0-alpha",
+        "1.0.0-alpha.1"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "minor compared numerically not as text",
+      "args": [
+        "1.10.0",
+        "1.9.0"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "uppercase identifiers sort before lowercase in ASCII",
+      "args": [
+        "1.0.0-RC.1",
+        "1.0.0-alpha.1"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "release with prerelease zero identifier",
+      "args": [
+        "2.0.0",
+        "2.0.0-0"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "leading zero in prerelease numeric identifier is rejected",
+      "args": [
+        "1.0.0-01",
+        "1.0.0-1"
+      ],
+      "throws": "Invalid semantic version"
+    },
+    {
+      "name": "alphanumeric beats numeric within nested identifiers",
+      "args": [
+        "1.0.0-alpha.beta",
+        "1.0.0-alpha.1"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "nested numeric identifiers compared numerically",
+      "args": [
+        "1.0.0-alpha.1.2",
+        "1.0.0-alpha.1.10"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "non-string input rejected",
+      "args": [
+        1,
+        "1.0.0"
+      ],
+      "throws": "must be a string"
+    },
+    {
+      "name": "empty prerelease section is invalid",
+      "args": [
+        "1.0.0-",
+        "1.0.0"
+      ],
+      "throws": "Invalid semantic version"
+    }
+  ]
+}
