@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推送任务怎么处理 · RSI/π 迭代裁决（exp88）</title>
+<style>
+  :root { --ink:#1a1c23; --sub:#5b6472; --line:#e3e7ee; --bg:#f7f8fa; --card:#fff;
+          --red:#c0392b; --blue:#2c5aa0; --green:#1e7d5a; --amber:#b8860b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
+         line-height:1.7; padding:32px 20px 60px; }
+  .wrap { max-width:960px; margin:0 auto; }
+  .hero { background:linear-gradient(135deg,#8a5a10,#b8860b); color:#fff; border-radius:16px;
+          padding:28px 32px; box-shadow:0 8px 28px rgba(184,134,11,.22); }
+  .hero h1 { margin:0 0 6px; font-size:24px; letter-spacing:.5px; }
+  .hero .code { font-family:ui-monospace,Consolas,monospace; font-size:13px; opacity:.9; }
+  .hero .lead { margin-top:14px; font-size:15px; opacity:.97; }
+  .verdict { display:inline-block; margin-top:14px; background:rgba(255,255,255,.16);
+             border:1px solid rgba(255,255,255,.35); border-radius:999px; padding:4px 14px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:22px 26px; margin-top:18px; box-shadow:0 2px 10px rgba(20,30,50,.04); }
+  h2 { font-size:19px; margin:0 0 14px; padding-left:11px; border-left:4px solid var(--amber); }
+  .card h3 { font-size:15.5px; margin:16px 0 8px; color:var(--blue); }
+  .card h4 { font-size:14px; margin:12px 0 6px; color:#344; }
+  pre { background:#1e2430; color:#d6deea; border-radius:8px; padding:14px 16px; overflow-x:auto;
+        font-size:12.5px; line-height:1.55; margin:10px 0; }
+  code { font-family:ui-monospace,Consolas,monospace; }
+  p code, li code, td code { background:#eef1f6; color:#b02a5b; padding:1px 5px; border-radius:4px; font-size:12.5px; }
+  .def { background:#f0f4fb; border-left:3px solid var(--blue); padding:12px 16px;
+         border-radius:0 8px 8px 0; margin:10px 0; font-size:14.5px; }
+  .note { background:#fdf6e8; border-left:3px solid var(--amber); padding:12px 16px;
+          border-radius:0 8px 8px 0; margin:10px 0; font-size:14px; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13.3px; }
+  th,td { border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top; }
+  th { background:#f2f5fa; font-weight:600; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:6px; font-size:12px; font-weight:600; }
+  .ok { background:#e6f4ee; color:var(--green); }
+  .warn { background:#fdf3dc; color:var(--amber); }
+  .bad { background:#fbeceb; color:var(--red); }
+  ul,ol { margin:8px 0; padding-left:22px; }
+  li { margin:4px 0; }
+  .foot { color:var(--sub); font-size:12.5px; text-align:center; margin-top:24px; }
+  .md-body blockquote { margin:10px 0; padding:8px 14px; background:#f5f7fa;
+        border-left:3px solid var(--green); border-radius:0 8px 8px 0; color:#334; }
+</style></head><body><div class="wrap">
+
+<div class="hero">
+  <h1>「推送任务怎么处理」· RSI/π 迭代裁决</h1>
+  <div class="code">exp88 · 2026-11-18 · 上游 moonshotai/kimi-k3.1-pro（经 :9999 relay）</div>
+  <div class="lead">用户「把这个推送任务问 codelens 怎么处理」——把刚完成的推送合并任务本身作为能力/元问题丢回 codelens，让它自主评估处理方式、找隐患、定能力化方案。代理只做事实核对 + 投放 + 核产物。</div>
+  <div class="verdict">总裁决：improved（有条件通过）· 远端链路正确 · 2 处流程卫生 defect · 建议沉淀为窄边界 skill</div>
+</div>
+
+<div class="card">
+  <h2>一、投放概况</h2>
+  <table>
+    <tr><th>项</th><th>内容</th></tr>
+    <tr><td>诉求原文</td><td>cle么推送吗？把这个推送任务问 codelens 怎么处理</td></tr>
+    <tr><td>解读</td><td>不是"再推一次"，而是"这类推送任务怎样处理才算正确、代理这次有没有隐患、要不要沉淀成能力"</td></tr>
+    <tr><td>投放纪律</td><td>带「无上限 token」前缀，充分 RSI/π 递进回归迭代</td></tr>
+    <tr><td>链路状态</td><td>沙箱休眠三端口全 down → 重启 relay/gh-proxy/app（health 200）后投放</td></tr>
+    <tr><td>产物规模</td><td>9482 字 / 432 帧 / 127.7s；五步齐全；9 项逐条裁决（7 improved + 2 defect）</td></tr>
+    <tr><td>结论</td><td><span class="tag warn">improved 有条件</span> 核心任务完成、门禁未破；扣分项为流程卫生，能力化前须修</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>二、codelens 逐条裁决摘要（代理核产物提炼）</h2>
+  <table>
+    <tr><th>判据项</th><th>裁决</th><th>要点</th></tr>
+    <tr><td>推送对象与边界</td><td><span class="tag ok">improved</span></td><td>9 个非 ts 交接材料、基于 main 增量、零删除零改动；设计态零落盘如实区分</td></tr>
+    <tr><td>tarball vs git 识别</td><td><span class="tag ok">improved</span></td><td>关键正确点：/workspace/codelens 无 .git，未在 tarball 目录硬做 git push</td></tr>
+    <tr><td>Git Data API 通道</td><td><span class="tag ok">improved</span></td><td>403/reset 历史下合理；须避免用其直接更新 refs/heads/main</td></tr>
+    <tr><td>PR + CI + 合并后复核</td><td><span class="tag ok">improved</span></td><td>分支→PR→合并前双绿→squash→合并后 main 再双绿，证据链完整</td></tr>
+    <tr><td>幂等重试</td><td><span class="tag ok">improved·附条件</span></td><td>网络类可重试、SHA 稳定；须按错误类型分类，401/403/422 不得重试冲过</td></tr>
+    <tr><td>可回滚与审计</td><td><span class="tag ok">improved</span></td><td>base/branch commit/merge commit 齐全，可 revert 不改写公共历史</td></tr>
+    <tr><td>本地 reset --hard 同步</td><td><span class="tag bad">defect</span></td><td>破坏性原语；应默认 ff-only，先证明工作区干净；本次是否造成损失需补证</td></tr>
+    <tr><td>token 落 /tmp/gh_token</td><td><span class="tag bad">defect</span></td><td>秘密卫生；应受控注入、0600、用后清理、不进日志；是否实际泄露需补证</td></tr>
+    <tr><td>新文件 ≤300 行</td><td><span class="tag warn">需补证</span></td><td>题面未给逐文件行数，不能由 additions=904 推断每个合规</td></tr>
+  </table>
+  <div class="note">能力化结论：做成 <code>handoff-pr-publish</code> 窄边界 skill（只读预检 + Git Data API 增量推送 + PR/CI 门控 + 可回滚审计），不处理源码自动修复、不放宽 CI、不直推 main、不默认强推/全 squash。</div>
+</div>
+
+<div class="card">
+  <h2>三、codelens 完整交付（原文正文）</h2>
+  <div class="md-body"><p>总裁决：这次推送在“交接材料安全合入 main”这一目标上基本处理正确，可判 <strong>improved（有条件通过）</strong>；但它不是一次可无条件复刻的满分操作，主要扣分在 <code>reset --hard</code> 的破坏性同步、token 落盘 <code>/tmp</code>、以及“幂等重试成功”不能单独证明没有掩盖真错误。最终建议把能力沉淀为 <strong>“只读预检 + Git Data API 增量推送 + PR/CI 门控 + 可回滚审计”的脚本化 skill</strong>，而不是让代理每次自由发挥。</p>
+<h2>第一步（T0）：裁决口径与可证伪判据</h2>
+<p>我重新裁定用户意图：不是问“要不要再推一次”，而是问“这类本地交接材料推送并合并到远端 main 的任务，怎样处理才算正确；刚才代理的处理是否有隐患；是否应沉淀为 codelens 能力”。</p>
+<p>T0 verdict：<strong>方向对、结果对、门禁意识强；工程卫生与失败语义还需补强。</strong></p>
+<p>判据采用二值线：每项只能判 <code>improved</code> / <code>defect</code> / <code>需补证</code>。其中“需补证”不计入已通过；若触及硬门禁、越权、破坏用户数据，则总 verdict 直接不得为 improved。</p>
+<table>
+<thead>
+<tr>
+<th>判据</th>
+<th style="text-align: right;">权重</th>
+<th>二值通过线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>推送对象与边界完整</td>
+<td style="text-align: right;">15%</td>
+<td>明确推什么、不推什么；基于 main 增量；零误删、零门禁改动</td>
+</tr>
+<tr>
+<td>仓库/通道识别正确</td>
+<td style="text-align: right;">10%</td>
+<td>不把 tarball 当 git 仓库；选用已验证可用且权限匹配的通道</td>
+</tr>
+<tr>
+<td>幂等与失败语义</td>
+<td style="text-align: right;">10%</td>
+<td>重试只针对可重试错误；同内容 SHA 稳定；最终状态经远端读取确认</td>
+</tr>
+<tr>
+<td>PR + CI 门禁零破坏</td>
+<td style="text-align: right;">20%</td>
+<td>不直推 main；PR 合入前必需检查全绿；合入后 main 再验证</td>
+</tr>
+<tr>
+<td>可回滚</td>
+<td style="text-align: right;">10%</td>
+<td>有明确 base/head/merge commit；能 revert，不依赖改写公共历史</td>
+</tr>
+<tr>
+<td>最小权限与秘密卫生</td>
+<td style="text-align: right;">15%</td>
+<td>token 权限最小、不进入提交/日志/PR；驻留位置与生命周期合理</td>
+</tr>
+<tr>
+<td>本地同步非破坏</td>
+<td style="text-align: right;">10%</td>
+<td>不用可能吞掉未提交改动的命令，或先证明工作区干净且有备份</td>
+</tr>
+<tr>
+<td>审计留痕与远端复核</td>
+<td style="text-align: right;">10%</td>
+<td>分支、commit、PR、CI、merge、文件数/additions 可交叉核对</td>
+</tr>
+</tbody>
+</table>
+<p>硬门槛：门禁破坏、越权推送、丢失本地工作、泄露 token，任一成立即 <code>refused/defect</code>，不能用“最后 CI 绿了”抵消。</p>
+<h2>第二步：π 递进回归</h2>
+<h3>轮次 1：这次推送真的处理对了吗</h3>
+<p><strong>T</strong>：结果是否等于“处理正确”？</p>
+<p><strong>M</strong>：不能只看 main 是否前进。要同时看：内容边界、合并路径、CI 证据、失败恢复、本地副作用、秘密暴露面。</p>
+<p><strong>Update</strong>：本次可确认的正向证据很强：</p>
+<ul>
+<li>推送的是 9 个非 ts 交接材料，路径为 <code>docs/handoff/2026-11-18/</code>，不是把 exp87 设计态冒充成源码实现。</li>
+<li>基于 main 增量，零删除、零改动既有文件，不碰 PROTECTED/tests/scripts/契约。</li>
+<li>走分支 <code>rsi/handoff-exp87-20261118</code>、commit <code>a0aa7fd44466</code>、PR#6，而非直接写 main。</li>
+<li>合并前 CI 双绿，squash 后 main 从 <code>1ba3b4c</code> 到 <code>aa01d8917d50</code>，合并后 main push CI 再双绿。</li>
+<li>远端复核 PR#6 <code>state=closed merged=True additions=904 changed_files=9</code>，与“9 文件交接材料”一致。</li>
+<li>tarball 目录与完整 clone 被区分，没有在不具备 <code>.git/remote</code> 的 <code>/workspace/codelens</code> 里硬做 <code>git push</code>。</li>
+</ul>
+<p>因此轮次 1 的增量判据是：<strong>“结果成功”必须拆成“远端内容正确”“过程未破坏门禁”“本地与秘密副作用可接受”三类，不能只报 merge 成功。</strong></p>
+<h3>轮次 2：按判据逐条核代理做法</h3>
+<p><strong>T</strong>：代理这次是否每条都过线？</p>
+<p><strong>M / Update</strong>：</p>
+<ol>
+<li>
+<p><strong>推送对象与边界：improved。</strong><br />
+   9 个文件、非 ts、交接目录、基于 main 增量、零删除零改动，符合“存量只许缩不许增”的保守边界。设计态零落盘也被如实区分，没有把建议包装成代码变更。</p>
+</li>
+<li>
+<p><strong>tarball 目录 vs git 仓库识别：improved。</strong><br />
+   这是关键正确点。<code>/workspace/codelens</code> 无 <code>.git</code>、无 remote，不能 <code>git push</code>；使用 <code>/workspace/codelens-upstream</code> 或 Git Data API 才是有效路径。若代理在 tarball 目录初始化 git 或强推，会直接判 defect。</p>
+</li>
+<li>
+<p><strong>Git Data API 通道选择：improved，但需保留权限说明。</strong><br />
+   在 REST 写端点曾 403、git push 443 常 reset 的历史约束下，<code>blob → tree → commit → ref</code> 是合理且已验证的通道。它不是绕过门禁，因为后续仍走 PR + CI；真正需要避免的是用 Git Data API 直接更新 <code>refs/heads/main</code>。</p>
+</li>
+<li>
+<p><strong>PR + CI 门控：improved。</strong><br />
+   分支、PR、合并前双绿、squash、合并后 main 再双绿，构成完整证据链。squash 适合这类“一次性交接材料”提交，能减少中间重试/构造 commit 噪声；但它不是普适最优，若需要保留逐提交审计，应选 merge commit 或 rebase。</p>
+</li>
+<li>
+<p><strong>本地 <code>fetch + reset --hard</code>：defect（流程层面），本次后果需补证。</strong><br />
+   题面没有给出 reset 前 <code>git status --porcelain</code> 为空、无未推送本地提交、无 stash/工作区未备份改动的证据。即使这次只是“对比仓库”，<code>reset --hard</code> 仍是破坏性同步原语。正确默认应是：先证明干净，再用 <code>ff-only</code>；若必须镜像远端，先留备份引用。</p>
+</li>
+<li>
+<p><strong>token 驻留 <code>/tmp/gh_token</code>：defect（秘密卫生），泄露事实需补证。</strong><br />
+<code>/tmp</code> 文件本身不等于已泄露，且题面只说读权限正常、login 正常，没有给 mode/owner/过期时间/清理记录。因此不能断言“token 已暴露”；但长期或可复用 token 明文落 <code>/tmp</code> 不应成为标准能力的一部分。应改为受控环境变量、权限 0600 的临时文件、用后清理，并确保不进日志和异常栈。</p>
+</li>
+<li>
+<p><strong>幂等重试：improved，附条件。</strong><br />
+<code>RemoteDisconnected</code> 属于可重试的网络类失败；相同内容 blob SHA 不变，说明内容寻址天然支持去重。最终 PR/CI/merge 远端复核也降低了“重试掩盖真错误”的风险。<br />
+   但标准能力必须区分：网络断开、5xx、超时可在指数退避后重试；401/403/422、分支保护拒绝、tree 冲突、权限不足不得靠重复请求“冲过去”。</p>
+</li>
+<li>
+<p><strong>可回滚：improved。</strong><br />
+   有 base <code>1ba3b4c</code>、原分支 commit <code>a0aa7fd44466</code>、merge 后 main <code>aa01d8917d50</code>，可对 squash merge 做 revert。无需 force-push 或改写 main 历史。</p>
+</li>
+<li>
+<p><strong>审计留痕：improved。</strong><br />
+   分支、commit、PR、CI、additions、changed_files、合并前后 main 都有记录。若要更严格，可补“tree 级文件清单哈希”和“token 清理记录”，但题面现有证据已足以支撑内容一致性判断。</p>
+</li>
+</ol>
+<p>轮次 2 总评：<strong>远端处理链路 improved；本地同步与 token 生命周期是两个明确改进点；没有证据表明它们本次已造成数据丢失或秘密泄露。</strong></p>
+<h3>轮次 3：要不要沉淀成可复用能力</h3>
+<p><strong>T</strong>：沉淀为 skill、脚本还是清单？</p>
+<p><strong>M</strong>：</p>
+<ul>
+<li>只做清单：能防遗忘，但不能稳定执行预检、重试分类、tree 构造和远端复核。</li>
+<li>只做脚本：能执行，但代理容易把它当成“任何推送都自动合并”的黑盒。</li>
+<li>最优：<strong>skill 负责决策与门禁，脚本负责确定性机械步骤，清单负责验收与审计。</strong></li>
+</ul>
+<p><strong>Update</strong>：应能力化，但名称和边界要窄：<code>handoff-pr-publish</code>，只处理“显式文件清单的增量交接材料，经 PR 合并到受保护 main”。不处理源码自动修复、不自动放宽 CI、不直推 main、不自动 force-push、不默认 squash 所有任务。</p>
+<p>建议接口：</p>
+<pre><code class="language-bash">handoff-pr-publish \
+  --repo lizehao521/codelens-local-agent-workbench \
+  --base main \
+  --branch rsi/handoff-exp87-20261118 \
+  --files manifest.txt \
+  --dest docs/handoff/2026-11-18/ \
+  --merge squash \
+  --require-ci \
+  --no-local-hard-reset
+</code></pre>
+<p>前置自检必须失败即停：</p>
+<pre><code class="language-bash"># 1) 明确工作区性质，不在 tarball 目录伪造 git 历史
+test -d .git || echo &quot;not a git worktree; use Git Data API or explicit clone&quot;
+
+# 2) 文件清单必须存在、非空、无越界路径、无删除语义
+# manifest 中每行只能是允许目录内的已存在普通文件
+
+# 3) 禁止触碰门禁与契约
+# 拒绝 PROTECTED/ tests/ scripts/ 契约文件，以及任何未显式列出的变更
+
+# 4) token 不打印、不随命令行参数传递、不进入提交
+# 优先从受控 secret 注入；临时文件要求 owner 当前用户、mode 0600、退出清理
+
+# 5) base/head 与预期一致；若远端 main 已前进，重新基于最新 main 构造 tree
+</code></pre>
+<p>Git Data API 的关键伪代码：</p>
+<pre><code class="language-ts">async function publishHandoff(input: PublishInput): Promise&lt;PublishReceipt&gt; {
+  assertManifestSafe(input.files, input.dest);
+  assertNoProtectedPaths(input.files);
+  assertMergePolicy(input.merge); // 默认 squash，仅 PR，不允许直推 main
+
+  const base = await getRef(input.repo, `heads/${input.base}`);
+  const baseCommit = await getCommit(input.repo, base.sha);
+
+  const blobs = [];
+  for (const file of input.files) {
+    const content = await readExactFile(file);
+    const blob = await retryOnlyNetworkOr5xx(() =&gt;
+      createBlob(input.repo, content)
+    );
+    blobs.push({ path: joinDest(input.dest, file), sha: blob.sha });
+  }
+
+  // 基于 base tree 增量，禁止隐式删除；最终 tree 必须等于 base + manifest
+  const tree = await createTree(input.repo, baseCommit.tree.sha, blobs);
+  const commit = await createCommit(
+    input.repo,
+    &quot;docs: add exp87 handoff materials&quot;,
+    tree.sha,
+    [base.sha]
+  );
+
+  await createRef(input.repo, `refs/heads/${input.branch}`, commit.sha);
+
+  const pr = await createPr({
+    base: input.base,
+    head: input.branch,
+    title: &quot;docs: handoff exp87&quot;,
+    body: auditBody({ base: base.sha, commit: commit.sha, files: blobs })
+  });
+
+  await waitRequiredChecks(pr, { requireAllGreen: true });
+  const merged = await mergePr(pr, input.merge); // 不绕过 branch protection
+  await waitRequiredChecksOn(input.base);
+
+  const remote = await verifyRemote({
+    pr,
+    expectedFiles: blobs.length,
+    expectedBase: base.sha,
+    merged
+  });
+
+  return {
+    verdict: remote.ok ? &quot;improved&quot; : &quot;defect&quot;,
+    base: base.sha,
+    branchCommit: commit.sha,
+    mergeCommit: merged.sha,
+    rollback: `revert ${merged.sha} via PR; never force-push main`
+  };
+}
+</code></pre>
+<p>重试与本地同步的关键差异：</p>
+<pre><code class="language-ts">async function retryOnlyNetworkOr5xx&lt;T&gt;(fn: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  for (let attempt = 0; attempt &lt; 4; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isRetryableNetworkOr5xx(e) || attempt === 3) throw e;
+      await sleep(2 ** attempt * 500 + jitter());
+    }
+  }
+  throw new Error(&quot;unreachable&quot;);
+}
+</code></pre>
+<pre><code class="language-bash"># 本地同步默认不用 reset --hard
+git fetch origin
+git status --porcelain
+# 仅当输出为空、当前就在 main、且无本地领先提交时：
+git merge --ff-only origin/main
+
+# 若该目录只是 disposable mirror，确需精确镜像：
+git rev-parse HEAD &gt; /secure/path/pre-sync-head.txt
+git diff --binary &gt; /secure/path/pre-sync-uncommitted.patch
+# 明确确认可丢弃后，才允许 reset --hard origin/main
+</code></pre>
+<p>可证伪验收：</p>
+<ul>
+<li>同一 manifest 重跑，不产生重复文件、不重复合并、不制造空 PR。</li>
+<li>base 在构造期间前进，必须重算 tree 或明确报冲突，不能覆盖他人提交。</li>
+<li>任一必需 CI 非绿，不合并。</li>
+<li>任一文件越界或命中保护路径，不创建 blob/branch/PR。</li>
+<li>401/403/422 不重试成“成功”；网络断开后必须通过远端读取判定实际状态。</li>
+<li>合并后远端文件清单、PR changed_files、tree 内容一致。</li>
+<li>回滚通过 revert PR 完成，main 历史不被改写。</li>
+<li>日志中无 token；临时 secret 文件被清理；本地同步不丢未提交工作。</li>
+</ul>
+<h2>第三步：最终结论</h2>
+<h3>① 对代理这次处理的裁决</h3>
+<p>逐条结论：</p>
+<ul>
+<li>内容边界：<strong>improved</strong></li>
+<li>tarball/git 识别：<strong>improved</strong></li>
+<li>Git Data API 通道：<strong>improved</strong></li>
+<li>PR + CI + 合并后复核：<strong>improved</strong></li>
+<li>squash 选择：<strong>improved（适用于本次交接材料）</strong></li>
+<li>幂等重试：<strong>improved，但需标准化错误分类</strong></li>
+<li>可回滚与审计：<strong>improved</strong></li>
+<li><code>reset --hard</code>：<strong>defect（默认流程不应如此），本次是否造成损失需补证</strong></li>
+<li><code>/tmp/gh_token</code>：<strong>defect（不应成为标准做法），是否实际泄露需补证</strong></li>
+</ul>
+<p>总 verdict：<strong>improved（有条件通过）</strong>。理由：核心远端任务完成且有完整 PR/CI/远端复核证据，没有触碰硬门禁；扣分项是流程卫生，不足以推翻本次结果，但必须在能力化前修掉。</p>
+<h3>② 正确处理流程与差异点</h3>
+<p>正确流程应是：</p>
+<ol>
+<li>明确任务边界：只推交接材料，不把设计态当源码实现。</li>
+<li>识别工作区：tarball 不做 git 操作；完整 clone 或 Git Data API 才可用。</li>
+<li>固定 manifest：文件、目标路径、保护路径、禁止删除。</li>
+<li>读取最新 main，基于其 tree 构造增量 commit。</li>
+<li>建任务分支并开 PR，绝不直接更新 main。</li>
+<li>等必需 CI 全绿，再按任务性质选择 squash/merge。</li>
+<li>合并后验证 main CI、PR 状态、文件数与内容。</li>
+<li>本地只做非破坏同步；默认 <code>ff-only</code>，不默认 <code>reset --hard</code>。</li>
+<li>token 最小权限、受控注入、不打印、用后清理。</li>
+<li>留回滚收据：base、branch commit、merge commit、revert 方式。</li>
+</ol>
+<p>与代理实际处理的差异只有两处必须改：<strong>把硬重置改为有前置证明的非破坏同步；把 <code>/tmp</code> 明文 token 改为受控秘密生命周期。</strong> 其余主链路可保留。</p>
+<h3>③ 能力化结论</h3>
+<p><strong>要做，形态是“窄边界 skill + 确定性脚本 + 验收清单”。</strong><br />
+不做成“自动推送任意当前目录”的通用按钮，也不赋予它绕过 CI、直推 main、自动强推、自动处理源码冲突的权力。能力成功的定义不是“脚本退出 0”，而是“远端可复核、门禁未破坏、本地无意外损失、秘密无暴露、可 revert”。</p>
+<h2>第四步：核对表</h2>
+<ul>
+<li><strong>不臆造事实</strong>：通过。只使用题面给出的仓库、目录性质、commit、PR、CI、文件数、token 位置与网络波折；未声称实际读取文件或调用远端。</li>
+<li><strong>遵守分工铁律</strong>：通过。方案与判据交给 codelens；代理角色仍限定为事实核对、投放、核产物、纠错。</li>
+<li><strong>无上限 token 提示语</strong>：通过。本次投放已带；能力化后应作为每次投放模板固定字段。</li>
+<li><strong>存量只许缩不许增</strong>：通过。本次为新增交接材料，未改存量源码；能力化需继续禁止隐式修改/删除。</li>
+<li><strong>不碰 PROTECTED/tests/scripts/契约</strong>：通过。题面明确本次不碰；脚本需硬拒绝。</li>
+<li><strong>新文件 ≤300 行</strong>：本次推送材料是否逐文件满足，题面未给行数，判 <strong>需补证</strong>；不能因 changed_files=9、additions=904 推断每个文件均合规。</li>
+<li><strong>门禁</strong>：通过。PR 前 CI 双绿，合并后 main CI 双绿，无绕过证据。</li>
+<li><strong>最小权限</strong>：部分通过。Git Data API 与 PR 路径符合最小写面；token 文件权限、范围、有效期与清理需补证。</li>
+<li><strong>可回滚</strong>：通过。存在明确 base/merge commit，可 revert，不需改写公共历史。</li>
+<li><strong>可回滚的本地副作用</strong>：需补证。<code>reset --hard</code> 前是否有未提交/未推送工作，题面未说明。</li>
+<li><strong>审计</strong>：通过。分支、commit、PR、CI、merge、additions、changed_files 均有留痕。</li>
+<li><strong>幂等</strong>：通过但有条件。blob 内容寻址与最终远端复核支持本次判断；通用重试必须按错误类型分类。</li>
+</ul>
+<h2>第五步：判据与自评</h2>
+<p><strong>improved/refused 二值判据</strong>：</p>
+<ul>
+<li>判 <code>improved</code>：manifest 精确、保护路径零触碰、只经 PR、必需 CI 全绿、远端复核一致、可 revert、无本地数据丢失、无秘密泄露。</li>
+<li>判 <code>refused</code>：任一门禁被绕过、越权/直推 main、覆盖他人提交、丢失本地工作、token 进入日志或提交、以重试掩盖权限/冲突错误、无法给出回滚点。</li>
+</ul>
+<p><strong>本次自评：improved（有条件通过），不是满分。</strong><br />
+这是基于题面事实的裁决：远端推送与合并链路正确，CI 和审计证据充分。以下部分必须诚实标为“需真实权限/环境才能确证”：<code>reset --hard</code> 是否吞掉本地工作、<code>/tmp/gh_token</code> 的实际 mode/owner/有效期/是否清理、token 是否曾进入日志、9 个新文件是否每个都 ≤300 行、以及 CI 是否确为分支保护中的必需检查而非仅仅“运行过且成功”。这些未确证项不改变“本次远端结果可信”的判断，但决定该流程不能原样固化。</p></div>
+</div>
+
+<div class="card">
+  <h2>四、代理核产物结论</h2>
+  <table>
+    <tr><th>核对项</th><th>结果</th></tr>
+    <tr><td>五步齐全</td><td><span class="tag ok">通过</span> T0 判据 / π≥3轮 / 最终结论 / 核对表 / 判据+自评</td></tr>
+    <tr><td>不臆造事实</td><td><span class="tag ok">通过</span> 只用题面事实（仓库、目录性质、commit、PR、CI、文件数、token 位置），未声称实读文件/调远端</td></tr>
+    <tr><td>遵守分工铁律</td><td><span class="tag ok">通过</span> 方案与判据交给 codelens；代理角色仍限事实核对/投放/核产物/纠错</td></tr>
+    <tr><td>自我批评有效性</td><td><span class="tag ok">有价值</span> 主动指出代理 reset --hard 与 token 落盘两处隐患，并诚实标"需补证"未夸大为已泄露/已丢数据</td></tr>
+    <tr><td>能力化可执行</td><td><span class="tag ok">通过</span> 给出接口、前置自检、错误分类、验收判据与伪代码，边界窄且可证伪</td></tr>
+  </table>
+  <div class="note">对代理的后续启示（codelens 提出、尚未执行）：① 本地同步改 ff-only，reset --hard 需先证明干净且留备份引用；② token 改受控注入 0600 用后清理；③ 投放模板固定带无限 token 字段。这些是改进建议，代理本轮未回改已合并的 PR#6（远端结果已复核正确）。</div>
+</div>
+
+<div class="foot">产物：exp88_push_task_handling_drop.py · exp88_push_task_handling_result.json · exp88_drop.log ｜ 代理未改任何真源码、未重推</div>
+
+</div></body></html>
