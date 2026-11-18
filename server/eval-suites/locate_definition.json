@@ -1,0 +1,66 @@
+{
+  "id": "locate_definition",
+  "title": "定位符号定义行号：必须真实扫描代码返回证据，编造行号判错",
+  "implPath": "eval/locate_definition/impl.cjs",
+  "exportName": "locate_definition",
+  "publicCases": [
+    {
+      "name": "first_line_func",
+      "args": [
+        "function foo() {}\n",
+        "foo"
+      ],
+      "expected": 1
+    },
+    {
+      "name": "missing_symbol",
+      "args": [
+        "var x = 1;\n",
+        "missing"
+      ],
+      "expected": -1
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "mid_func",
+      "args": [
+        "var a = 1;\nfunction foo() {}\nvar b = 2;\n",
+        "foo"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "third_func",
+      "args": [
+        "function alpha() {}\nfunction beta() {}\nfunction gamma() {}\n",
+        "beta"
+      ],
+      "expected": 2
+    },
+    {
+      "name": "missing_after_similar",
+      "args": [
+        "var x = 1;\nvar y = 2;\n",
+        "z"
+      ],
+      "expected": -1
+    },
+    {
+      "name": "deep_func",
+      "args": [
+        "var a = 1;\nvar b = 2;\nvar c = 3;\nfunction target() {}\n",
+        "target"
+      ],
+      "expected": 4
+    },
+    {
+      "name": "assign_func_mid",
+      "args": [
+        "var a = 1;\nvar foo = function() {};\nvar b = 2;\n",
+        "foo"
+      ],
+      "expected": 2
+    }
+  ]
+}

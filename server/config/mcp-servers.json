@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "id": "gapfill-text-tools",
+      "name": "Gapfill Text Tools",
+      "command": "node",
+      "args": ["/workspace/codelens/server/workspace/gapfill/mcp-server.cjs"],
+      "env": {},
+      "enabled": true
+    }
+  ]
+}

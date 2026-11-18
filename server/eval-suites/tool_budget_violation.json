@@ -1,0 +1,159 @@
+{
+  "id": "tool_budget_violation",
+  "title": "工具预算违规判罚：只读工具调用次数超上限即违规（含刚好等于上限、混合类型计数边界）",
+  "implPath": "eval/tool_budget_violation/impl.cjs",
+  "exportName": "toolBudgetViolation",
+  "publicCases": [
+    {
+      "name": "exactly_at_budget",
+      "args": [
+        [
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          }
+        ],
+        5
+      ],
+      "expected": {
+        "violated": false,
+        "count": 5,
+        "budget": 5
+      }
+    },
+    {
+      "name": "over_by_one",
+      "args": [
+        [
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          }
+        ],
+        5
+      ],
+      "expected": {
+        "violated": true,
+        "count": 6,
+        "budget": 5
+      }
+    }
+  ],
+  "hiddenCases": [
+    {
+      "name": "mixed_types_exactly_at_budget",
+      "args": [
+        [
+          {
+            "type": "read"
+          },
+          {
+            "type": "write"
+          },
+          {
+            "type": "read"
+          }
+        ],
+        2,
+        [
+          "read"
+        ]
+      ],
+      "expected": {
+        "violated": false,
+        "count": 2,
+        "budget": 2
+      }
+    },
+    {
+      "name": "empty_array_never_violates",
+      "args": [
+        [],
+        5
+      ],
+      "expected": {
+        "violated": false,
+        "count": 0,
+        "budget": 5
+      }
+    },
+    {
+      "name": "zero_budget_with_call",
+      "args": [
+        [
+          {
+            "type": "read"
+          }
+        ],
+        0
+      ],
+      "expected": {
+        "violated": true,
+        "count": 1,
+        "budget": 0
+      }
+    },
+    {
+      "name": "non_array_input",
+      "args": [
+        null,
+        5
+      ],
+      "expected": {
+        "violated": false,
+        "count": 0,
+        "budget": 5
+      }
+    },
+    {
+      "name": "mixed_types_over_budget",
+      "args": [
+        [
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          },
+          {
+            "type": "read"
+          }
+        ],
+        2,
+        [
+          "read"
+        ]
+      ],
+      "expected": {
+        "violated": true,
+        "count": 3,
+        "budget": 2
+      }
+    }
+  ]
+}
