@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS rsi_generation_diff (
   blind_spots_json   TEXT,
   invalid_args_count INTEGER NOT NULL DEFAULT 0,
   metadata_only      INTEGER NOT NULL DEFAULT 0,
+  -- 丁阶段：本行 +/- 的来源。'checkpoint' = workspace_checkpoints.diff_json 真值；
+  -- NULL/'tool_calls' = 乙阶段从 args_json 重建（老行 NULL 一律按 tool_calls 读）。
+  origin             TEXT,
   source_window_t0   INTEGER,
   source_window_t1   INTEGER,
   schema_version     INTEGER NOT NULL DEFAULT 1,
@@ -62,7 +65,7 @@ export interface DiffEvent {
 
 export interface DiffEvidence {
   readonly status: DiffStatus;
-  readonly source: 'tool_calls' | null;
+  readonly source: 'tool_calls' | 'checkpoint' | null;
   readonly window: { readonly t0: number | null; readonly t1: number | null };
   /** 各可重建块拼接后的 unified 风格文本；不可重建块只留边界头。 */
   readonly aggregateText: string;
@@ -76,6 +79,12 @@ export interface DiffEvidence {
   readonly invalidArgsCount: number;
   /** 同代只有 rename/delete 这类元事件、无任何正文变更。 */
   readonly metadataOnly: boolean;
+  /**
+   * 丁阶段：可确证的增删行合计（checkpoint 路径专用）。
+   * null/缺省 = 未知（tool_calls 路径由 aggregate_text 判定），
+   * 0 = 快照确认零变更；>0 = 真实变更。二进制/大文件使该值不可信时置 null。
+   */
+  readonly changedLines?: number | null;
 }
 
 /** 硬上限（codelens Q5）：实现可更严，不可更宽。 */
@@ -112,5 +121,15 @@ export function canWriteDiff(db: DiffDb): boolean {
 export function ensureDiffTable(db: DiffDb): void {
   if (ensured.has(db as unknown as object)) return;
   db.exec(RSI_DIFF_SCHEMA_SQL);
+  // 丁阶段：CREATE TABLE IF NOT EXISTS 不会给旧库补 origin 列，故按 PRAGMA 幂等补。
+  // 只加一列（不建表、不加索引），失败由调用方的 try/catch 吸收。
+  try {
+    const cols = db.all<{ name: string }>(
+      `SELECT name FROM pragma_table_info('rsi_generation_diff') WHERE name = 'origin'`,
+    );
+    if (cols.length === 0) db.exec('ALTER TABLE rsi_generation_diff ADD COLUMN origin TEXT');
+  } catch {
+    /* 旧库/受限连接：保持 NULL 语义即可 */
+  }
   ensured.add(db as unknown as object);
 }

@@ -65,6 +65,18 @@ function addExec(db: Db, at: number, command: string, argv: string[]): void {
   );
 }
 
+function addCheckpointZero(db: Db, at: number, path: string): void {
+  db.run(
+    `INSERT INTO workspace_checkpoints
+       (id, session_id, label, root, file_count, total_bytes, manifest_json, created_at,
+        run_id, step, tool_call_ids_json, diff_json, status)
+     VALUES ('cp-e2e', ?, 'write', '/tmp/ws', 1, 10, '[]', ?, 'run-e2e', 1, '[]', ?, 'active')`,
+    [SESSION, at, JSON.stringify([
+      { path, operation: 'write', beforeSha256: 'b', afterSha256: 'a', beforeBytes: 1, afterBytes: 1, added: 0, removed: 0, diff: '' },
+    ])],
+  );
+}
+
 function makeResult(state: RsiBridgeResult['state']): RsiBridgeResult {
   return {
     state,
@@ -159,6 +171,22 @@ describe('diff 证据端到端（recordShadowAudit + 真库）', () => {
     expect(detail.diffGuard?.ia).toBe(1);
     expect(detail.diffGuard?.z).toBeUndefined();
     expect(raw).not.toContain('truncated');
+  });
+
+  it('丁阶段：快照真值确认零变更 → INV-1 正式 emit，detail 仍 ≤500', () => {
+    const db = makeDb();
+    addGeneration(db, 1, addJudgeRun(db, 1000), null);
+    addGeneration(db, 2, addJudgeRun(db, 2000), 1);
+    addWrite(db, 1900, { operation: 'overwrite', path: 'a.ts', content: '全文' });
+    addCheckpointZero(db, 1900, 'a.ts');
+
+    const { detail, raw } = auditOnce(db, 'improved');
+    expect(raw.length).toBeLessThanOrEqual(500);
+    expect(detail.diffGuard?.s).toBe('complete');
+    expect(detail.diffGuard?.z).toBe(1);
+    expect(detail.diffGuard?.el).toBe(1);
+    expect(detail.consistencyShadow?.violations.map((v) => v.inv)).toContain('INV-1');
+    expect(detail.consistencyShadow?.unavailableChecks.map((u) => u.inv)).not.toContain('INV-1');
   });
 
   it('表落库：同一代重复审计只留一行（幂等），且 status 与 detail 一致', () => {

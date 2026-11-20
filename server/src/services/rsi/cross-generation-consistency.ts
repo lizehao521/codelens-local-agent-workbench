@@ -129,8 +129,8 @@ export interface ConsistencyShadowRow {
 }
 
 export interface ConsistencyShadowViolation {
-  readonly inv: 'INV-3';
-  readonly sev: 'warning';
+  readonly inv: 'INV-1' | 'INV-3';
+  readonly sev: 'contradiction' | 'warning';
   readonly gens: readonly number[];
   readonly msg: string;
 }
@@ -140,7 +140,7 @@ export interface ConsistencyShadowViolation {
  *   no_diff_text      —— 未传 diff 覆盖度（历史调用/测试默认），等价于"没有 diff 数据"
  *   diff_incomplete   —— 采到了部分 diff，但存在盲区（overwrite/sys-exec/mcp/超限）
  *   diff_unavailable  —— 窗口不可用或参数截断，无法枚举"还有什么写"
- * complete 时不列 INV-1：判定结果由 detail 的 diffGuard.z 承载，且本轮不 emit violation。
+ * complete 时不列 INV-1：判定由 detail.diffGuard.z 承载；丁阶段仅在 inv1Eligible 时 emit。
  */
 export interface ConsistencyShadowUnavailable {
   readonly inv: 'INV-1' | 'INV-2';
@@ -185,6 +185,8 @@ export function buildConsistencyShadow(
   rows: readonly ConsistencyShadowRow[],
   verdict: string,
   diffCoverage?: DiffCoverage,
+  /** 丁阶段：快照真值已确认全代零变更且满足 INV-1 充要条件。 */
+  inv1Eligible = false,
 ): ConsistencyShadowView {
   const unavailableChecks = unavailableFor(diffCoverage);
   // INV-4 前半：refused 不做证据类判定，直接返回空 violations + 不可用清单。
@@ -195,7 +197,7 @@ export function buildConsistencyShadow(
   const sorted = [...rows].sort((a, b) => a.generation - b.generation);
   // 零证据停滞：level 恒 landed（toEvidenceLevel 对六值一律 landed）、artifactHash 用
   // ledger_path。failure 第一阶段接入后，判定 1（signature_repeated）首次具备真实
-  // 数据输入；diff 仍无源，判定 2（zero_diff）不可用。★failure 只增强 stall 判定，
+  // 数据输入；判定 2（zero_diff）仍不可用（快照真值不喂 evaluateStall）。★failure 只增强 stall 判定，
   // 对 INV-2 是负向（其条件含 !stalled），绝不构成对 INV-2 的解锁。
   const history: GenerationRecord[] = sorted.map((r) => ({
     evidence: {
@@ -207,6 +209,16 @@ export function buildConsistencyShadow(
   const stall = evaluateStall(history);
 
   const violations: ConsistencyShadowViolation[] = [];
+  // INV-1 正式解锁（exp170）：只有 checkpoint 真值且满足充要条件才 emit；
+  // 其余情况维持「不列即未检查」，绝不拿空 diff 冒充已检查。
+  if (inv1Eligible) {
+    violations.push({
+      inv: 'INV-1',
+      sev: 'contradiction',
+      gens: [sorted[sorted.length - 1]?.generation ?? 0],
+      msg: 'improved+zero-diff(checkpoint)',
+    });
+  }
   if (verdict === 'improved' && stall.stopped && stall.evidenceChain.length >= 2) {
     const gens = stall.evidenceChain
       .slice(0, 2)

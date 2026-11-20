@@ -32,6 +32,7 @@ import {
 } from './generation-evidence.js';
 import {
   collectDiffEvidence,
+  isInv1Eligible,
   upsertDiffEvidence,
   buildDiffGuard,
 } from './generation-diff.js';
@@ -292,6 +293,7 @@ export function recordShadowAudit({
     const evidenceDb = db as unknown as EvidenceDb | undefined;
     let diffGuard: ReturnType<typeof buildDiffGuard> | null = null;
     let diffCoverage: DiffCoverage | undefined;
+    let inv1 = false;
     if (evidenceDb) {
       upsertFailureEvidence(evidenceDb, sessionId, collectFailureEvidence(evidenceDb, sessionId));
       // diff 乙阶段：从 tool_calls.args_json 操作级重建（只通数据，不解封 INV-1）。
@@ -300,6 +302,7 @@ export function recordShadowAudit({
       upsertDiffEvidence(evidenceDb, sessionId, diff);
       diffCoverage = diff.status;
       diffGuard = buildDiffGuard(diff, shadow.verdict);
+      inv1 = isInv1Eligible(diff, shadow.verdict);
     }
     // B 项：只读拉多代行重建一致性阴影视图（不写库、不阻断）。查询失败按空集降级，
     // 不拖垮影子判决本身。明细上限 DETAIL_MAX=500，超限时省略此键保原 7 键完整。
@@ -318,6 +321,7 @@ export function recordShadowAudit({
       })),
       shadow.verdict,
       diffCoverage,
+      inv1,
     );
     const detail = JSON.stringify({
       state: shadow.state,
