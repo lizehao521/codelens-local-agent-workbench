@@ -1,7 +1,8 @@
 /**
  * 跨代影子桥接。
  * 输入两代 RsiBridgeResult，构造 CrossGenerationVerdictInput 并调用评估器，
- * 输出 UnifiedRsiConsumption 供调用方审计。纯函数，不写库、不改动 next.state。
+ * 输出 UnifiedRsiConsumption 供调用方审计。核心判决为纯函数；另附只读 DB 取数辅助 loadPreviousGeneration。
+ * 不写库、不改动 next.state。
  * 设计裁定 D1/D2/D3 见各映射函数注释及文件末尾核对清单。
  */
 import type { RsiBridgeResult, RsiVerdictState } from './rsi-bridge.service.js';
@@ -170,4 +171,43 @@ export function evaluateCrossGenerationShadow(
     reportRaw: next.reportRaw,
     ledgerPath: next.ledgerPath,
   };
+}
+
+
+/**
+ * 只读辅助：从 policy_rsi_runs 上一代审计行重建 RsiBridgeResult，供影子判决作 previous。
+ * 列名来自 schema.ts policy_rsi_runs 真实定义；无 db / 无上一代 / 解析失败都返回 null。
+ * 这是本模块唯一的 IO 辅助，核心 evaluateCrossGenerationShadow 仍是纯函数。
+ */
+export function loadPreviousGeneration(
+  db: { get<T>(sql: string, params?: Array<string | number | null>): T | undefined } | undefined,
+  sessionId: string,
+): RsiBridgeResult | null {
+  if (!db) return null;
+  try {
+    const row = db.get<{
+      verdict: string;
+      exit_code: number | null;
+      reasons_json: string | null;
+      metrics_json: string | null;
+      ledger_path: string;
+    }>(
+      `SELECT verdict, exit_code, reasons_json, metrics_json, ledger_path
+         FROM policy_rsi_runs
+        WHERE session_id = ?
+        ORDER BY generation DESC LIMIT 1`,
+      [sessionId],
+    );
+    if (!row) return null;
+    return {
+      state: row.verdict as RsiBridgeResult['state'],
+      exitCode: row.exit_code,
+      reasons: row.reasons_json ? (JSON.parse(row.reasons_json) as string[]) : [],
+      metrics: row.metrics_json ? (JSON.parse(row.metrics_json) as RsiBridgeResult['metrics']) : undefined,
+      reportRaw: '',
+      ledgerPath: row.ledger_path,
+    };
+  } catch {
+    return null;
+  }
 }
