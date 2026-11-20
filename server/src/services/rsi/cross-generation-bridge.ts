@@ -18,6 +18,7 @@ import type {
   GenerationEvidence,
   EvidenceLevel,
 } from './cross-generation-contract.js';
+import type { TraceSpanKind } from '../observability/trace.service.js';
 import {
   adaptCrossGenerationVerdict,
   type UnifiedRsiConsumption,
@@ -222,5 +223,61 @@ export function loadPreviousGeneration(
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * 跨代影子判决审计（P0 接线收敛辅助）。
+ * 把 agent-loop 中的影子判决 try/catch 原样下推至此，让 agent-loop 只需 +2 行
+ * （1 import + 1 调用）即可具备等价接线，避开其 1548/1550 行数棘轮。
+ * 只经 recordSpan 回调试记轨迹：不改 result.state、不写 policy_rsi_runs、不阻断 π、不抛错。
+ */
+interface RecordShadowAuditParams {
+  db: { get<T>(sql: string, params?: Array<string | number | null>): T | undefined } | undefined;
+  sessionId: string;
+  result: RsiBridgeResult;
+  traceId: string | null | undefined;
+  recordSpan: (
+    traceId: string | null | undefined,
+    span: {
+      kind: TraceSpanKind;
+      name: string;
+      status?: 'ok' | 'error';
+      detail?: string;
+      durationMs?: number;
+    },
+  ) => void;
+}
+
+export function recordShadowAudit({
+  db,
+  sessionId,
+  result,
+  traceId,
+  recordSpan,
+}: RecordShadowAuditParams): void {
+  try {
+    const curGen = db?.get<{ g: number }>('SELECT MAX(generation) AS g FROM policy_rsi_runs WHERE session_id=?', [sessionId])?.g ?? 0;
+    const previous = loadPreviousGeneration(db, sessionId, curGen);
+    const shadow = evaluateCrossGenerationShadow(previous, result);
+    recordSpan(traceId, {
+      kind: 'judge',
+      name: `跨代影子判决`,
+      status: 'ok',
+      detail: JSON.stringify({
+        state: shadow.state,
+        verdict: shadow.verdict,
+        source: shadow.source,
+        reason: shadow.reason,
+        hadPrevious: previous !== null,
+      }),
+    });
+  } catch (err) {
+    recordSpan(traceId, {
+      kind: 'judge',
+      name: `跨代影子判决`,
+      status: 'error',
+      detail: `shadow failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 }

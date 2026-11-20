@@ -64,6 +64,7 @@ import { prepareRun, type PreparedRun } from './run-assembly.js';
 import type { RunStateService } from './run-state.service.js';
 import { cleanupForgedTools } from '../tools/forged-tool-lifecycle.js';
 import type { ReviewFacts } from '../../types/tool.js';
+import { recordShadowAudit } from '../rsi/cross-generation-bridge.js';
 
 export interface AgentRunRequest {
   sessionId?: string;
@@ -1475,6 +1476,7 @@ export class AgentLoopService {
           status: result.state === 'error' ? 'error' : 'ok',
           detail: `verdict=${result.state}${result.exitCode !== null ? ` exit=${result.exitCode}` : ''}`,
         });
+        recordShadowAudit({ db, sessionId, result, traceId, recordSpan: (t, s) => this.recordSpan(t, s) });
 
         // ── LLM 归因：not_improved / refused 时触发 ──────────────────────────
         // 归因经验直接写 policy_injections 作为 π'，下一轮 run 会被 getInjectableView() 喂进 prompt。
@@ -1544,5 +1546,4 @@ export class AgentLoopService {
       });
   }
 }
-
 // bridge RSI round: terminal budget kind is threaded into Judge runtime

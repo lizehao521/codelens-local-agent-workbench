@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { RsiBridgeResult } from './rsi-bridge.service.js';
-import { evaluateCrossGenerationShadow, loadPreviousGeneration } from './cross-generation-bridge.js';
+import { evaluateCrossGenerationShadow, loadPreviousGeneration, recordShadowAudit } from './cross-generation-bridge.js';
 
 function makeResult(overrides: Partial<RsiBridgeResult> & { state: RsiBridgeResult['state'] }): RsiBridgeResult {
   return {
@@ -245,5 +245,84 @@ describe('loadPreviousGeneration', () => {
       reasons_json: '{bad json', metrics_json: null, ledger_path: '/tmp/x.jsonl',
     });
     expect(loadPreviousGeneration(db, 's1', 3)).toBeNull();
+  });
+});
+
+/**
+ * recordShadowAudit（P0 接线收敛辅助）行为对齐测试。
+ * 保证下推到 bridge 的影子判决与 agent-loop 内联版行为一致：只记轨迹、不改 result、不写库、不抛错。
+ */
+describe('recordShadowAudit', () => {
+  type Span = { kind: string; name: string; status?: string; detail?: string; durationMs?: number };
+  function setup(opts: { rows?: Array<{ generation: number; verdict: string }>; throwOnGet?: boolean } = {}) {
+    const spans: Array<{ traceId: string | null | undefined; span: Span }> = [];
+    const recordSpan = vi.fn((traceId: string | null | undefined, span: Span) => spans.push({ traceId, span }));
+    const db = {
+      get<T>(sql: string, params?: Array<string | number | null>): T | undefined {
+        if (opts.throwOnGet) throw new Error('db down');
+        // 模拟 MAX(generation) 查询：返回库内最大代
+        if (sql.includes('MAX(generation)')) {
+          const max = (opts.rows ?? []).reduce((m, r) => Math.max(m, r.generation), 0);
+          return { g: max } as unknown as T;
+        }
+        // 模拟 loadPreviousGeneration 的 SELECT：generation < curGen 取最新
+        if (sql.includes('generation <')) {
+          const cur = params?.[1] as number;
+          const picked = (opts.rows ?? [])
+            .filter((r) => r.generation < cur)
+            .sort((a, b) => b.generation - a.generation)[0];
+          if (!picked) return undefined;
+          return {
+            verdict: picked.verdict, exit_code: 0, reasons_json: null,
+            metrics_json: null, ledger_path: `/tmp/gen${picked.generation}.jsonl`,
+          } as unknown as T;
+        }
+        return undefined;
+      },
+    };
+    return { db, recordSpan, spans };
+  }
+  const next = makeResult({ state: 'improved' });
+
+  it('有上一代 → recordSpan ok，detail 为合法 JSON 且含 verdict/hadPrevious', () => {
+    const { db, recordSpan, spans } = setup({ rows: [{ generation: 1, verdict: 'not_improved' }, { generation: 2, verdict: 'improved' }] });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    expect(recordSpan).toHaveBeenCalledTimes(1);
+    const span = spans[0]!.span;
+    expect(span.kind).toBe('judge');
+    expect(span.name).toBe('跨代影子判决');
+    expect(span.status).toBe('ok');
+    const detail = JSON.parse(span.detail!) as { verdict: string; hadPrevious: boolean };
+    expect(typeof detail.verdict).toBe('string');
+    expect(detail.hadPrevious).toBe(true);
+  });
+
+  it('无上一代（库内仅当前代）→ hadPrevious=false，仍 status=ok', () => {
+    const { db, recordSpan, spans } = setup({ rows: [{ generation: 1, verdict: 'improved' }] });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    const detail = JSON.parse(spans[0]!.span.detail!) as { hadPrevious: boolean };
+    expect(detail.hadPrevious).toBe(false);
+    expect(spans[0]!.span.status).toBe('ok');
+  });
+
+  it('不改 result（state/reasons/metrics 引用与值不变）', () => {
+    const { db, recordSpan } = setup({ rows: [{ generation: 1, verdict: 'not_improved' }] });
+    const before = { state: next.state, reasons: next.reasons, metrics: next.metrics };
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    expect(next.state).toBe(before.state);
+    expect(next.reasons).toBe(before.reasons);
+    expect(next.metrics).toBe(before.metrics);
+  });
+
+  it('db 抛错 → 异常被吞，recordSpan status=error，不向外抛', () => {
+    const { db, recordSpan, spans } = setup({ throwOnGet: true });
+    expect(() => recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan })).not.toThrow();
+    expect(spans[0]!.span.status).toBe('error');
+    expect(spans[0]!.span.detail).toContain('shadow failed');
+  });
+
+  it('db 为 undefined → 不抛，仍记一条 error span（异常隔离）', () => {
+    const recordSpan = vi.fn((_t: string | null | undefined, _s: Span) => {});
+    expect(() => recordShadowAudit({ db: undefined, sessionId: 's1', result: next, traceId: 't1', recordSpan })).not.toThrow();
   });
 });
