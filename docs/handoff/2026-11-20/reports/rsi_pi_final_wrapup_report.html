@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RSI/π 回归迭代收尾账（exp166–exp172）</title>
+<style>
+  :root{--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--bg:#f9fafb;--acc:#1d4ed8;--ok:#047857;--warn:#b45309;--bad:#b91c1c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1000px;margin:0 auto;padding:40px 26px 64px}
+  h1{font-size:26px;line-height:1.35;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:26px}
+  h2{font-size:18px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--acc)}
+  p{margin:10px 0}
+  .lead{background:#fff;border:1px solid var(--line);border-left:5px solid var(--acc);padding:14px 16px;border-radius:6px}
+  table{width:100%;border-collapse:collapse;background:#fff;font-size:13.5px;margin:12px 0 6px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f3f4f6;font-weight:600}
+  code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12.5px}
+  .ok{color:var(--ok);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}
+  .note{background:#fffbeb;border:1px solid #fde68a;padding:12px 14px;border-radius:6px;margin:12px 0}
+  .box{background:#fff;border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin:12px 0}
+  ul{margin:8px 0 8px 20px;padding:0}li{margin:4px 0}
+  small{color:var(--muted)}
+  .kpi{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+  .kpi div{flex:1 1 180px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+  .kpi b{display:block;font-size:20px;line-height:1.3}
+  .kpi span{color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RSI/π 回归迭代收尾账（exp166–exp172）</h1>
+  <div class="sub">2026-11-21 01:30 更新 ｜ 7 轮（exp166–exp172）全部落地 ｜ 已推送 GitHub：main + 分支 + tag ｜ 账本已补 3 条 verified（<code>16a2d3a</code>）｜ CI 双 job 绿</div>
+
+  <div class="lead">
+    <b>一句话：</b>代码与账本两侧均已收口。<code>main</code> 现为 <code>16a2d3a</code>（含 CI 修复 <code>43fe4fb</code> 与账本补记），功能分支同步快进，tag <code>rsi-exp166-172</code> 按裁定停在 <code>c89cc71</code> 不动。唯一剩余的是<b>1 项永久冻结点</b>（INV-2/rollback 需真实代际数据才谈）。
+  </div>
+
+  <div class="kpi">
+    <div><b>7 轮</b><span>exp166→172 全绿</span></div>
+    <div><b>2207 + 1 skip</b><span>upstream 全量通过（217 文件）</span></div>
+    <div><b>2274</b><span>生产全量通过（212 文件）</span></div>
+    <div><b>145 行</b><span>账本 verified 72→75（adopted/upgraded 未变）</span></div>
+  </div>
+
+  <h2>一、七轮各自交付了什么</h2>
+  <table>
+    <tr><th>轮次</th><th>主张</th><th>实际落地</th><th>解锁</th></tr>
+    <tr><td>exp166 P4</td><td>跨代判决端点可查</td><td>observabilityEnabled 测试注入；ok 态 7 键 span、failed 态非法 JSON 两用例；runtime.ts 压至 449/450</td><td class="ok">端点 ok/failed 端到端可查</td></tr>
+    <tr><td>exp167</td><td>consistency 阴影旁路</td><td><code>buildConsistencyShadow</code> 硬护栏：顶层键 <code>consistencyShadow</code>、禁止直出 <code>consistent</code> 布尔</td><td class="warn">仅 INV-3 warning 可触发，明确「不构成解封」</td></tr>
+    <tr><td>exp168</td><td>failure 证据</td><td>tool_calls 只读重建 + <code>rsi_generation_evidence</code> lazy ensure 建表（避开 schema.ts 606 顶格）</td><td class="ok">evaluateStall 首次有真实输入；INV-3 多一条 signature_repeated 路径</td></tr>
+    <tr><td>exp169</td><td>diff 乙阶段</td><td>只重建 create/append/replace 真实 +/-；overwrite 禁生成全文；delete/purge/rename 只记元事件；diffGuard 只记录不 emit</td><td class="ok">操作级重建通数据，INV-1 仍未 emit</td></tr>
+    <tr><td>exp170</td><td>diff 丁阶段</td><td><code>generation-diff.snapshot.ts</code>（199 行）：窗口内快照整代择源、多 run 按末快照择一、<code>origin</code> 列 PRAGMA 幂等 ALTER；<code>isInv1Eligible</code></td><td class="ok">INV-1 在「complete + checkpoint + 零行 + 无盲区 + ia=0 + improved」下正式 emit</td></tr>
+    <tr><td>exp171</td><td>CHECKPOINT_ENABLED 实跑与做/不做</td><td>真实探针 run 308 秒产出 create+overwrite 两条快照；WAL 一致副本回放得 complete/checkpoint/+3 行；4 组负例验证 suppress</td><td class="ok">裁定：不翻默认；rollback 以后只做受限形式</td></tr>
+    <tr><td>exp172</td><td>per-generation 只读入口</td><td><code>generation-diff-readback.ts</code>（192 行）：按代直查 SQL；类型只给 get/all 使其<b>不能写库</b>；四状态不折叠；表缺失返空、故障抛错；不读正文</td><td class="ok">解除「只能采最新代、状态被折叠」阻塞，逐代统计有数据源（c89cc71）</td></tr>
+  </table>
+
+  <h2>二、代码面清单</h2>
+  <table>
+    <tr><th>文件</th><th>行数</th><th>性质</th></tr>
+    <tr><td><code>services/rsi/generation-diff.snapshot.ts</code></td><td>199（新）</td><td>快照真值采集：分 run 择一、(step,path) 去重、覆盖/截断/二进制/mixed 判定、聚合 ≤256KiB</td></tr>
+    <tr><td><code>services/rsi/generation-diff.snapshot.test.ts</code></td><td>180（新）</td><td>择源与降级单测</td></tr>
+    <tr><td><code>services/rsi/generation-diff.ts</code></td><td>291</td><td>整代择源 + 落 <code>origin</code> + <code>isInv1Eligible</code></td></tr>
+    <tr><td><code>services/rsi/generation-diff.schema.ts</code></td><td>135</td><td><code>origin</code> 列、<code>changedLines</code>、旧库幂等补列</td></tr>
+    <tr><td><code>services/rsi/cross-generation-consistency.ts</code></td><td>237</td><td>INV-1 仅在 inv1Eligible 时 emit；违规类型扩为 INV-1|INV-3</td></tr>
+    <tr><td><code>services/rsi/cross-generation-bridge.ts</code></td><td>up 260 / prod 216（拆分后）</td><td>传 inv1 标记；生产走 <code>buildShadowAuditDetail</code> helper（设计差异，行为等价）</td></tr>
+    <tr><td><code>services/rsi/generation-diff-readback.ts</code></td><td>192（新）</td><td>逐代只读：<code>readGenerationDiffStats/Stat</code> + <code>summarize</code>；只暴露 get/all，写库不可达</td></tr>
+    <tr><td><code>services/rsi/generation-diff-readback.test.ts</code></td><td>176（新）</td><td>表缺失不建表、四状态升序、按代非最新、摘要对 SQL 聚合、故障与非法值必抛</td></tr>
+  </table>
+  <p><small>agent-loop 1549（up）/1542（prod）、<code>schema.ts</code> 605 均<b>未动</b>。结构棘轮：upstream <b>593 文件 / 593 达标 / 0 越线</b>；生产 <b>601 扫 / 599 达标 / 2 越线</b>（<code>active-recall.ts</code> 338、<code>update.service.ts</code> 333，均为既有）。exp176 的 CI 修复把 10 个新增越线文件全部拆到 ≤300 行，未改 baseline 清单。</small></p>
+
+  <h2>三、剩余收尾项（可数）</h2>
+  <table>
+    <tr><th>#</th><th>项</th><th>状态</th><th>需要谁</th></tr>
+    <tr><td>1</td><td>推送 15 个提交（38 文件 / +9308 行）</td><td class="ok">已完成</td><td>已推：main <code>c89cc71</code>、分支 <code>rsi/exp166-172-20261120</code>、tag <code>rsi-exp166-172</code></td></tr>
+    <tr><td>2</td><td><code>.self-upgrade/ledger.jsonl</code> 补记 RSI 七轮</td><td class="ok">已完成 16a2d3a</td><td>补 3 条 verified、省略 releasedIn；只写 upstream（142→145 行），生产树 89 行未动</td></tr>
+    <tr><td>3</td><td>per-generation 只读入口</td><td class="ok">已完成 c89cc71</td><td>—（codelens 裁「做，只读、不补采」，已按裁定落地）</td></tr>
+    <tr><td>4</td><td>rollback / INV-2</td><td class="bad">冻结</td><td>exp171 已裁：只做「证据完整 + 人工批准 + 可审计」；需先有真实代际数据</td></tr>
+  </table>
+  <p><small>本轮已顺手清掉 1 个遗留备份 <code>code-check.tool.ts.bak_before_sync_1120_1232</code>。工作区仅剩 3 个 <code>node_modules</code> 符号链接未忽略（11-18 起既有，<code>.gitignore</code> 的 <code>node_modules/</code> 不匹配 symlink），不影响提交。</small></p>
+
+  <h2>四、诚实记账（不能当已完成的部分）</h2>
+  <ul>
+    <li><b>丁对真实代际的覆盖率增量目前是 0</b>：<code>CHECKPOINT_ENABLED</code> 默认关闭，必须部署方显式开启才生效。</li>
+    <li><b>sys.exec / MCP 拍不到快照</b>：白名单只收 fs.write。exp169 报告里「丁补齐 sys.exec 盲区」的说法已纠正为「补不了」。</li>
+    <li><b>emit 极稀发</b>：代内只要出现一次 <code>git status</code> 就因 blindSpot 不 emit。假阴性优先是刻意选择。</li>
+    <li><b>只改注释的 improved 代会被漏报</b>：快照按 added+removed 判零，属假阴性而非假阳性。</li>
+    <li><b>exp171 的 <code>diffGuard.el=1</code> 不是结论</b>：它只是必要条件，真正 emit 还要无盲区 + checkpoint 来源。</li>
+    <li><b>生产库没有 <code>rsi_generation_diff</code> 表</b>：lazy 建表只在 RSI 审计时触发，乙/丁至今未在真实代落过行。exp172 的只读入口因此把「表缺失」定义为返回空、把「查询故障」定义为抛错——两者不能混为一谈，否则故障会被读成「未采集」。</li>
+    <li><b>生产树账本仍停在 11-14（89 行）</b>：与 upstream 的 142→145 行是两套文件，本轮按裁只写 upstream，未同步生产树，属既有分歧、未处理。</li>
+    <li><b>GitHub 侧「AI security scan」为平台动态 workflow</b>（<code>dynamic/github-code-scanning/ai-scan</code>），不在仓库文件里；它在 <code>43fe4fb</code> 上失败一次（Run AI Scan 步骤），本轮无法从仓库侧修改，不影响 CI 两 job。</li>
+    <li><b>health「24 vs 23」已解释</b>：24 含 <code>sqlite_sequence</code> 内部表，业务表实为 23，与 <code>EXPECTED_TABLE_COUNT</code> 一致，无需动作。</li>
+  </ul>
+
+  <h2>五、exp172 裁定要点（只读入口）</h2>
+  <div class="box">
+    <b>做，但只做只读。</b> 三条红线：<br>
+    ① <b>不补采历史代</b>——给旧代补写 <code>created_at/updated_at/origin</code> 等于伪造「当时已采」，会改分母与状态比例，本轮一律禁止；<br>
+    ② <b>不折叠状态</b>——complete / partial / unavailable / not_attempted 必须可区分，不能靠「没返回 diffText」推断 unavailable；<br>
+    ③ <b>不动旧语义</b>——<code>loadGenerationDiff</code> 仍只给 INV-1 可消费的完整正文，<code>collectDiffEvidence</code> 签名不变，两者零行为变化。<br>
+    实现取更严形态：<code>ReadbackDb</code> 只声明 <code>get/all</code>，写库在类型层不可达；非法 status/origin/盲区 JSON 一律抛错。
+  </div>
+
+  <h2>六、GitHub 上传记录</h2>
+  <table>
+    <tr><th>对象</th><th>远端值</th><th>说明</th></tr>
+    <tr><td>main</td><td><code>c89cc71</code></td><td><code>9bd63a2..c89cc71</code> 快进；远端原有 1 条 docs 提交（PR #7）保留</td></tr>
+    <tr><td>功能分支</td><td><code>rsi/exp166-172-20261120</code> → <code>c89cc71</code></td><td>先推分支后用 <code>--force-with-lease</code> 对齐变基结果；lease 旧值 <code>7e995af</code></td></tr>
+    <tr><td>tag</td><td><code>rsi-exp166-172</code>（annotated，peel <code>c89cc71</code>）</td><td>main 快进成功后才打；tag 对象 <code>071b56e</code></td></tr>
+    <tr><td>历史形态</td><td>15 条原子提交</td><td>不 squash；rebase 到 <code>9bd63a2</code> 之上，旧本地链 <code>7e995af</code> → 新 <code>c89cc71</code>（全部哈希重写，未推前完成）</td></tr>
+    <tr><td>账本补记</td><td><code>16a2d3a</code>（<code>chore(ledger)</code>，1 文件 +3 行）</td><td>exp177 落地；main 与功能分支均快进至 <code>16a2d3a</code>；tag 未移动</td></tr>
+    <tr><td>推送前检查</td><td>全部通过</td><td>diff 与 <code>log -p</code> 的 PAT/密钥扫描 0 命中；工作区仅 3 个 symlink；双树 tsc 0；upstream 217 文件 2207 passed+1 skipped / 生产 212 文件 2274 passed；棘轮 upstream 0 新增 / 生产 2 既有</td></tr>
+  </table>
+  <p><small>codelens exp174 裁定 C：先推 <code>rsi/*</code> 分支 → 确认后再快进 main → 最后打 tag。non-fast-forward 原本默认暂停，因你选择 rebase 才执行；rebase 未改任何文件内容，只换基。</small></p>
+
+
+  <h2>七、建议顺序</h2>
+  <div class="box">
+    <b>1)</b> 账本已按 exp173/177 裁定补完（3 条 verified，<code>at</code>=真实写入时刻，无 releasedIn），详见第八节。<br>
+    <b>2)</b> 逐代统计包仍不建议开工：生产表是空的，<code>[]</code>/<code>null</code> 只表示「入口通、无数据」。<br>
+    <b>3)</b> rollback 仍不建议动：没有真实代际数据，做出来无法验收。<br>
+    <b>4)</b> 下一步唯一有价值的动作是让部署方显式开启 <code>CHECKPOINT_ENABLED</code> 跑出第一批真实代数据。
+  </div>
+  <h2>八、exp177 账本补记（2026-11-21 追加）</h2>
+  <table>
+    <tr><th>项</th><th>结果</th></tr>
+    <tr><td>落盘范围</td><td>仅 <code>codelens-upstream/.self-upgrade/ledger.jsonl</code>，142 → <b>145 行</b>；生产树 <code>codelens/.self-upgrade/ledger.jsonl</code> 仍 89 行、字节零改动</td></tr>
+    <tr><td>diff 形态</td><td><code>1 file changed, 3 insertions(+)</code>；前 142 行逐字节不变（md5 与备份一致）</td></tr>
+    <tr><td>三条记录</td><td><code>SHADOW_P4_CONSISTENCY</code>（judge/D4，exp166–168）· <code>DIFF_REBUILD_INV1</code>（implementation/D2，exp169–170）· <code>CHECKPOINT_PROBE_READBACK</code>（integration/D4，exp171–172）</td></tr>
+    <tr><td>字段合规</td><td>12 字段与既有记录同构；<code>releasedIn</code> 省略；<code>at</code>=<code>2026-11-20T17:21:23.253Z</code>（真实写入时刻）；<code>evidence</code> 含 <code>reports</code>/<code>rounds</code>/<code>limits</code></td></tr>
+    <tr><td>计数影响</td><td>verified 72 → <b>75</b>；adopted 13、upgraded 10、failed 38、aborted 4、correction 3 <b>全部未变</b></td></tr>
+    <tr><td>提交与推送</td><td><code>16a2d3a</code> push 到 main；分支 <code>rsi/exp166-172-20261120</code> 从 <code>c89cc71</code> 快进到 <code>16a2d3a</code>；tag 保持 <code>c89cc71</code></td></tr>
+    <tr><td>CI</td><td>run <code>44783277805</code>：client 73s success / server 105s success（双绿）</td></tr>
+  </table>
+  <div class="note">
+    <b>裁定被回丢纠正三次，记录在案：</b>① 首版把字段写成 <code>id/type/summary/knownLimits</code>，与账本 schema 不符；② 二版把 exp166–168 说成「P1–P3」、exp169–170 说成「P4」，属轮次张冠李戴；③ 三版字段名误用 <code>status</code> 且缺 <code>strengthens/attribution/adoptedBy</code>。每轮均由代理核对源码与报告后回丢，未由代理代写结论。
+  </div>
+  <div class="note">
+    <b>一处代理笔误已纠正：</b>第 3 条累计文件数我在回丢题面里写成「2+2+33=37」，实际 exp171 无代码提交（0 文件），应为「2+33=35」。codelens 复核确认 35 后才落盘。
+  </div>
+</div>
+</body>
+</html>
