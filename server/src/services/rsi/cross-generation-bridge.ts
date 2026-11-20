@@ -23,6 +23,7 @@ import {
   adaptCrossGenerationVerdict,
   type UnifiedRsiConsumption,
 } from './cross-generation-adapter.js';
+import { buildConsistencyShadow } from './cross-generation-consistency.js';
 
 const BRIDGE_DEFINITION_VERSION = 'rsi-bridge.v1';
 const BRIDGE_RULES_VERSION = 'cross-generation-verdict.v1' as const;
@@ -233,7 +234,10 @@ export function loadPreviousGeneration(
  * 只经 recordSpan 回调试记轨迹：不改 result.state、不写 policy_rsi_runs、不阻断 π、不抛错。
  */
 interface RecordShadowAuditParams {
-  db: { get<T>(sql: string, params?: Array<string | number | null>): T | undefined } | undefined;
+  db: {
+    get<T>(sql: string, params?: Array<string | number | null>): T | undefined;
+    all?<T>(sql: string, params?: Array<string | number | null>): T[];
+  } | undefined;
   sessionId: string;
   result: RsiBridgeResult;
   traceId: string | null | undefined;
@@ -270,19 +274,36 @@ export function recordShadowAudit({
     const pg = row?.pg ?? null;
     const previous = loadPreviousGeneration(db, sessionId, cg ?? 0);
     const shadow = evaluateCrossGenerationShadow(previous, result);
+    // B 项：只读拉多代行重建一致性阴影视图（不写库、不阻断）。查询失败按空集降级，
+    // 不拖垮影子判决本身。明细上限 DETAIL_MAX=500，超限时省略此键保原 7 键完整。
+    const rows: Array<{ generation: number; ledger_path: string | null }> =
+      typeof db?.all === 'function'
+        ? db.all<{ generation: number; ledger_path: string | null }>(
+            'SELECT generation, ledger_path FROM policy_rsi_runs WHERE session_id = ? ORDER BY generation ASC',
+            [sessionId],
+          )
+        : [];
+    const consistencyShadow = buildConsistencyShadow(
+      rows.map((r) => ({ generation: r.generation, ledgerPath: r.ledger_path })),
+      shadow.verdict,
+    );
+    const detail = JSON.stringify({
+      state: shadow.state,
+      verdict: shadow.verdict,
+      source: shadow.source,
+      reason: shadow.reason,
+      hadPrevious: previous !== null,
+      pg,
+      cg,
+      consistencyShadow,
+    });
     recordSpan(traceId, {
       kind: 'judge',
       name: `跨代影子判决`,
       status: 'ok',
-      detail: JSON.stringify({
-        state: shadow.state,
-        verdict: shadow.verdict,
-        source: shadow.source,
-        reason: shadow.reason,
-        hadPrevious: previous !== null,
-        pg,
-        cg,
-      }),
+      detail: detail.length <= 500
+        ? detail
+        : JSON.stringify({ state: shadow.state, verdict: shadow.verdict, source: shadow.source, reason: shadow.reason, hadPrevious: previous !== null, pg, cg }),
     });
   } catch (err) {
     recordSpan(traceId, {

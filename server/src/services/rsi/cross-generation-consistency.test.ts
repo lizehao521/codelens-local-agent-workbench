@@ -108,3 +108,60 @@ describe('evaluateConsistency', () => {
     expect(r.violations.map((v) => v.invariant).sort()).toEqual(['INV-1', 'INV-3']);
   });
 });
+
+// ── B 项：一致性阴影视图（codelens exp167 裁定）──────────────────────────────
+import { buildConsistencyShadow, type ConsistencyShadowRow } from './cross-generation-consistency.js';
+
+function rows(...ledgerPaths: (string | null)[]): ConsistencyShadowRow[] {
+  return ledgerPaths.map((lp, i) => ({ generation: i + 1, ledgerPath: lp }));
+}
+
+describe('buildConsistencyShadow（B 项阴影旁路）', () => {
+  it('安全护栏：视图无 consistent 布尔、status 恒 partial、两条不可用判据固定列出', () => {
+    const v = buildConsistencyShadow(rows('a', 'b'), 'improved');
+    expect(v.status).toBe('partial');
+    expect(v).not.toHaveProperty('consistent');
+    expect(v.unavailableChecks).toEqual([
+      { inv: 'INV-1', cause: 'no_diff_text' },
+      { inv: 'INV-2', cause: 'evidence_level_unmapped' },
+    ]);
+  });
+
+  it('improved + 相邻两代 ledger_path 相同（零证据停滞）→ INV-3 warning + gens', () => {
+    const v = buildConsistencyShadow(rows('x', 'same', 'same'), 'improved');
+    expect(v.violations).toHaveLength(1);
+    expect(v.violations[0]).toMatchObject({ inv: 'INV-3', sev: 'warning' });
+    expect(v.violations[0]?.gens).toEqual([2, 3]);
+  });
+
+  it('improved + 相邻两代 ledger_path 不同 → 无 violation（INV-3 不误报）', () => {
+    const v = buildConsistencyShadow(rows('a', 'b', 'c'), 'improved');
+    expect(v.violations).toHaveLength(0);
+  });
+
+  it('not_improved + 零证据停滞 → 无 INV-3（improved 才触发）', () => {
+    const v = buildConsistencyShadow(rows('same', 'same'), 'not_improved');
+    expect(v.violations).toHaveLength(0);
+  });
+
+  it('refused → 空 violations（INV-4 前半短接），不可用清单仍在', () => {
+    const v = buildConsistencyShadow(rows('same', 'same'), 'refused');
+    expect(v.violations).toHaveLength(0);
+    expect(v.unavailableChecks).toHaveLength(2);
+  });
+
+  it('空数组 / 单行不抛错，无 violation', () => {
+    expect(buildConsistencyShadow([], 'improved').violations).toHaveLength(0);
+    expect(buildConsistencyShadow(rows('only'), 'improved').violations).toHaveLength(0);
+  });
+
+  it('乱序行按 generation 升序重排后再判停滞', () => {
+    const shuffled: ConsistencyShadowRow[] = [
+      { generation: 3, ledgerPath: 'same' },
+      { generation: 1, ledgerPath: 'a' },
+      { generation: 2, ledgerPath: 'same' },
+    ];
+    const v = buildConsistencyShadow(shuffled, 'improved');
+    expect(v.violations[0]?.gens).toEqual([2, 3]);
+  });
+});

@@ -358,4 +358,65 @@ describe('recordShadowAudit', () => {
     expect(detail.pg).toBeNull();
     expect(detail.hadPrevious).toBe(false);
   });
+
+  // B 项：一致性阴影视图（codelens exp167 裁定，只审计不驱动 rollback）。
+  it('B：db.all 提供多代行 → detail 含 consistencyShadow（无 consistent 布尔、两条不可用判据）', () => {
+    const { db, recordSpan, spans } = setup({
+      rows: [
+        { generation: 1, prev_generation: null, verdict: 'not_improved' },
+        { generation: 2, prev_generation: 1, verdict: 'improved' },
+      ],
+    });
+    const dbWithAll = {
+      ...db,
+      all<T>(sql: string): T[] {
+        if (sql.includes('ledger_path')) {
+          return [
+            { generation: 1, ledger_path: 'same' },
+            { generation: 2, ledger_path: 'same' },
+          ] as unknown as T[];
+        }
+        return [];
+      },
+    };
+    recordShadowAudit({ db: dbWithAll, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    const detail = JSON.parse(spans[0]!.span.detail!) as {
+      consistencyShadow?: { status: string; violations: unknown[]; unavailableChecks: unknown[]; consistent?: boolean };
+    };
+    expect(spans[0]!.span.status).toBe('ok');
+    expect(detail.consistencyShadow).toBeDefined();
+    expect(detail.consistencyShadow!.status).toBe('partial');
+    expect(detail.consistencyShadow!.consistent).toBeUndefined();
+    expect(detail.consistencyShadow!.unavailableChecks).toHaveLength(2);
+  });
+
+  it('B：db.all 缺失 → consistencyShadow 降级为空视图，不抛错、影子判决仍 ok', () => {
+    const { db, recordSpan, spans } = setup({ rows: [{ generation: 1, verdict: 'improved' }] });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    expect(spans[0]!.span.status).toBe('ok');
+    const detail = JSON.parse(spans[0]!.span.detail!) as { consistencyShadow?: { status: string } };
+    expect(detail.consistencyShadow?.status).toBe('partial');
+  });
+
+  it('B：detail 恒为合法 JSON 且不超 DETAIL_MAX=500（含 consistencyShadow 时）', () => {
+    const { db, recordSpan, spans } = setup({
+      rows: [
+        { generation: 1, prev_generation: null, verdict: 'not_improved' },
+        { generation: 2, prev_generation: 1, verdict: 'improved' },
+      ],
+    });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    expect(spans[0]!.span.status).toBe('ok');
+    const raw = spans[0]!.span.detail!;
+    expect(raw.length).toBeLessThanOrEqual(500);
+    const detail = JSON.parse(raw) as {
+      state: string; hadPrevious: boolean; pg: unknown; cg: unknown;
+      consistencyShadow?: { status: string };
+    };
+    expect(detail).toHaveProperty('state');
+    expect(detail).toHaveProperty('hadPrevious');
+    expect(detail).toHaveProperty('cg');
+    // 本 fixture reason 短，consistencyShadow 应保留；超长时降级分支由实现保证 7 键完整。
+    expect(detail.consistencyShadow?.status).toBe('partial');
+  });
 });

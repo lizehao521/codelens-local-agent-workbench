@@ -216,4 +216,47 @@ describe('parseShadowVerdict —— 跨代影子判决只读消费', () => {
     expect(v.outcome).toBe('failed');
     if (v.outcome === 'failed') expect(v.error).toContain('cg must be number or null');
   });
+
+  // B 项：consistencyShadow 可选键（对象浅校验透传，不污染 7 键）。
+  it('19. 无 consistencyShadow（历史 7 键 span）→ ok，视图无此键', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: true, pg: 1, cg: 2,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('ok');
+    expect(v).not.toHaveProperty('consistencyShadow');
+  });
+
+  it('20. consistencyShadow 为对象 → ok，原样透传', () => {
+    const cs = { status: 'partial', violations: [], unavailableChecks: [{ inv: 'INV-1' }] };
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: true, pg: 1, cg: 2, consistencyShadow: cs,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('ok');
+    if (v.outcome === 'ok') expect(v.consistencyShadow).toEqual(cs);
+  });
+
+  it('21. consistencyShadow 为数组/字符串/数字 → 不透传，7 键仍 ok', () => {
+    for (const bad of [[], 'x', 42]) {
+      const v = parseShadowVerdict([
+        span({
+          detail: JSON.stringify({
+            state: 'improved', verdict: 'improved', source: 'cross_generation',
+            reason: 'x', hadPrevious: true, consistencyShadow: bad,
+          }),
+        }),
+      ]);
+      expect(v.outcome).toBe('ok');
+      expect(v).not.toHaveProperty('consistencyShadow');
+    }
+  });
 });

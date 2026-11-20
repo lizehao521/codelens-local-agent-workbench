@@ -19,7 +19,7 @@
  */
 import type { CrossGenerationVerdictResult } from './cross-generation-verdict.js';
 import type { StallVerdict, DiffInput } from './cross-generation-stall.js';
-import { isZeroEffectiveDiff } from './cross-generation-stall.js';
+import { isZeroEffectiveDiff, evaluateStall, type GenerationRecord } from './cross-generation-stall.js';
 import type { OscillationAnalysis, RollbackDecision } from './cross-generation-oscillation.js';
 
 export type ConsistencySeverity = 'contradiction' | 'warning';
@@ -97,4 +97,94 @@ export function evaluateConsistency(input: ConsistencyInput): ConsistencyReport 
 
   const consistent = !violations.some((v) => v.severity === 'contradiction');
   return { consistent, violations };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// B 项一致性阴影视图（codelens exp167 裁定，代理核对落地）
+//
+// 定位：纯旁路、只读、只审计。在 recordShadowAudit 里用真实多代行重建唯一可判定
+// 判据 INV-3（improved ∧ 零证据停滞 → warning），其余两条按 codelens 裁定显式
+// 列为 unavailableChecks——绝不拿空 diff 或人造 evidenceLevel 冒充已检查。
+//
+// ★审计安全护栏（codelens Q1 硬条件）：视图【不直出 consistent 布尔】、顶层键叫
+//   consistencyShadow 而非 consistency——避免把「未检查」洗成「已通过」。
+//   INV-1 无 diff 文本、INV-2 的 evidenceLevel 跨类型映射悬置（snapshot 的
+//   partial/none 不在 EVIDENCE_LEVELS 值域里），两条恒不可用，固定列出。
+//
+// 不调用 evaluateConsistency 本体：它需要 5 个必填字段，而 latestDiff 传空串会被
+// isZeroEffectiveDiff 判为零 diff → improved 假阳性 INV-1。这里只复刻其 INV-3
+// 语义（stall.stopped），是单判据子集，不是完整一致性总判。
+// ────────────────────────────────────────────────────────────────────────────
+
+/** 多代行的最小投影（recordShadowAudit 从 policy_rsi_runs 只读查询得到）。 */
+export interface ConsistencyShadowRow {
+  readonly generation: number;
+  readonly ledgerPath: string | null;
+}
+
+export interface ConsistencyShadowViolation {
+  readonly inv: 'INV-3';
+  readonly sev: 'warning';
+  readonly gens: readonly number[];
+  readonly msg: string;
+}
+
+export interface ConsistencyShadowUnavailable {
+  readonly inv: 'INV-1' | 'INV-2';
+  readonly cause: 'no_diff_text' | 'evidence_level_unmapped';
+}
+
+/** 紧凑审计视图；status 恒 partial，永不含 consistent 布尔。 */
+export interface ConsistencyShadowView {
+  readonly status: 'partial';
+  readonly violations: readonly ConsistencyShadowViolation[];
+  readonly unavailableChecks: readonly ConsistencyShadowUnavailable[];
+}
+
+const SHADOW_UNAVAILABLE: readonly ConsistencyShadowUnavailable[] = [
+  { inv: 'INV-1', cause: 'no_diff_text' },
+  { inv: 'INV-2', cause: 'evidence_level_unmapped' },
+];
+
+/**
+ * 从多代真实行构造一致性阴影视图。
+ *
+ * @param rows 按任意顺序传入；内部按 generation 升序排序后交给 evaluateStall。
+ * @param verdict 当前代影子判决六值字符串（shadow.verdict）。
+ */
+export function buildConsistencyShadow(
+  rows: readonly ConsistencyShadowRow[],
+  verdict: string,
+): ConsistencyShadowView {
+  const unavailableChecks = SHADOW_UNAVAILABLE;
+  // INV-4 前半：refused 不做证据类判定，直接返回空 violations + 不可用清单。
+  if (verdict === 'refused') {
+    return { status: 'partial', violations: [], unavailableChecks };
+  }
+
+  const sorted = [...rows].sort((a, b) => a.generation - b.generation);
+  // 零证据停滞唯一可重建：level 恒 landed（toEvidenceLevel 对六值一律 landed）、
+  // artifactHash 用 ledger_path。failure/diff 无源，evaluateStall 的另两条判据恒不触发。
+  const history: GenerationRecord[] = sorted.map((r) => ({
+    evidence: {
+      level: 'landed',
+      ...(r.ledgerPath !== null ? { artifactHash: r.ledgerPath } : {}),
+    },
+  }));
+  const stall = evaluateStall(history);
+
+  const violations: ConsistencyShadowViolation[] = [];
+  if (verdict === 'improved' && stall.stopped && stall.evidenceChain.length >= 2) {
+    const gens = stall.evidenceChain
+      .slice(0, 2)
+      .map((idx) => sorted[idx]?.generation)
+      .filter((g): g is number => typeof g === 'number');
+    violations.push({
+      inv: 'INV-3',
+      sev: 'warning',
+      gens,
+      msg: 'improved+stall zero-evidence',
+    });
+  }
+  return { status: 'partial', violations, unavailableChecks };
 }

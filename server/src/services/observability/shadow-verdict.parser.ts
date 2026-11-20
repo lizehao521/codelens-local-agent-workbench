@@ -27,6 +27,12 @@ export interface ShadowVerdictOk {
   pg?: number | null;
   /** 当前代 generation（P3 起写入）。null=空表无当前代；undefined=历史 span 无此键。 */
   cg?: number | null;
+  /**
+   * B 项一致性阴影视图（可选）。parser 只做对象浅校验后原样透传，不解析内部结构，
+   * 避免 observability 层依赖 rsi 层类型；历史 span 无此键时为 undefined。
+   * 结构由 rsi/cross-generation-consistency 的 ConsistencyShadowView 定义。
+   */
+  consistencyShadow?: Record<string, unknown>;
 }
 
 /** 解析失败 / 不可判定。 */
@@ -130,6 +136,10 @@ export function parseShadowVerdict(spans: readonly TraceSpan[]): ShadowVerdictVi
     hadPrevious: obj.hadPrevious as boolean,
     pg: obj.pg === null || typeof obj.pg === 'number' ? obj.pg : undefined,
     cg: obj.cg === null || typeof obj.cg === 'number' ? obj.cg : undefined,
+    ...(obj.consistencyShadow !== undefined && typeof obj.consistencyShadow === 'object'
+      && obj.consistencyShadow !== null && !Array.isArray(obj.consistencyShadow)
+      ? { consistencyShadow: obj.consistencyShadow as Record<string, unknown> }
+      : {}),
     ...base,
   };
 }
