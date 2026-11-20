@@ -1,4 +1,7 @@
-// src/services/rsi/cross-generation-verdict.test.ts
+/**
+ * cross-generation-verdict：状态机与判决决策测试。
+ * 从 cross-generation-verdict.test.ts 拆出（结构棘轮 ≤300 行）。
+ */
 import { describe, expect, it } from 'vitest';
 import {
   CROSS_GENERATION_VERDICT_RULES_VERSION,
@@ -8,123 +11,17 @@ import {
   evaluateCrossGenerationVerdict,
   refuseCrossGenerationVerdict,
 } from './cross-generation-verdict.js';
-import type {
-  CrossGenerationVerdictInput,
-  GenerationIndicators,
-  IndicatorValue,
-} from './cross-generation-verdict.js';
-import type {
-  EvidenceLevel,
-  GenerationEvidence,
-  MetricDefinition,
-} from './cross-generation-contract.js';
-
-const primaryDefinition: MetricDefinition = {
-  id: 'test_pass_rate',
-  definitionVersion: 'pass-rate.v1',
-  direction: 'higher_is_better',
-  unit: 'ratio',
-};
-
-const guardDefinition: MetricDefinition = {
-  id: 'suite_floor_ratio',
-  definitionVersion: 'suite-floor.v1',
-  direction: 'higher_is_better',
-  unit: 'ratio',
-};
-
-const diagnosticDefinition: MetricDefinition = {
-  id: 'tool_success_rate',
-  definitionVersion: 'tool-success.v1',
-  direction: 'higher_is_better',
-  unit: 'ratio',
-};
-
-function indicator(
-  definition: MetricDefinition,
-  value: number,
-): IndicatorValue {
-  return { definition, value };
-}
-
-function indicators(
-  primary: number,
-  guard = 1,
-  diagnostic = 0.5,
-): GenerationIndicators {
-  return {
-    primary: indicator(primaryDefinition, primary),
-    guards: [indicator(guardDefinition, guard)],
-    diagnostics: [indicator(diagnosticDefinition, diagnostic)],
-  };
-}
-
-function evidence(level: EvidenceLevel): GenerationEvidence {
-  switch (level) {
-    case 'designed':
-      return { level };
-    case 'landed':
-      return { level, landedFilesHash: 'fixture-landed-files-hash' };
-    case 'targeted_passed':
-      return {
-        level,
-        landedFilesHash: 'fixture-landed-files-hash',
-        targetedTestCommand: 'fixture-targeted-test-command',
-      };
-    case 'full_suite_passed':
-      return {
-        level,
-        landedFilesHash: 'fixture-landed-files-hash',
-        targetedTestCommand: 'fixture-targeted-test-command',
-        fullSuiteCommand: 'fixture-full-suite-command',
-      };
-    case 'runtime_verified':
-      return {
-        level,
-        landedFilesHash: 'fixture-landed-files-hash',
-        targetedTestCommand: 'fixture-targeted-test-command',
-        fullSuiteCommand: 'fixture-full-suite-command',
-        runtimeEvidenceHash: 'fixture-runtime-evidence-hash',
-      };
-  }
-}
-
-function input(options: {
-  readonly previousPrimary?: number;
-  readonly nextPrimary?: number;
-  readonly previousGuard?: number;
-  readonly nextGuard?: number;
-  readonly previousDiagnostic?: number;
-  readonly nextDiagnostic?: number;
-  readonly previousLevel?: EvidenceLevel;
-  readonly nextLevel?: EvidenceLevel;
-  readonly previousIndicators?: GenerationIndicators;
-  readonly nextIndicators?: GenerationIndicators;
-} = {}): CrossGenerationVerdictInput {
-  return {
-    rulesVersion: CROSS_GENERATION_VERDICT_RULES_VERSION,
-    previous: {
-      indicators:
-        options.previousIndicators ??
-        indicators(
-          options.previousPrimary ?? 0.9,
-          options.previousGuard ?? 1,
-          options.previousDiagnostic ?? 0.5,
-        ),
-      evidence: evidence(options.previousLevel ?? 'landed'),
-    },
-    next: {
-      indicators:
-        options.nextIndicators ??
-        indicators(
-          options.nextPrimary ?? 0.91,
-          options.nextGuard ?? 1,
-          options.nextDiagnostic ?? 0.5,
-        ),
-      evidence: evidence(options.nextLevel ?? 'targeted_passed'),
-    },
-  };
-}
+import type { CrossGenerationVerdictInput } from './cross-generation-verdict.js';
+import type { EvidenceLevel, MetricDefinition } from './cross-generation-contract.js';
+import {
+  diagnosticDefinition,
+  evidence,
+  guardDefinition,
+  indicator,
+  indicators,
+  input,
+  primaryDefinition,
+} from './cross-generation-verdict.fixture.js';
 
 describe('cross-generation verdict state machine', () => {
   it('declares all four terminal verdict states and fail-closed transitions', () => {
@@ -293,46 +190,3 @@ describe('cross-generation verdict decision logic', () => {
   });
 });
 
-describe('cross-generation evidence anti-regression', () => {
-  it('rejects evidence regression from full_suite_passed to designed', () => {
-    expect(() =>
-      evaluateCrossGenerationVerdict(
-        input({ previousLevel: 'full_suite_passed', nextLevel: 'designed' }),
-      ),
-    ).toThrowError(expect.objectContaining({ code: 'EVIDENCE_REGRESSION' }));
-  });
-
-  it('rejects skipped evidence levels even when the primary improves', () => {
-    expect(() =>
-      evaluateCrossGenerationVerdict(
-        input({ previousLevel: 'designed', nextLevel: 'targeted_passed' }),
-      ),
-    ).toThrowError(expect.objectContaining({ code: 'EVIDENCE_LEVEL_SKIPPED' }));
-  });
-
-  it('uses the shared evidence transition contract for adjacent upgrades', () => {
-    const verdict = evaluateCrossGenerationVerdict(
-      input({ previousLevel: 'targeted_passed', nextLevel: 'full_suite_passed' }),
-    );
-    expect(verdict.verdict).toBe('improved');
-    expect(verdict.evidenceTransition).toMatchObject({ fromIndex: 2, toIndex: 3, ok: true });
-  });
-
-  it('rejects non-finite metrics and duplicate guards fail-closed', () => {
-    expect(() =>
-      evaluateCrossGenerationVerdict(
-        input({ previousIndicators: indicators(Number.NaN) }),
-      ),
-    ).toThrowError(CrossGenerationVerdictError);
-    expect(() =>
-      evaluateCrossGenerationVerdict(
-        input({
-          previousIndicators: {
-            primary: indicator(primaryDefinition, 0.9),
-            guards: [indicator(guardDefinition, 1), indicator(guardDefinition, 1)],
-          },
-        }),
-      ),
-    ).toThrowError(expect.objectContaining({ code: 'DUPLICATE_GUARD' }));
-  });
-});

@@ -2,185 +2,21 @@
  * P2′ 零进展停止模块
  *
  * 职责：
- *   1. 失败签名规范化（路径去前缀、行号归一、版本噪声归一、密钥脱敏）
+ *   1. 失败签名规范化（见 ./cross-generation-stall.signature.js）
  *   2. 连续两轮停止判定（同签名 / 零有效 diff / 零新增证据）
  *   3. 首轮总是 continue，不误停
  *
  * 硬约束：strict 无 any；import 用 .js；不改动 P0′/P1′ 文件。
+ * 拆分说明（结构棘轮：单文件 ≤300 行）：类型 → .types.js；签名规范化 → .signature.js；
+ * 下游 `from './cross-generation-stall.js'` 无需改动（原样 re-export）。
  */
 
-import type { EvidenceLevel, GenerationEvidence } from './cross-generation-contract.js';
-import type { CrossGenerationVerdict } from './cross-generation-verdict.js';
+import type { GenerationEvidence } from './cross-generation-contract.js';
+import { normalizeFailureSignature } from './cross-generation-stall.signature.js';
+import type { DiffInput, EvidenceSnapshot, GenerationRecord, StallVerdict } from './cross-generation-stall.types.js';
 
-// ---------------------------------------------------------------------------
-// 公开类型
-// ---------------------------------------------------------------------------
-
-/** 停止原因枚举 */
-export const STALL_REASONS = [
-  'signature_repeated',
-  'zero_diff',
-  'zero_evidence',
-  'none',
-] as const;
-export type StallReason = (typeof STALL_REASONS)[number];
-
-/** 单代失败输入（脱敏后的失败文本 + 结构化字段） */
-export interface FailureInput {
-  /** 脱敏后的原始失败文本（可含路径、行号、版本号、密钥——本模块负责规范化） */
-  readonly rawText: string;
-  /** 结构化错误类型（如 'TS2345'、'AssertionError'），可选 */
-  readonly errorType?: string;
-  /** 结构化错误消息主干，可选；若提供则优先于 rawText 提取 */
-  readonly message?: string;
-}
-
-/** 单代 diff 输入 */
-export interface DiffInput {
-  /** unified diff 文本或任意源码变更文本 */
-  readonly diffText: string;
-}
-
-/** 单代证据快照（用于零新增证据判定） */
-export interface EvidenceSnapshot {
-  readonly level: EvidenceLevel;
-  /** 产物 hash（landedFilesHash 或 runtimeEvidenceHash 等），可选 */
-  readonly artifactHash?: string;
-}
-
-/** 单代完整记录 */
-export interface GenerationRecord {
-  readonly failure?: FailureInput;
-  readonly diff?: DiffInput;
-  readonly evidence?: EvidenceSnapshot;
-}
-
-/** 停止判定结果 */
-export interface StallVerdict {
-  readonly stopped: boolean;
-  readonly reason: StallReason;
-  /** 人类可读说明 */
-  readonly detail: string;
-  /** 证据链引用：触发停止的两代索引（0-based），首轮为 [] */
-  readonly evidenceChain: readonly number[];
-  /** 关联的跨代判定（固定为 not_improved 或 undecidable） */
-  readonly crossGenerationVerdict: CrossGenerationVerdict;
-}
-
-// ---------------------------------------------------------------------------
-// 内部工具：密钥脱敏
-// ---------------------------------------------------------------------------
-
-/**
- * 对文本中的密钥模式进行脱敏替换。
- * 覆盖：Bearer token、sk-xxx、api_key=、password=、token=、Authorization header。
- */
-function redactSecrets(text: string): string {
-  return text
-    // Authorization: Bearer <token>
-    .replace(/(Authorization\s*:\s*Bearer\s+)[^\s,;"']+/gi, '$1[REDACTED]')
-    // sk-<key>
-    .replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[REDACTED_SK]')
-    // api_key=<value> 或 api_key: <value>
-    .replace(/(api_key\s*[=:]\s*)[^\s,;"']+/gi, '$1[REDACTED]')
-    // password=<value> 或 password: <value>
-    .replace(/(password\s*[=:]\s*)[^\s,;"']+/gi, '$1[REDACTED]')
-    // token=<value> 或 token: <value>（不含 Bearer 已处理的情况）
-    .replace(/(\btoken\s*[=:]\s*)[^\s,;"']+/gi, '$1[REDACTED]')
-    // secret=<value>
-    .replace(/(\bsecret\s*[=:]\s*)[^\s,;"']+/gi, '$1[REDACTED]');
-}
-
-// ---------------------------------------------------------------------------
-// 内部工具：路径规范化
-// ---------------------------------------------------------------------------
-
-/**
- * 将绝对路径规范化为相对路径主干。
- * 策略：去掉已知前缀（/workspace/...、/tmp/...、/home/... 等），
- * 保留从 src/ 或最后一个有意义目录开始的部分。
- * 若无法识别前缀，则保留路径最后两段。
- */
-function normalizePath(rawPath: string): string {
-  // 统一分隔符
-  const p = rawPath.replace(/\\/g, '/');
-  // 尝试截取 src/ 之后的部分
-  const srcMatch = p.match(/(?:^|\/)(src\/.+)$/);
-  if (srcMatch !== null && srcMatch[1] !== undefined) {
-    return srcMatch[1];
-  }
-  // 去掉常见绝对前缀
-  const stripped = p.replace(/^(?:\/(?:workspace|tmp|home|var|opt|usr|root|build|dist|out)\/[^\s]*?\/)+/, '');
-  if (stripped !== p && stripped.length > 0) {
-    return stripped;
-  }
-  // 兜底：取最后两段
-  const parts = p.split('/').filter((s) => s.length > 0);
-  if (parts.length >= 2) {
-    return parts.slice(-2).join('/');
-  }
-  return parts.join('/');
-}
-
-// ---------------------------------------------------------------------------
-// 内部工具：行号/列号归一
-// ---------------------------------------------------------------------------
-
-/** 将 file.ts:42:10 或 file.ts:42 中的行号列号替换为占位符 */
-function normalizeLineCol(text: string): string {
-  // 匹配 path:line:col 或 path:line（在路径上下文中）
-  return text.replace(/(\.[a-zA-Z]+):(\d+)(?::(\d+))?/g, (_m, ext: string) => `${ext}:LINE`);
-}
-
-// ---------------------------------------------------------------------------
-// 内部工具：版本号归一
-// ---------------------------------------------------------------------------
-
-/** 将 v1.2.3 / 1.2.3 等语义版本号替换为占位符 */
-function normalizeVersions(text: string): string {
-  return text.replace(/\bv?\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?\b/g, 'VERSION');
-}
-
-// ---------------------------------------------------------------------------
-// 轮1：失败签名规范化
-// ---------------------------------------------------------------------------
-
-/**
- * 对失败输入进行规范化，生成可比较的签名字符串。
- *
- * 处理步骤（顺序固定）：
- *   1. 密钥脱敏
- *   2. 路径去前缀
- *   3. 行号/列号归一
- *   4. 版本号归一
- *   5. 空白折叠
- *   6. 拼接 errorType + 规范化消息主干
- */
-export function normalizeFailureSignature(failure: FailureInput): string {
-  const rawMessage = failure.message ?? failure.rawText;
-
-  // 1. 密钥脱敏
-  let text = redactSecrets(rawMessage);
-
-  // 2. 路径去前缀：匹配类 Unix 绝对路径
-  text = text.replace(/(?:\/[^\s/]+)+\/[^\s:,]+/g, (match) => normalizePath(match));
-
-  // 3. 行号/列号归一
-  text = normalizeLineCol(text);
-
-  // 4. 版本号归一
-  text = normalizeVersions(text);
-
-  // 5. 空白折叠
-  text = text.replace(/\s+/g, ' ').trim();
-
-  // 6. 拼接 errorType 前缀
-  const prefix = failure.errorType !== undefined && failure.errorType.length > 0
-    ? `${failure.errorType}::`
-    : '';
-
-  return `${prefix}${text}`;
-}
+export * from './cross-generation-stall.types.js';
+export { normalizeFailureSignature } from './cross-generation-stall.signature.js';
 
 // ---------------------------------------------------------------------------
 // 轮2 辅助：零有效 diff 判定
@@ -364,3 +200,4 @@ export function evidenceSnapshotFromGenerationEvidence(
     ...(artifactHash !== undefined ? { artifactHash } : {}),
   };
 }
+
