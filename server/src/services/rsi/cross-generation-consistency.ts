@@ -18,7 +18,7 @@
  *                        后半「证据充分却 refused」因真实类型无「证据充分」字段，按裁定不实现。
  */
 import type { CrossGenerationVerdictResult } from './cross-generation-verdict.js';
-import type { StallVerdict, DiffInput } from './cross-generation-stall.js';
+import type { StallVerdict, DiffInput, FailureInput } from './cross-generation-stall.js';
 import { isZeroEffectiveDiff, evaluateStall, type GenerationRecord } from './cross-generation-stall.js';
 import type { OscillationAnalysis, RollbackDecision } from './cross-generation-oscillation.js';
 
@@ -120,6 +120,12 @@ export function evaluateConsistency(input: ConsistencyInput): ConsistencyReport 
 export interface ConsistencyShadowRow {
   readonly generation: number;
   readonly ledgerPath: string | null;
+  /**
+   * 该代失败证据（failure 第一阶段）。仅 status=complete/partial 且有样本时非空；
+   * null/缺省 = 无可用证据（含 ambiguous/unavailable），不得视为「无失败」。
+   * 供 evaluateStall 判定 1（signature_repeated）比对整代签名集合。
+   */
+  readonly failure?: FailureInput | null;
 }
 
 export interface ConsistencyShadowViolation {
@@ -163,13 +169,16 @@ export function buildConsistencyShadow(
   }
 
   const sorted = [...rows].sort((a, b) => a.generation - b.generation);
-  // 零证据停滞唯一可重建：level 恒 landed（toEvidenceLevel 对六值一律 landed）、
-  // artifactHash 用 ledger_path。failure/diff 无源，evaluateStall 的另两条判据恒不触发。
+  // 零证据停滞：level 恒 landed（toEvidenceLevel 对六值一律 landed）、artifactHash 用
+  // ledger_path。failure 第一阶段接入后，判定 1（signature_repeated）首次具备真实
+  // 数据输入；diff 仍无源，判定 2（zero_diff）不可用。★failure 只增强 stall 判定，
+  // 对 INV-2 是负向（其条件含 !stalled），绝不构成对 INV-2 的解锁。
   const history: GenerationRecord[] = sorted.map((r) => ({
     evidence: {
       level: 'landed',
       ...(r.ledgerPath !== null ? { artifactHash: r.ledgerPath } : {}),
     },
+    ...(r.failure !== undefined && r.failure !== null ? { failure: r.failure } : {}),
   }));
   const stall = evaluateStall(history);
 
@@ -183,7 +192,9 @@ export function buildConsistencyShadow(
       inv: 'INV-3',
       sev: 'warning',
       gens,
-      msg: 'improved+stall zero-evidence',
+      // 区分停滞来源：zero_evidence（ledger 相同）与 signature_repeated（failure 同签名）
+      // 是两条不同判据，审计消费者必须能分辨，不能统一写成 zero-evidence。
+      msg: `improved+stall ${stall.reason}`,
     });
   }
   return { status: 'partial', violations, unavailableChecks };

@@ -24,6 +24,12 @@ import {
   type UnifiedRsiConsumption,
 } from './cross-generation-adapter.js';
 import { buildConsistencyShadow } from './cross-generation-consistency.js';
+import {
+  collectFailureEvidence,
+  upsertFailureEvidence,
+  loadGenerationFailure,
+  type EvidenceDb,
+} from './generation-evidence.js';
 
 const BRIDGE_DEFINITION_VERSION = 'rsi-bridge.v1';
 const BRIDGE_RULES_VERSION = 'cross-generation-verdict.v1' as const;
@@ -274,6 +280,14 @@ export function recordShadowAudit({
     const pg = row?.pg ?? null;
     const previous = loadPreviousGeneration(db, sessionId, cg ?? 0);
     const shadow = evaluateCrossGenerationShadow(previous, result);
+    // failure 第一阶段（codelens exp168b 修正）：采集当前代 tool_calls 失败证据并幂等
+    // 落 rsi_generation_evidence。只读、不阻断；db 能力不足时内部自动降级为空证据。
+    // ★这只让 evaluateStall 判定 1（signature_repeated）首次可用，受益的是 INV-3；
+    //   对 INV-2 是负向（其条件含 !stalled），不构成解锁。
+    const evidenceDb = db as unknown as EvidenceDb | undefined;
+    if (evidenceDb) {
+      upsertFailureEvidence(evidenceDb, sessionId, collectFailureEvidence(evidenceDb, sessionId));
+    }
     // B 项：只读拉多代行重建一致性阴影视图（不写库、不阻断）。查询失败按空集降级，
     // 不拖垮影子判决本身。明细上限 DETAIL_MAX=500，超限时省略此键保原 7 键完整。
     const rows: Array<{ generation: number; ledger_path: string | null }> =
@@ -284,7 +298,11 @@ export function recordShadowAudit({
           )
         : [];
     const consistencyShadow = buildConsistencyShadow(
-      rows.map((r) => ({ generation: r.generation, ledgerPath: r.ledger_path })),
+      rows.map((r) => ({
+        generation: r.generation,
+        ledgerPath: r.ledger_path,
+        failure: evidenceDb ? loadGenerationFailure(evidenceDb, sessionId, r.generation) : null,
+      })),
       shadow.verdict,
     );
     const detail = JSON.stringify({
