@@ -135,10 +135,20 @@ export interface ConsistencyShadowViolation {
   readonly msg: string;
 }
 
+/**
+ * INV-1 的不可用原因（diff 乙阶段细分）：
+ *   no_diff_text      —— 未传 diff 覆盖度（历史调用/测试默认），等价于"没有 diff 数据"
+ *   diff_incomplete   —— 采到了部分 diff，但存在盲区（overwrite/sys-exec/mcp/超限）
+ *   diff_unavailable  —— 窗口不可用或参数截断，无法枚举"还有什么写"
+ * complete 时不列 INV-1：判定结果由 detail 的 diffGuard.z 承载，且本轮不 emit violation。
+ */
 export interface ConsistencyShadowUnavailable {
   readonly inv: 'INV-1' | 'INV-2';
-  readonly cause: 'no_diff_text' | 'evidence_level_unmapped';
+  readonly cause: 'no_diff_text' | 'diff_incomplete' | 'diff_unavailable' | 'evidence_level_unmapped';
 }
+
+/** 当前代 diff 覆盖度（来自 generation-diff.collectDiffEvidence）。 */
+export type DiffCoverage = 'complete' | 'partial' | 'unavailable' | 'not_attempted';
 
 /** 紧凑审计视图；status 恒 partial，永不含 consistent 布尔。 */
 export interface ConsistencyShadowView {
@@ -152,17 +162,31 @@ const SHADOW_UNAVAILABLE: readonly ConsistencyShadowUnavailable[] = [
   { inv: 'INV-2', cause: 'evidence_level_unmapped' },
 ];
 
+/** 按覆盖度构造不可用清单：只有 complete 才把 INV-1 移出（其结果由 diffGuard 承载）。 */
+function unavailableFor(coverage?: DiffCoverage): readonly ConsistencyShadowUnavailable[] {
+  if (coverage === 'complete') return [{ inv: 'INV-2', cause: 'evidence_level_unmapped' }];
+  if (coverage === undefined) return SHADOW_UNAVAILABLE;
+  const cause = coverage === 'partial' ? 'diff_incomplete' : 'diff_unavailable';
+  return [
+    { inv: 'INV-1', cause },
+    { inv: 'INV-2', cause: 'evidence_level_unmapped' },
+  ];
+}
+
 /**
  * 从多代真实行构造一致性阴影视图。
  *
  * @param rows 按任意顺序传入；内部按 generation 升序排序后交给 evaluateStall。
  * @param verdict 当前代影子判决六值字符串（shadow.verdict）。
+ * @param diffCoverage 当前代 diff 覆盖度（乙阶段）。缺省=没有 diff 数据，
+ *        INV-1 记 no_diff_text；partial/unavailable 分别记对应 cause。
  */
 export function buildConsistencyShadow(
   rows: readonly ConsistencyShadowRow[],
   verdict: string,
+  diffCoverage?: DiffCoverage,
 ): ConsistencyShadowView {
-  const unavailableChecks = SHADOW_UNAVAILABLE;
+  const unavailableChecks = unavailableFor(diffCoverage);
   // INV-4 前半：refused 不做证据类判定，直接返回空 violations + 不可用清单。
   if (verdict === 'refused') {
     return { status: 'partial', violations: [], unavailableChecks };

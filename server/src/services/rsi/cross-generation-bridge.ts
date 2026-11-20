@@ -23,13 +23,18 @@ import {
   adaptCrossGenerationVerdict,
   type UnifiedRsiConsumption,
 } from './cross-generation-adapter.js';
-import { buildConsistencyShadow } from './cross-generation-consistency.js';
+import { buildConsistencyShadow, type DiffCoverage } from './cross-generation-consistency.js';
 import {
   collectFailureEvidence,
   upsertFailureEvidence,
   loadGenerationFailure,
   type EvidenceDb,
 } from './generation-evidence.js';
+import {
+  collectDiffEvidence,
+  upsertDiffEvidence,
+  buildDiffGuard,
+} from './generation-diff.js';
 
 const BRIDGE_DEFINITION_VERSION = 'rsi-bridge.v1';
 const BRIDGE_RULES_VERSION = 'cross-generation-verdict.v1' as const;
@@ -285,8 +290,16 @@ export function recordShadowAudit({
     // ★这只让 evaluateStall 判定 1（signature_repeated）首次可用，受益的是 INV-3；
     //   对 INV-2 是负向（其条件含 !stalled），不构成解锁。
     const evidenceDb = db as unknown as EvidenceDb | undefined;
+    let diffGuard: ReturnType<typeof buildDiffGuard> | null = null;
+    let diffCoverage: DiffCoverage | undefined;
     if (evidenceDb) {
       upsertFailureEvidence(evidenceDb, sessionId, collectFailureEvidence(evidenceDb, sessionId));
+      // diff 乙阶段：从 tool_calls.args_json 操作级重建（只通数据，不解封 INV-1）。
+      // 采集与 failure 共用同一窗口；upsert 幂等；内部任何异常静默降级为空证据。
+      const diff = collectDiffEvidence(evidenceDb, sessionId);
+      upsertDiffEvidence(evidenceDb, sessionId, diff);
+      diffCoverage = diff.status;
+      diffGuard = buildDiffGuard(diff, shadow.verdict);
     }
     // B 项：只读拉多代行重建一致性阴影视图（不写库、不阻断）。查询失败按空集降级，
     // 不拖垮影子判决本身。明细上限 DETAIL_MAX=500，超限时省略此键保原 7 键完整。
@@ -304,6 +317,7 @@ export function recordShadowAudit({
         failure: evidenceDb ? loadGenerationFailure(evidenceDb, sessionId, r.generation) : null,
       })),
       shadow.verdict,
+      diffCoverage,
     );
     const detail = JSON.stringify({
       state: shadow.state,
@@ -314,6 +328,7 @@ export function recordShadowAudit({
       pg,
       cg,
       consistencyShadow,
+      ...(diffGuard !== null ? { diffGuard } : {}),
     });
     recordSpan(traceId, {
       kind: 'judge',

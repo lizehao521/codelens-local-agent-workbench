@@ -35,7 +35,7 @@ export interface CurrentRunRow {
   readonly judge_run_id: number;
 }
 
-function loadCurrentRun(db: EvidenceDb, sessionId: string): CurrentRunRow | undefined {
+export function loadCurrentRun(db: EvidenceDb, sessionId: string): CurrentRunRow | undefined {
   return db.get<CurrentRunRow>(
     `SELECT id, generation, judge_run_id FROM policy_rsi_runs
       WHERE session_id = ? ORDER BY generation DESC LIMIT 1`,
@@ -44,7 +44,7 @@ function loadCurrentRun(db: EvidenceDb, sessionId: string): CurrentRunRow | unde
 }
 
 /** 指定代的 judge_run.created_at；代行或 judge 行缺失时返回 null。 */
-function loadGenerationAnchor(db: EvidenceDb, sessionId: string, generation: number): number | null {
+export function loadGenerationAnchor(db: EvidenceDb, sessionId: string, generation: number): number | null {
   if (generation <= 0) return null;
   const row = db.get<{ created_at: number | null }>(
     `SELECT j.created_at AS created_at
@@ -56,7 +56,7 @@ function loadGenerationAnchor(db: EvidenceDb, sessionId: string, generation: num
 }
 
 /** 窗口内是否夹了别的代（重叠/并发 → 归属不唯一）。 */
-function hasOverlappingGeneration(
+export function hasOverlappingGeneration(
   db: EvidenceDb,
   sessionId: string,
   generation: number,
