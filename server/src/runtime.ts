@@ -105,6 +105,8 @@ export interface CreateRuntimeOptions {
   upstreamTimeoutMs?: number;
   /** 测试注入：覆盖上游重试次数（默认取 env UPSTREAM_MAX_RETRIES）。 */
   upstreamMaxRetries?: number;
+  /** 测试注入：覆盖可观测面开关（默认取 env OBSERVABILITY_ENABLED）；生产不传，行为不变。 */
+  observabilityEnabled?: boolean;
 }
 
 export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
@@ -125,8 +127,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   }
   const db = createDb(dbPath);
   db.exec(SCHEMA_SQL);
-  // 增量迁移必须在任何仓储/服务构造前跑完：旧库（无 parent_run）在补列之前
-  // 任何 `INSERT ... parent_run` 都会直接报 no such column。
+  // 增量迁移必须在任何仓储/服务构造前跑完：旧库（无 parent_run）在补列之前，任何 `INSERT ... parent_run` 都会直接报 no such column。
   applyMigrations(db);
 
   const sessions = new SessionRepository(db);
@@ -142,16 +143,14 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   registry.registerAll(BUILTIN_TOOLS);
 
   const abortRegistry = new AbortRegistry();
-  // 服务关闭信号：SIGTERM/SIGINT → close() 时取消所有在途 run（含能力探测/上游流），
-  // 让进程退出不依赖上游超时。
+  // 服务关闭信号：SIGTERM/SIGINT → close() 时取消所有在途 run（含能力探测/上游流），让进程退出不依赖上游超时。
   const shutdownController = new AbortController();
   // 超时/重试可配：自建网关实测有 >120s 无响应的情况，固定 60s 首包超时是必要的下限。
   const adapter = new OpenAICompatibleAdapter({
     timeoutMs: opts.upstreamTimeoutMs ?? config.upstreamTimeoutMs,
     retries: opts.upstreamMaxRetries ?? config.upstreamMaxRetries,
   });
-  // 工作区快照服务：构造顺序上必须在 approvalService 之前 —— 审批的后果预览
-  // 需要读 checkpoint.enabled 判断 overwrite 是否可恢复。
+  // 工作区快照服务：构造顺序上必须在 approvalService 之前 —— 审批的后果预览需要读 checkpoint.enabled 判断 overwrite 是否可恢复。
   const checkpointService = new CheckpointService({
     db,
     sandboxRoot: config.sandboxRoot,
@@ -194,8 +193,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   });
   const policy = new UpdateService(db, judge.repository);
   judge.setThresholdsProvider(() => policy.getPolicy().thresholds);
-  // 注入预算与排序依据：存储侧最多 50 条，注入侧按预算裁剪并按有效性排序。
-  // effectiveness() 返回 LessonEffectiveness（含 passRate 等展示字段），
+  // 注入预算与排序依据：存储侧最多 50 条，注入侧按预算裁剪并按有效性排序。effectiveness() 返回 LessonEffectiveness（含 passRate 等展示字段），
   // 这里只取排序需要的原始计数 —— 排序用计数，不用平滑前的比率。
   policy.setInjectionBudget({
     maxLessons: config.policyInjectMaxLessons,
@@ -209,14 +207,15 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
       injected: row.injected,
     })),
   );
-  // RSI L1 旁路对账：从 agentDbPath 的目录推导账本存储位置。
-  // 内存库（:memory:）无目录，RSI bridge 跳过 —— 它的账本文件本来就无处可放。
+  // RSI L1 旁路对账：从 agentDbPath 的目录推导账本存储位置；内存库（:memory:）无目录，RSI bridge 跳过 —— 它的账本文件本来就无处可放。
   const dbDir = path.dirname(dbPath);
   const rsi = dbPath !== ':memory:'
     ? new RsiBridgeService({ db, dbDir, krsiPath: process.env.KRSI_BIN_PATH })
     : undefined;
   // 运行轨迹服务（可观测面）：构造顺序上必须早于 loop —— loop 要往里写 span。
-  const traceService = new TraceService({ db, enabled: config.observabilityEnabled });
+  // 开关只解析一次：TraceService 与能力目录读同一值，避免注入测试时两处口径打架。
+  const observabilityEnabled = opts.observabilityEnabled ?? config.observabilityEnabled;
+  const traceService = new TraceService({ db, enabled: observabilityEnabled });
   // 独立复核：不可逆调用同步等结论，可逆调用并行回填；每次调用记录真实 token/耗时。
   const reviewService = new ReviewService(db, { timeoutMs: 15_000 });
   // 保留策略：每次 run 收尾后按 20 run / 200 MB 淘汰最老的正文（pinned 永不淘汰）。
@@ -386,7 +385,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
       },
     },
     trial: { enabled: config.trialModeEnabled, serverKeyConfigured: config.serverApiKey.length > 0 },
-    observabilityEnabled: config.observabilityEnabled,
+    observabilityEnabled,
     checkpointEnabled: config.checkpointEnabled,
     skillLibraryEnabled: config.skillLibraryEnabled,
     approval: { enabled: true },

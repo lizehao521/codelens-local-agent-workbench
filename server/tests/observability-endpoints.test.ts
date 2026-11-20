@@ -5,6 +5,9 @@
 // （capability-registry / trace.service / skill-library / checkpoint.service）；
 // 本文件只回答另一个问题——**装配层有没有把它们正确接上线**。
 // 装配层的错（漏挂路由、字段名对不上、闸门顺序反了）单测是看不见的。
+//
+// P4：shadowVerdict 的 ok/failed 态也在本文件端到端覆盖（observabilityEnabled 注入的
+// runtime 真实写 span → createApp 同一实例 → 端点解析透出），不再只验 absent。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
@@ -125,5 +128,76 @@ describe('可观测面端点接线（能力目录 / 轨迹 / 技能库 / 工作�
 
     expect(res.body).not.toHaveProperty('shadowVerdict');
     expect(res.body.traces).toEqual([]);
+  });
+
+  // P4：observability 开启时 shadowVerdict 的 ok / failed 态端到端覆盖。
+  // 与上面 absent 用例互补：这里真实写 span（同一 runtime 实例 → createApp 读同一份库）。
+  it('GET /api/v1/traces?traceId=xxx observability 开启时透出 ok 态（7 键完整）', async () => {
+    const obsRuntime = createRuntime({
+      dbPath: path.join(tmpRoot, 'observability-shadow-ok.db'),
+      observabilityEnabled: true,
+    });
+    try {
+      const trace = obsRuntime.traceService.startTrace('shadow-ok-session', 'shadow-ok');
+      expect(trace).not.toBeNull();
+      const detail = {
+        state: 'improved',
+        verdict: 'improved',
+        source: 'cross_generation',
+        reason: 'fixture',
+        hadPrevious: true,
+        pg: 1,
+        cg: 2,
+      };
+      obsRuntime.traceService.recordSpan(trace!.traceId, {
+        kind: 'judge',
+        name: '跨代影子判决',
+        status: 'ok',
+        detail: JSON.stringify(detail),
+      });
+      obsRuntime.traceService.endTrace(trace!.traceId, 'ok');
+
+      const app = createApp({ runtime: obsRuntime, autoStartModelSync: false });
+      const res = await request(app)
+        .get(`/api/v1/traces?traceId=${encodeURIComponent(trace!.traceId)}`)
+        .expect(200);
+
+      expect(res.body.enabled).toBe(true);
+      expect(res.body.spans).toHaveLength(1);
+      expect(res.body.shadowVerdict).toMatchObject({ outcome: 'ok', ...detail });
+      expect(typeof res.body.shadowVerdict.spanId).toBe('string');
+      expect(res.body.shadowVerdict.traceId).toBe(trace!.traceId);
+    } finally {
+      await obsRuntime.close();
+    }
+  });
+
+  it('GET /api/v1/traces?traceId=xxx observability 开启时非法 detail 透出 failed 态', async () => {
+    const obsRuntime = createRuntime({
+      dbPath: path.join(tmpRoot, 'observability-shadow-failed.db'),
+      observabilityEnabled: true,
+    });
+    try {
+      const trace = obsRuntime.traceService.startTrace('shadow-failed-session', 'shadow-failed');
+      expect(trace).not.toBeNull();
+      obsRuntime.traceService.recordSpan(trace!.traceId, {
+        kind: 'judge',
+        name: '跨代影子判决',
+        status: 'ok',
+        detail: '{invalid-json',
+      });
+      obsRuntime.traceService.endTrace(trace!.traceId, 'ok');
+
+      const app = createApp({ runtime: obsRuntime, autoStartModelSync: false });
+      const res = await request(app)
+        .get(`/api/v1/traces?traceId=${encodeURIComponent(trace!.traceId)}`)
+        .expect(200);
+
+      expect(res.body.shadowVerdict.outcome).toBe('failed');
+      expect(typeof res.body.shadowVerdict.error).toBe('string');
+      expect(res.body.spans).toHaveLength(1);
+    } finally {
+      await obsRuntime.close();
+    }
   });
 });
