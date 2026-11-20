@@ -13,6 +13,7 @@
 
 import type { Request, Response } from 'express';
 import type { TraceService } from '../services/observability/trace.service.js';
+import { parseShadowVerdict } from '../services/observability/shadow-verdict.parser.js';
 
 export class TracesController {
   constructor(private readonly service: TraceService) {}
@@ -24,7 +25,8 @@ export class TracesController {
     // 视为未指定 —— 没有哪条轨迹能同时是两条。
     const rawTraceId = typeof req.query.traceId === 'string' ? req.query.traceId.trim() : '';
     if (rawTraceId) {
-      res.json({ enabled, traceId: rawTraceId, spans: this.service.getSpans(rawTraceId) });
+      const spans = this.service.getSpans(rawTraceId);
+      res.json({ enabled, traceId: rawTraceId, spans, shadowVerdict: parseShadowVerdict(spans) });
       return;
     }
 

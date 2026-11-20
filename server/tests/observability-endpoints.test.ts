@@ -107,4 +107,23 @@ describe('可观测面端点接线（能力目录 / 轨迹 / 技能库 / 工作�
     // 技能库有 DELETE（删除条目），因此它应当被路由接受而非 404。
     expect([200, 400, 404, 409]).toContain(deleteSkills.status);
   });
+
+  // P2：traces 明细分支透传跨代判决 shadowVerdict（只读接线，ok/failed 态由 parser 单测覆盖）。
+  it('GET /api/v1/traces?traceId=xxx 明细分支带 shadowVerdict（无判决 span → absent）', async () => {
+    const app = createApp({ runtime, autoStartModelSync: false });
+    // observability 默认关闭，getSpans 对不存在的 traceId 返回 [] → parser 返回 absent。
+    const res = await request(app).get('/api/v1/traces?traceId=nonexistent-trace-id').expect(200);
+
+    expect(res.body.shadowVerdict).toBeDefined();
+    expect(res.body.shadowVerdict.outcome).toBe('absent');
+    expect(Array.isArray(res.body.spans)).toBe(true);
+  });
+
+  it('GET /api/v1/traces limit 分支不含 shadowVerdict 字段（向后兼容）', async () => {
+    const app = createApp({ runtime, autoStartModelSync: false });
+    const res = await request(app).get('/api/v1/traces').expect(200);
+
+    expect(res.body).not.toHaveProperty('shadowVerdict');
+    expect(res.body.traces).toEqual([]);
+  });
 });
