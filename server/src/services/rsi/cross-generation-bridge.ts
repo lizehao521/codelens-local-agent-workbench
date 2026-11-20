@@ -178,13 +178,21 @@ export function evaluateCrossGenerationShadow(
  * 只读辅助：从 policy_rsi_runs 上一代审计行重建 RsiBridgeResult，供影子判决作 previous。
  * 列名来自 schema.ts policy_rsi_runs 真实定义；无 db / 无上一代 / 解析失败都返回 null。
  * 这是本模块唯一的 IO 辅助，核心 evaluateCrossGenerationShadow 仍是纯函数。
+ *
+ * beforeGeneration（可选）：排除 generation >= 该值的最新行。影子判决接线处
+ * compare() 已先把当前代(N+1)落库，若取最新行会拿到当前代自己 → previous≡next
+ * 恒无意义。传入逻辑当前代后，用 `generation < ?` 稳定取真上一代：当前代已落库
+ * 时排除之取 N；未落库时上一代天然满足谓词。禁用 OFFSET 1（未落库路径会错取 N-1）。
+ * 不传时保持原语义（取最新行），向后兼容。
  */
 export function loadPreviousGeneration(
   db: { get<T>(sql: string, params?: Array<string | number | null>): T | undefined } | undefined,
   sessionId: string,
+  beforeGeneration?: number,
 ): RsiBridgeResult | null {
   if (!db) return null;
   try {
+    const useExclusion = typeof beforeGeneration === 'number';
     const row = db.get<{
       verdict: string;
       exit_code: number | null;
@@ -192,11 +200,16 @@ export function loadPreviousGeneration(
       metrics_json: string | null;
       ledger_path: string;
     }>(
-      `SELECT verdict, exit_code, reasons_json, metrics_json, ledger_path
-         FROM policy_rsi_runs
-        WHERE session_id = ?
-        ORDER BY generation DESC LIMIT 1`,
-      [sessionId],
+      useExclusion
+        ? `SELECT verdict, exit_code, reasons_json, metrics_json, ledger_path
+             FROM policy_rsi_runs
+            WHERE session_id = ? AND generation < ?
+            ORDER BY generation DESC LIMIT 1`
+        : `SELECT verdict, exit_code, reasons_json, metrics_json, ledger_path
+             FROM policy_rsi_runs
+            WHERE session_id = ?
+            ORDER BY generation DESC LIMIT 1`,
+      useExclusion ? [sessionId, beforeGeneration] : [sessionId],
     );
     if (!row) return null;
     return {
