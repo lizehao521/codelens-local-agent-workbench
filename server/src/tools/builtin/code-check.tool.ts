@@ -1,11 +1,22 @@
 /** code.check — 只解析不执行的 TypeScript 语法检查。 */
 
-import { stripTypeScriptTypes } from 'node:module';
 import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
 import { resolveInSandboxAsync } from './path-jail.js';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
 
 const SUPPORTED_EXT = new Set(['.ts', '.tsx', '.mts', '.cts']);
+
+interface SyntaxErrorInfo {
+  line: number;
+  column: number;
+  frame: string;
+  message: string;
+}
+
+interface SourceFileWithParseDiagnostics {
+  readonly parseDiagnostics?: readonly ts.Diagnostic[];
+}
 
 function countLines(src: string): number {
   if (src.length === 0) return 0;
@@ -14,35 +25,47 @@ function countLines(src: string): number {
   return lines.length;
 }
 
-function extractErrorInfo(err: unknown, src: string): { line: number; column: number; frame: string } {
-  const stack = err instanceof Error ? (err.stack ?? '') : '';
-  let line = 1;
-  for (const l of stack.split('\n')) {
-    const m = /^\s*:(\d+)\s*$/.exec(l);
-    if (m) {
-      line = parseInt(m[1]!, 10);
-      break;
-    }
+function scriptKindForPath(path: string): ts.ScriptKind {
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+  switch (ext) {
+    case '.tsx':
+      return ts.ScriptKind.TSX;
+    case '.mts':
+    case '.cts':
+    case '.ts':
+      return ts.ScriptKind.TS;
+    default:
+      return ts.ScriptKind.Unknown;
   }
-  const srcLines = src.split('\n');
-  const frame = srcLines[line - 1] ?? '';
+}
 
-  // 从 stack 中找只由空格与 ^ 组成的指示行，^ 前空格数 + 1 即出错列（1-based）。
-  let column = 1;
-  for (const l of stack.split('\n')) {
-    if (/^[ \t]*\^+[ \t]*$/.test(l)) {
-      const caretIdx = l.indexOf('^');
-      if (caretIdx >= 0) {
-        column = caretIdx + 1;
-      }
-      break;
-    }
-  }
-  // 列号必须是 1..该行长度+1 之间的真实值，否则退回 1。
-  if (column < 1 || column > frame.length + 1) {
-    column = 1;
-  }
-  return { line, column, frame };
+function inspectSyntax(src: string, path: string): SyntaxErrorInfo | null {
+  const sourceFile = ts.createSourceFile(
+    path,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKindForPath(path),
+  );
+  const diagnostics = (
+    sourceFile as unknown as SourceFileWithParseDiagnostics
+  ).parseDiagnostics;
+  const diagnostic = diagnostics?.[0];
+  if (diagnostic === undefined) return null;
+
+  const start = diagnostic.start;
+  const position = start === undefined
+    ? { line: 0, character: 0 }
+    : sourceFile.getLineAndCharacterOfPosition(start);
+  const line = position.line + 1;
+  const column = position.character + 1;
+  const frame = src.split('\n')[position.line] ?? '';
+  return {
+    line,
+    column,
+    frame,
+    message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+  };
 }
 
 export const codeCheckTool: ToolDefinition = {
@@ -97,19 +120,21 @@ export const codeCheckTool: ToolDefinition = {
       };
     }
 
-    try {
-      stripTypeScriptTypes(src, { mode: 'strip' });
-    } catch (err) {
-      const info = extractErrorInfo(err, src);
+    const syntaxError = inspectSyntax(src, path);
+    if (syntaxError !== null) {
       return {
         ok: false,
         summary: '语法错误',
         error: {
           code: 'SYNTAX_ERROR',
           kind: 'invalid_args',
-          message: err instanceof Error ? err.message : String(err),
+          message: syntaxError.message,
         },
-        data: { line: info.line, column: info.column, frame: info.frame },
+        data: {
+          line: syntaxError.line,
+          column: syntaxError.column,
+          frame: syntaxError.frame,
+        },
       };
     }
 
