@@ -12,7 +12,7 @@
 
 import type { TraceSpan, TraceSpanStatus } from './trace.service.js';
 
-/** 解析成功时的判决视图（对应已写入的 5 短键）。 */
+/** 解析成功时的判决视图（对应已写入的 5 必需键 + P3 新增的 2 可选键）。 */
 export interface ShadowVerdictOk {
   outcome: 'ok';
   state: string;
@@ -23,6 +23,10 @@ export interface ShadowVerdictOk {
   spanId: string;
   traceId: string;
   createdAt: number;
+  /** 上一代 generation（P3 起写入）。null=第一代无前世；undefined=历史 span 无此键。 */
+  pg?: number | null;
+  /** 当前代 generation（P3 起写入）。null=空表无当前代；undefined=历史 span 无此键。 */
+  cg?: number | null;
 }
 
 /** 解析失败 / 不可判定。 */
@@ -109,6 +113,14 @@ export function parseShadowVerdict(spans: readonly TraceSpan[]): ShadowVerdictVi
     }
   }
 
+  // P3 可选键：存在才校验（历史 span 无 pg/cg 必须继续可解析，不得判 failed）。
+  for (const key of ['pg', 'cg'] as const) {
+    const value = obj[key];
+    if (value !== undefined && value !== null && typeof value !== 'number') {
+      return { outcome: 'failed', error: `${key} must be number or null`, ...base };
+    }
+  }
+
   return {
     outcome: 'ok',
     state: obj.state as string,
@@ -116,6 +128,8 @@ export function parseShadowVerdict(spans: readonly TraceSpan[]): ShadowVerdictVi
     source: obj.source as string,
     reason: obj.reason as string,
     hadPrevious: obj.hadPrevious as boolean,
+    pg: obj.pg === null || typeof obj.pg === 'number' ? obj.pg : undefined,
+    cg: obj.cg === null || typeof obj.cg === 'number' ? obj.cg : undefined,
     ...base,
   };
 }

@@ -254,16 +254,17 @@ describe('loadPreviousGeneration', () => {
  */
 describe('recordShadowAudit', () => {
   type Span = { kind: string; name: string; status?: string; detail?: string; durationMs?: number };
-  function setup(opts: { rows?: Array<{ generation: number; verdict: string }>; throwOnGet?: boolean } = {}) {
+  function setup(opts: { rows?: Array<{ generation: number; prev_generation?: number | null; verdict: string }>; throwOnGet?: boolean } = {}) {
     const spans: Array<{ traceId: string | null | undefined; span: Span }> = [];
     const recordSpan = vi.fn((traceId: string | null | undefined, span: Span) => spans.push({ traceId, span }));
     const db = {
       get<T>(sql: string, params?: Array<string | number | null>): T | undefined {
         if (opts.throwOnGet) throw new Error('db down');
-        // 模拟 MAX(generation) 查询：返回库内最大代
-        if (sql.includes('MAX(generation)')) {
-          const max = (opts.rows ?? []).reduce((m, r) => Math.max(m, r.generation), 0);
-          return { g: max } as unknown as T;
+        // 模拟「取最新行的 generation 与其 prev_generation」查询（recordShadowAudit 的取数）
+        if (sql.includes('prev_generation AS pg')) {
+          const latest = (opts.rows ?? []).slice().sort((a, b) => b.generation - a.generation)[0];
+          if (!latest) return undefined;
+          return { cg: latest.generation, pg: latest.prev_generation ?? null } as unknown as T;
         }
         // 模拟 loadPreviousGeneration 的 SELECT：generation < curGen 取最新
         if (sql.includes('generation <')) {
@@ -324,5 +325,37 @@ describe('recordShadowAudit', () => {
   it('db 为 undefined → 不抛，仍记一条 error span（异常隔离）', () => {
     const recordSpan = vi.fn((_t: string | null | undefined, _s: Span) => {});
     expect(() => recordShadowAudit({ db: undefined, sessionId: 's1', result: next, traceId: 't1', recordSpan })).not.toThrow();
+  });
+
+  // P3：detail 增加 pg/cg 两键（依据哪两代），CG 取当前代、PG 取该代 prev_generation 列。
+  it('跨代（gen=1←null，gen=2←1）→ detail 含 cg=2, pg=1', () => {
+    const { db, recordSpan, spans } = setup({
+      rows: [
+        { generation: 1, prev_generation: null, verdict: 'not_improved' },
+        { generation: 2, prev_generation: 1, verdict: 'improved' },
+      ],
+    });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    const detail = JSON.parse(spans[0]!.span.detail!) as { cg: number | null; pg: number | null; hadPrevious: boolean };
+    expect(detail.cg).toBe(2);
+    expect(detail.pg).toBe(1);
+    expect(detail.hadPrevious).toBe(true);
+  });
+
+  it('第一代（gen=1，prev_generation=null）→ detail 含 cg=1, pg=null', () => {
+    const { db, recordSpan, spans } = setup({ rows: [{ generation: 1, prev_generation: null, verdict: 'improved' }] });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    const detail = JSON.parse(spans[0]!.span.detail!) as { cg: number | null; pg: number | null };
+    expect(detail.cg).toBe(1);
+    expect(detail.pg).toBeNull();
+  });
+
+  it('空表 → detail 含 cg=null, pg=null（不伪报第 0 代）', () => {
+    const { db, recordSpan, spans } = setup({ rows: [] });
+    recordShadowAudit({ db, sessionId: 's1', result: next, traceId: 't1', recordSpan });
+    const detail = JSON.parse(spans[0]!.span.detail!) as { cg: number | null; pg: number | null; hadPrevious: boolean };
+    expect(detail.cg).toBeNull();
+    expect(detail.pg).toBeNull();
+    expect(detail.hadPrevious).toBe(false);
   });
 });

@@ -132,4 +132,88 @@ describe('parseShadowVerdict —— 跨代影子判决只读消费', () => {
     expect(v.outcome).toBe('failed');
     if (v.outcome === 'failed') expect(v.error).toContain('not a plain object');
   });
+
+  // ── P3：pg/cg 可选键（依据哪两代） ──
+  it('13. 含 pg/cg → ok，两值正确透出', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: true, pg: 1, cg: 2,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('ok');
+    if (v.outcome === 'ok') {
+      expect(v.pg).toBe(1);
+      expect(v.cg).toBe(2);
+    }
+  });
+
+  it('14. 无 pg/cg（历史 span）→ ok 且两值为 undefined（向后兼容）', () => {
+    const v = parseShadowVerdict([span()]);
+    expect(v.outcome).toBe('ok');
+    if (v.outcome === 'ok') {
+      expect(v.pg).toBeUndefined();
+      expect(v.cg).toBeUndefined();
+    }
+  });
+
+  it('15. pg=null（第一代）→ ok，pg 为 null', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: false, pg: null, cg: 1,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('ok');
+    if (v.outcome === 'ok') {
+      expect(v.pg).toBeNull();
+      expect(v.cg).toBe(1);
+    }
+  });
+
+  it('16. cg=null（空表）→ ok，cg 为 null', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'skipped', verdict: 'undecidable', source: 'cross_generation',
+          reason: 'no previous', hadPrevious: false, pg: null, cg: null,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('ok');
+    if (v.outcome === 'ok') {
+      expect(v.pg).toBeNull();
+      expect(v.cg).toBeNull();
+    }
+  });
+
+  it('17. pg 类型错（字符串）→ failed（must be number or null）', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: true, pg: '1', cg: 2,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('failed');
+    if (v.outcome === 'failed') expect(v.error).toContain('pg must be number or null');
+  });
+
+  it('18. cg 类型错（布尔）→ failed（must be number or null）', () => {
+    const v = parseShadowVerdict([
+      span({
+        detail: JSON.stringify({
+          state: 'improved', verdict: 'improved', source: 'cross_generation',
+          reason: 'x', hadPrevious: true, pg: 1, cg: true,
+        }),
+      }),
+    ]);
+    expect(v.outcome).toBe('failed');
+    if (v.outcome === 'failed') expect(v.error).toContain('cg must be number or null');
+  });
 });

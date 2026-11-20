@@ -257,8 +257,18 @@ export function recordShadowAudit({
   recordSpan,
 }: RecordShadowAuditParams): void {
   try {
-    const curGen = db?.get<{ g: number }>('SELECT MAX(generation) AS g FROM policy_rsi_runs WHERE session_id=?', [sessionId])?.g ?? 0;
-    const previous = loadPreviousGeneration(db, sessionId, curGen);
+    // 一次查询同时取当前代（generation）与其上一代（prev_generation 列）。
+    // compare() 已把当前代落库，故最新行即当前代；prev_generation 即其上一代 generation。
+    const row = db?.get<{ cg: number; pg: number | null }>(
+      `SELECT generation AS cg, prev_generation AS pg
+         FROM policy_rsi_runs
+        WHERE session_id = ?
+        ORDER BY generation DESC LIMIT 1`,
+      [sessionId],
+    );
+    const cg = row?.cg ?? null;
+    const pg = row?.pg ?? null;
+    const previous = loadPreviousGeneration(db, sessionId, cg ?? 0);
     const shadow = evaluateCrossGenerationShadow(previous, result);
     recordSpan(traceId, {
       kind: 'judge',
@@ -270,6 +280,8 @@ export function recordShadowAudit({
         source: shadow.source,
         reason: shadow.reason,
         hadPrevious: previous !== null,
+        pg,
+        cg,
       }),
     });
   } catch (err) {
