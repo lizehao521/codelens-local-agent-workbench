@@ -21,20 +21,6 @@ docker build -t codelens .
 docker run -d -p 8080:8080 codelens
 ```
 
-| 变量 | 说明 |
-|---|---|
-| PORT | 服务端口（默认 8080） |
-| HOST | 绑定地址（默认 127.0.0.1；容器/局域网需显式设 0.0.0.0） |
-| ALLOWED_ORIGINS | CORS 白名单 |
-| LLM_SERVER_API_KEY | 服务端兜底 Key（试用/演示模式可选） |
-| AGENT_DB_PATH | SQLite 路径 |
-| SANDBOX_ROOT | 沙箱根目录 |
-| AGENT_APPROVAL_SECRET | 审批签名密钥 |
-| AGENT_MAX_CONCURRENT | 最大并发 |
-| TRIAL_MODE_ENABLED | 试用模式开关 |
-
-完整表见 `docs/agent/CODELENS-MANUAL.md`。
-
 ```bash
 # 测试
 cd server && npm test
@@ -43,6 +29,22 @@ cd client && npm run test:e2e
 ```
 
 CI（GitHub Actions）双 job：`server`（typecheck + 验收套件 + krsi）、`client`（tsc + vitest + ui-static + 浏览器 e2e）。
+
+## 环境变量（server/.env，均可空）
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `PORT` | `8080` | 服务端口 |
+| `HOST` | `127.0.0.1` | 监听地址；默认仅本机（服务带高危工具与恢复码端点）。容器/局域网需显式设 `0.0.0.0` |
+| `ALLOWED_ORIGINS` | 空 | CORS 白名单 |
+| `LLM_SERVER_API_KEY` | 空 | 服务端兜底 Key（试用/演示模式可选） |
+| `AGENT_DB_PATH` | 空 | SQLite 路径 |
+| `SANDBOX_ROOT` | 空 | 沙箱根目录 |
+| `AGENT_APPROVAL_SECRET` | 空 | 审批签名密钥 |
+| `AGENT_MAX_CONCURRENT` | `3` | 单实例并行 Agent 任务上限 |
+| `TRIAL_MODE_ENABLED` | 空 | 试用模式开关 |
+
+完整表见 `docs/agent/CODELENS-MANUAL.md`。
 
 ## 架构规格
 
