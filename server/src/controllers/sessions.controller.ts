@@ -13,6 +13,7 @@ import type { ChannelRouter } from '../services/agent/channel-router.service.js'
 import type { RecoveryService } from '../services/recovery.service.js';
 import { generateRecoveryCode, recoveryCodeHash } from '../services/recovery.service.js';
 import { sha256Hex } from '../utils/hash.js';
+import { exportFilename, renderSessionMarkdown } from '../services/export/session-markdown.js';
 import {
   CreateSessionSchema,
   PatchSessionSchema,
@@ -198,6 +199,23 @@ export class SessionsController {
       totalTokens: usage.promptTokens + usage.completionTokens,
       byMessage: usage.byMessage,
     });
+  }
+
+  /** P1-2：导出会话执行记录为 Markdown 附件（权限与 detail 同口径：assertOwned）。 */
+  exportMarkdown(req: Request, res: Response): void {
+    const params = SessionIdParamSchema.safeParse(req.params);
+    if (!params.success) throw new AppError('VALIDATION_ERROR', 'sessionId 不合法', 400);
+    const session = this.sessions.get(params.data.id);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
+    this.assertOwned(session, req);
+    const markdown = renderSessionMarkdown({
+      session,
+      messages: this.messages.listBySession(session.id),
+      toolCalls: this.toolCalls.listBySession(session.id),
+    });
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${exportFilename(session)}"`);
+    res.send(markdown);
   }
 
   patch(req: Request, res: Response): void {

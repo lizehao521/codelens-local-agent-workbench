@@ -11,6 +11,7 @@ export function createSessionsRoutes(controller: SessionsController): Router {
   router.post('/sessions/:id/recovery-code', (req, res) => controller.regenerateRecoveryCode(req, res));
   router.get('/sessions/:id', (req, res) => controller.detail(req, res));
   router.get('/sessions/:id/usage', (req, res) => controller.usage(req, res));
+  router.get('/sessions/:id/export.md', (req, res) => controller.exportMarkdown(req, res));
   router.patch('/sessions/:id', (req, res) => controller.patch(req, res));
   router.delete('/sessions/:id', (req, res) => controller.remove(req, res));
   return router;
