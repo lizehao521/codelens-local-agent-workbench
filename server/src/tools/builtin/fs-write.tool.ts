@@ -1,9 +1,9 @@
 /** fs.write — sandboxed create/overwrite/append/rename/delete/replace/purge. */
-
 import { existsSync, statSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolDefinition, ToolOutcome } from '../../types/tool.js';
+import { gateWriteCall, gateRejectionOutcome } from '../../services/agent/write-guard.js';
 import { resolveInSandboxAsync } from './path-jail.js';
 
 const MAX_CONTENT_CHARS = 2_000_000;
@@ -12,8 +12,7 @@ const OPERATIONS = ['create', 'overwrite', 'append', 'rename', 'delete', 'purge'
 /** `fs.write` 碰到 git 执行面时的统一建议。 */
 const GIT_SURFACE_SUGGESTION =
   '请用 sys.exec 的 git config（本地作用域）修改仓库配置；hooks 目录不允许直接写入';
-/** 失败时给模型的下一步。 */
-const NEXT_ACTION = {
+const NEXT_ACTION = { // 失败时给模型的下一步
   operation: '从 create/overwrite/append/rename/delete/purge/replace 中选择一个；新建用 create，改已有文件用 overwrite 或 replace。', path: '改用沙箱相对路径（例如 src/app.ts），或使用已在「沙箱权限」中授权的目录内绝对路径。', exists: '改用 overwrite 覆盖，或 append 追加；只改局部请用 replace。', contentTooLarge: '把内容拆成多次 create/append，或先用 replace 改局部；单次上限 2,000,000 字符。', replaceMissing: '先用 fs.read 确认 path 是否存在，再决定 create 还是 overwrite。', missing: '确认 path 拼写与大小写；目标不存在时先用 create/overwrite 创建。', replaceTextTooLarge: '缩小 oldText/newText，或拆成多次 replace；单段上限 200,000 字符。', noop: '修改 newText 后再调用；若本来就不需要改动，跳过这次工具调用。', emptyOld: '提供文件中真实存在的一段非空文本作为 oldText，可先用 fs.read 复制原文。', noMatch: '先用 fs.read 查看原文（含缩进/换行），再复制一段唯一片段；CRLF 会自动归一化。', ambiguous: '给 oldText 增加上下文使其只命中一处；已给出命中 line/col，可据此选取更长的唯一片段。', renameMissing: 'rename 必须同时提供 newPath，且目标路径要在沙箱或授权目录内。', sourceMissing: '确认源 path 拼写；源文件不存在时先用 create 创建。', purgeMissing: '确认目录存在；purge 只清空目录内容，不会创建目录。', purgeNotDir: 'purge 只适用于目录；删除普通文件请用 delete。', deleteMissing: '确认 path 拼写；目标已经不存在时无需再删除。', deleteDir: '传 recursive: true 删除整个目录；只想清空内容请用 purge。',
 };
 
@@ -95,14 +94,13 @@ export const fsWriteTool: ToolDefinition = {
         },
       };
     }
+    const gate = gateWriteCall({ occupancy: ctx.contextOccupancy, finishReason: ctx.finishReason, operation });
+    if (!gate.allowed) return gateRejectionOutcome(gate.reason);
     const jail = await resolveInSandboxAsync(ctx.sandboxRoot, String(args.path ?? ''), true, undefined, ctx.allowedDirs);
-    if (!jail.ok) {
-      return {
-        ok: false,
-        summary: jail.message,
-        error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: jail.message, retryable: false, suggestion: NEXT_ACTION.path },
-      };
-    }
+    if (!jail.ok) return {
+      ok: false, summary: jail.message,
+      error: { code: 'TOOL_SECURITY_DENIED', kind: 'security', message: jail.message, retryable: false, suggestion: NEXT_ACTION.path },
+    };
     const targetExists = existsSync(jail.absolutePath);
 
     // 根因侧拦截：`.git/hooks/*` 与 `.git/config` 是「配置即命令」的写入入口，
