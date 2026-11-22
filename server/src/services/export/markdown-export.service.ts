@@ -109,6 +109,8 @@ interface ToolCallBrief {
   id: string;
   name: string;
   argsRaw: string | null;
+  /** Structured arguments when the provider sent an object instead of a JSON string. */
+  args: unknown;
 }
 
 function parseToolCallsJson(raw: string | null): ToolCallBrief[] {
@@ -122,8 +124,9 @@ function parseToolCallsJson(raw: string | null): ToolCallBrief[] {
         : {};
       const name = typeof fn.name === 'string' && fn.name ? fn.name : String(entry.name ?? 'unknown');
       const argsRaw = typeof fn.arguments === 'string' ? fn.arguments : null;
+      const args = argsRaw === null && fn.arguments !== undefined ? fn.arguments : null;
       const id = typeof entry.id === 'string' ? entry.id : '';
-      return { id, name, argsRaw };
+      return { id, name, argsRaw, args };
     });
 }
 

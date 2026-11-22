@@ -43,7 +43,6 @@ function makeHarness() {
     toolCalls,
     {} as never, // approvals — export path never touches it
     {} as never, // recovery
-    { invalidate: () => undefined } as never, // channelRouter
   );
   return { db, sessions, messages, toolCalls, controller };
 }
@@ -167,6 +166,28 @@ describe('renderSessionMarkdown 文档结构', () => {
     expect(doc).toContain('读取成功 10 行');
     // 注入内容被更长围栏包裹，文档内不存在裸的三反引号闭合
     expect(doc).toContain('````');
+    // argsRaw 存在时渲染原始 JSON 参数块
+    expect(doc).toContain('"path":"a.ts"');
+    db.close();
+  });
+
+  it('function.arguments 为对象（非 JSON 字符串）时序列化展示 args', () => {
+    const { db, sessions, messages } = makeHarness();
+    const session = sessions.create({ provider: 'p', model: 'm', title: '对象参数' });
+    messages.insert({
+      sessionId: session.id,
+      role: 'assistant',
+      content: '',
+      toolCallsJson: JSON.stringify([{ id: 'call-obj', function: { name: 'fs.write', arguments: { path: 'b.ts', content: 'hi' } } }]),
+    });
+    const doc = renderSessionMarkdown({
+      session,
+      messages: messages.listBySession(session.id),
+      toolCalls: [],
+    });
+    expect(doc).toContain('`fs.write`');
+    expect(doc).toContain('call-obj');
+    expect(doc).toContain('"path": "b.ts"');
     db.close();
   });
 

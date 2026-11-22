@@ -313,7 +313,6 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     toolCalls,
     approvals,
     recovery,
-    loop.router(),
   );
   const toolsController = new ToolsController(registry, config.sandboxRoot);
 

@@ -21,10 +21,7 @@ import { SessionRepository } from '../src/services/memory/session.repository.js'
 import { MessageRepository } from '../src/services/memory/message.repository.js';
 import { ToolCallRepository } from '../src/services/memory/tool-call.repository.js';
 import { ApprovalRepository } from '../src/services/memory/approval.repository.js';
-import { ProviderCapabilityRepository } from '../src/services/memory/provider-capability.repository.js';
 import { RecoveryService } from '../src/services/recovery.service.js';
-import { OpenAICompatibleAdapter } from '../src/providers/openai-compatible.adapter.js';
-import { ChannelRouter } from '../src/services/agent/channel-router.service.js';
 import { SessionsController } from '../src/controllers/sessions.controller.js';
 
 let dir: string;
@@ -44,15 +41,12 @@ beforeEach(() => {
   messages = new MessageRepository(db);
   toolCalls = new ToolCallRepository(db);
   const approvals = new ApprovalRepository(db);
-  const capabilities = new ProviderCapabilityRepository(db);
-  const router = new ChannelRouter(new OpenAICompatibleAdapter(), capabilities);
   controller = new SessionsController(
     sessions,
     messages,
     toolCalls,
     approvals,
     new RecoveryService(sessions),
-    router,
   );
 
   sessionId = sessions.create({ provider: 'openai', model: 'gpt-4o-mini' })!.id;

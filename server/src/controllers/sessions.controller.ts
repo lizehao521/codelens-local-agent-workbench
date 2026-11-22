@@ -54,7 +54,6 @@ export class SessionsController {
     private readonly toolCalls: ToolCallRepository,
     private readonly approvals: ApprovalRepository,
     private readonly recovery: RecoveryService,
-    private readonly channelRouter: ChannelRouter,
   ) {}
 
   list(req: Request, res: Response): void {
@@ -240,7 +239,10 @@ export class SessionsController {
     const updated = this.sessions.patch(params.data.id, parsed.data);
     if (!updated) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
     if (parsed.data.model !== undefined) {
-      this.channelRouter.invalidate(session.id);
+      // 换 model 后旧的 degraded 标记不再代表新模型的通道状态：清掉，
+      // 由下一次 run 的 channel decision 重新探测并写回（能力缓存按
+      // (provider, model) key，换 model 本身就会走新 key，无需额外失效）。
+      this.sessions.setDegraded(session.id, false);
     }
     res.json({ session: publicSession(updated) });
   }
