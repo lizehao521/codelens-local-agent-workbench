@@ -1,8 +1,5 @@
-/**
- * Schema DDL — single source of truth mirrored from docs/agent/schema.sql (7 tables).
- * Kept as one string so the running database and the reviewed document cannot drift.
- */
-
+/** Schema DDL — single source of truth; kept as one string so DB and reviewed doc cannot drift. */
+import { PLAN_SCHEMA_DDL, applyPlanMigration } from './plan-schema.js';
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS sessions (
   id                     TEXT PRIMARY KEY,
@@ -436,24 +433,6 @@ CREATE TABLE IF NOT EXISTS skills (
 
 CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
 
--- ── 可编辑计划面板（P1-4）───────────────────────────────────────────────────
--- 一次 run 的多步计划：用户可在执行前查看/改步骤/删步骤/重排，Agent 执行时读编辑后的版本。
--- plan 属于某个会话（级联删除）；steps_json 是步骤数组的 JSON 原文（编解码在 service）。
--- status: draft=编辑中 / approved=已确认待执行 / running=执行中 / done=已完成 / cancelled=已取消。
-CREATE TABLE IF NOT EXISTS agent_plans (
-  id          TEXT    PRIMARY KEY,
-  session_id  TEXT    NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  run_id      TEXT,
-  title       TEXT    NOT NULL DEFAULT '',
-  status      TEXT    NOT NULL DEFAULT 'draft'
-                  CHECK (status IN ('draft', 'approved', 'running', 'done', 'cancelled')),
-  steps_json  TEXT    NOT NULL DEFAULT '[]',
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_agent_plans_session ON agent_plans(session_id, created_at DESC);
-
 -- 注：judge_* / policy_injections 刻意不建指向 sessions 的外键。
 -- 它们是审计记录，价值在于「会话删了以后仍然能复盘当时的判决」，
 -- 跟随级联删除会让证据链断掉。
@@ -466,7 +445,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 INSERT OR IGNORE INTO schema_migrations (version, name, applied_at)
 VALUES (1, '001-initial-agent-schema', 1761234567890);
-`;
+${PLAN_SCHEMA_DDL}`;
 
 export const SCHEMA_VERSION = 5;
 
@@ -603,18 +582,8 @@ export function applyMigrations(db: MigrationDb): number[] {
     applied.push(7);
   }
 
-  // ── 008：可编辑计划面板（agent_plans）────────────────────────────────────
-  // 新表已由 SCHEMA_SQL 里的 CREATE TABLE IF NOT EXISTS 幂等建出；
-  // 这里显式保证索引 + 版本记账，旧库升上来后不会漏。
-  db.exec('CREATE INDEX IF NOT EXISTS idx_agent_plans_session ON agent_plans(session_id, created_at DESC)');
-  const v8 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 8');
-  if ((v8?.n ?? 0) === 0) {
-    db.run(
-      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (8, '008-editable-plan-panel', ?)`,
-      [Date.now()],
-    );
-    applied.push(8);
-  }
+  // 008：可编辑计划面板（agent_plans）—— DDL/记账拆到 plan-schema.ts
+  applied.push(...applyPlanMigration(db));
 
   return applied;
 }

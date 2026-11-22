@@ -141,7 +141,7 @@ describe('renderSessionMarkdown 文档结构', () => {
       toolName: 'fs.read',
       toolWireName: 'fs_read',
       displayName: '读取文件',
-      category: 'fs',
+      category: 'file',
       source: 'builtin',
       risk: 'low',
       approvalMode: 'none',

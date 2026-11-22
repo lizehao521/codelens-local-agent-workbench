@@ -102,7 +102,12 @@ function listReqWith(deviceToken?: string): Request {
 
 function resJson(): { res: Response; take: () => unknown } {
   let payload: unknown;
-  const res = { json: (body: unknown) => { payload = body; } } as unknown as Response;
+  // 控制器部分方法（如 remove）走 res.status(...).json()/end()，mock 需支持链式调用。
+  const res = {
+    status: () => res,
+    json: (body: unknown) => { payload = body; return res; },
+    end: () => res,
+  } as unknown as Response;
   return { res, take: () => payload };
 }
 
