@@ -85,6 +85,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   CHECKPOINT_MANIFEST_INVALID: 400,
   SKILL_ALREADY_EXISTS: 409,
   SKILL_NOT_FOUND: 404,
+  ARTIFACT_NOT_FOUND: 404,
+  ARTIFACT_PATH_ESCAPE: 400,
+  ARTIFACT_TOO_LARGE: 413,
 };
 
 /** Error with a stable machine-readable code and mapped HTTP status. */

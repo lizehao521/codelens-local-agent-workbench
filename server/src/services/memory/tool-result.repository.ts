@@ -54,4 +54,31 @@ export class ToolResultRepository {
   getById(id: string): ToolResultRow | undefined {
     return this.db.get<ToolResultRow>('SELECT * FROM tool_results WHERE id = ?', [id]);
   }
+
+  /**
+   * P1-6 artifacts 面板：列出某会话下所有已落盘的 artifact（join tool_calls 拿会话归属
+   * 与工具名）。只读查询，供 ArtifactService 做列表视图；顺序按创建时间升序（面板按
+   * 时间线展示）。
+   */
+  listBySession(sessionId: string): Array<ToolResultRow & { tool_name: string; call_id: string }> {
+    return this.db.all<ToolResultRow & { tool_name: string; call_id: string }>(
+      `SELECT tr.*, tc.tool_name AS tool_name, tc.call_id AS call_id
+         FROM tool_results tr
+         JOIN tool_calls tc ON tc.id = tr.tool_call_id
+        WHERE tc.session_id = ?
+        ORDER BY tr.created_at ASC`,
+      [sessionId],
+    );
+  }
+
+  /** P1-6: 按 result id 取行并校验其归属会话，防止跨会话读 artifact。 */
+  getByIdInSession(id: string, sessionId: string): (ToolResultRow & { tool_name: string; call_id: string }) | undefined {
+    return this.db.get<ToolResultRow & { tool_name: string; call_id: string }>(
+      `SELECT tr.*, tc.tool_name AS tool_name, tc.call_id AS call_id
+         FROM tool_results tr
+         JOIN tool_calls tc ON tc.id = tr.tool_call_id
+        WHERE tr.id = ? AND tc.session_id = ?`,
+      [id, sessionId],
+    );
+  }
 }

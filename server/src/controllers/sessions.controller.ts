@@ -13,6 +13,7 @@ import type { ChannelRouter } from '../services/agent/channel-router.service.js'
 import type { RecoveryService } from '../services/recovery.service.js';
 import { generateRecoveryCode, recoveryCodeHash } from '../services/recovery.service.js';
 import { sha256Hex } from '../utils/hash.js';
+import { exportFilename, renderSessionMarkdown } from '../services/export/markdown-export.service.js';
 import {
   CreateSessionSchema,
   PatchSessionSchema,
@@ -200,6 +201,34 @@ export class SessionsController {
     });
   }
 
+  /**
+   * P1-2 执行记录导出：GET /api/v1/sessions/:id/export.md
+   * 把该会话的消息时间线 + 工具调用审计导出为结构化 Markdown 附件下载。
+   * 与 detail 同源的设备归属校验（AUDIT-018）；渲染安全（反引号注入 / 截断 /
+   * 文件名注入 / 坏 JSON 容错）全部收敛在 markdown-export.service。
+   */
+  exportMarkdown(req: Request, res: Response): void {
+    const params = SessionIdParamSchema.safeParse(req.params);
+    if (!params.success) throw new AppError('VALIDATION_ERROR', 'sessionId 不合法', 400);
+    const session = this.sessions.get(params.data.id);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
+    this.assertOwned(session, req);
+    const messages = this.messages.listBySession(session.id);
+    const toolCalls = this.toolCalls.listBySession(session.id);
+    const doc = renderSessionMarkdown({ session, messages, toolCalls });
+    const filename = exportFilename(session);
+    // RFC 5987 双份文件名：ASCII 回退 + UTF-8 编码，防止中文标题乱码/注入。
+    const asciiFallback = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    res
+      .status(200)
+      .setHeader('Content-Type', 'text/markdown; charset=utf-8')
+      .setHeader(
+        'Content-Disposition',
+        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      )
+      .send(doc);
+  }
+
   patch(req: Request, res: Response): void {
     const params = SessionIdParamSchema.safeParse(req.params);
     if (!params.success) throw new AppError('VALIDATION_ERROR', 'sessionId 不合法', 400);
@@ -211,10 +240,9 @@ export class SessionsController {
     const updated = this.sessions.patch(params.data.id, parsed.data);
     if (!updated) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
     if (parsed.data.model !== undefined) {
-      // Model switch triggers a capability probe (architecture 5.5 trigger 1).
-      void this.channelRouter.probe(session.provider, session.model, '', '').catch(() => undefined);
+      this.channelRouter.invalidate(session.id);
     }
-    res.json({ session: publicSession(session) });
+    res.json({ session: publicSession(updated) });
   }
 
   remove(req: Request, res: Response): void {
@@ -223,8 +251,7 @@ export class SessionsController {
     const session = this.sessions.get(params.data.id);
     if (!session) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
     this.assertOwned(session, req);
-    const deleted = this.sessions.remove(params.data.id);
-    if (!deleted) throw new AppError('SESSION_NOT_FOUND', '会话不存在或已被删除', 404);
-    res.json({ deleted: true, id: params.data.id });
+    this.sessions.remove(params.data.id);
+    res.status(204).end();
   }
 }
