@@ -105,3 +105,39 @@ export function firstSyntaxError(src: string, filePath: string): SyntaxIssue | n
     message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
   };
 }
+
+/** fs_write 的写操作集合：会改动磁盘，受写闸约束；读操作（fs_read/fs_list 等）不在此列，一律放行。 */
+export const FS_WRITE_OPERATIONS = new Set(['create', 'overwrite', 'append', 'replace', 'purge', 'delete', 'rename']);
+
+export interface GateWriteCallInput {
+  /** 当前上下文占用率（estimatedTokens / contextWindow，已 clamp）；缺失/非法时按 0 处理（默认放行）。 */
+  occupancy?: number | null;
+  /** 非空表示 run 已进入该收尾原因；缺失时默认放行。 */
+  finishReason?: string | null;
+  /** 工具 wireName；只对 fs_write 生效，其它工具一律放行。 */
+  toolName?: string;
+  /** fs_write 的 operation；不在写操作集合内（读操作/未知）一律放行。 */
+  operation?: string;
+}
+
+/**
+ * 写闸的引擎接入形态：判定一次工具调用是否放行写入。
+ *
+ * 纯函数、无 IO：只对 fs_write 的写操作生效，读操作与其它工具直接放行；
+ * occupancy / finishReason 缺失时默认放行，保证旧调用方（未传这两个字段的
+ * ToolExecutionContext）行为不变。
+ */
+export function gateWriteCall(input: GateWriteCallInput): WriteGateVerdict {
+  const toolName = input.toolName ?? 'fs_write';
+  if (toolName !== 'fs_write' && toolName !== 'fs.write') return { allowed: true };
+  const operation = input.operation ?? '';
+  if (!FS_WRITE_OPERATIONS.has(operation)) return { allowed: true };
+  const occupancy = typeof input.occupancy === 'number' && Number.isFinite(input.occupancy) ? input.occupancy : 0;
+  return writeGateFor(occupancy, input.finishReason ?? null);
+}
+
+/** 写闸拒绝时给 fs.write 的统一 outcome（NOT_RUN 语义，结构化兼容 ToolOutcome）。 */
+export function gateRejectionOutcome(reason?: string) {
+  const message = reason ?? 'NOT_RUN：写闸关闭，写入被拒绝';
+  return { ok: false, summary: message, error: { code: 'WRITE_GATE_CLOSED', kind: 'circuit_open' as const, message, retryable: false } };
+}

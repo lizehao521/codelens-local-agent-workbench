@@ -34,6 +34,10 @@ export interface ToolExecutionContext {
   allowedDirs?: string[];
   signal: AbortSignal;
   reportProgress: (stage: string, message?: string) => void;
+  /** 写闸信号：当前上下文占用率（0..1+）。可选，缺失时写闸默认放行（向后兼容）。 */
+  contextOccupancy?: number | null;
+  /** 写闸信号：run 的收尾原因（context_full/circuit_open/aborted 等）。可选，缺失时默认放行。 */
+  finishReason?: string | null;
 }
 
 export interface ToolEnableContext {

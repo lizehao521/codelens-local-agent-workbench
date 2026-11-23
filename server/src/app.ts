@@ -19,6 +19,7 @@ import { agentConcurrency } from './middlewares/agent-concurrency.js';
 import { rateLimit } from './middlewares/rate-limit.js';
 import { createRuntime, type Runtime } from './runtime.js';
 import { AppError, ErrorCode } from './utils/errors.js';
+import { createPlanController } from './plan-wiring.js';
 
 export interface AppOptions {
   runtime?: Runtime;
@@ -94,6 +95,7 @@ export function createApp(options: AppOptions = {}): Express {
       checkpoints: runtime.checkpointsController,
       sandboxGrants: runtime.sandboxGrantsController,
       runs: runtime.runsController,
+      plans: createPlanController(runtime.db),
     }),
   );
 

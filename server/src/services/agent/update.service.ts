@@ -15,6 +15,7 @@ import {
   type Policy,
   type PolicyVersionRow,
 } from '../../repositories/policy.repository.js';
+import { evictMarkedLessons, type LessonStatus } from './lesson-status.js';
 import type { JudgeRepository } from '../../repositories/judge.repository.js';
 import type { JudgeRunResult } from '../judge/types.js';
 import {
@@ -32,6 +33,8 @@ export interface PolicyIncrement {
   removeLessons?: string[];
   /** 覆盖/新增阈值。 */
   setThresholds?: Record<string, number>;
+  /** 设置经验状态（合并进 lessonStatus；仅在有值时才写入字段，保持旧 JSON 形状不变）。 */
+  setLessonStatus?: Record<string, LessonStatus>;
 }
 
 /** π 经验上限：超出时淘汰最无效的，避免无限增长污染上下文。 */
@@ -173,6 +176,7 @@ export class UpdateService {
       lessons: this.mergeLessons(current.lessons, increment),
       thresholds: { ...current.thresholds, ...(increment.setThresholds ?? {}) },
     };
+    if (increment.setLessonStatus) next.lessonStatus = { ...current.lessonStatus, ...increment.setLessonStatus };
     this.repo.insertVersion(next, version, sourceJudgment ?? null);
     return next;
   }
@@ -260,19 +264,17 @@ export class UpdateService {
       if (idx >= 0) out.splice(idx, 1);
     }
     if (out.length <= MAX_LESSONS) return out;
-    return this.evict(out, out.length - MAX_LESSONS);
+    return this.evict(out, out.length - MAX_LESSONS, this.repo.getCurrent().policy.lessonStatus);
   }
 
   /**
-   * 超限淘汰：优先淘汰「注入后通过率最低」的经验，而不是机械地丢最旧。
-   *
-   * 旧实现是 FIFO —— 当所有经验都来自同一模板时，真正有效的经验会被
-   * 最近一条噪声顶出去。按有效性淘汰才让 π 具备「越用越准」的可能。
-   *
-   * 没有有效性数据（pending）的经验按中性 0.5 处理并优先保留：
-   * 没被验证过不等于无效，不该被未验证的新经验挤掉。
+   * 超限淘汰：status 优先（superseded/contradicted）→ passRate 低者优先 → FIFO 兜底。
+   * 无有效性数据（pending）按中性 0.5 处理并优先保留：未被验证不等于无效。
    */
-  private evict(lessons: string[], overflow: number): string[] {
+  private evict(lessons: string[], overflow: number, lessonStatus?: Record<string, LessonStatus>): string[] {
+    const pre = evictMarkedLessons(lessons, overflow, lessonStatus);
+    if (pre.overflow <= 0) return pre.lessons;
+    lessons = pre.lessons; overflow = pre.overflow;
     const fifo = () => lessons.slice(lessons.length - MAX_LESSONS);
     if (!this.judgeRepo) return fifo();
 

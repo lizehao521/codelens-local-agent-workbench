@@ -50,6 +50,8 @@ import { CapabilitiesController } from './controllers/capabilities.controller.js
 import { TraceService } from './services/observability/trace.service.js';
 import { TracesController } from './controllers/traces.controller.js';
 import { SkillLibraryService } from './services/skills/skill-library.service.js';
+import { BUILTIN_STRATEGY_SKILLS } from './services/skills/builtin-strategy-skills.js';
+import { seedSkills } from './services/skills/seed-strategy-skills.js';
 import { SkillsController } from './controllers/skills.controller.js';
 import { CheckpointService } from './services/tx/checkpoint.service.js';
 import { CheckpointsController } from './controllers/checkpoints.controller.js';
@@ -356,7 +358,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   //
   // 能力目录的每个事实都用 getter 求值，而不是在构造时拍一张快照 ——
   // 否则「刚禁用了一个工具，能力目录还写着已启用」就成了误导。
-  const skillLibrary = new SkillLibraryService({ db, enabled: config.skillLibraryEnabled });
+  const skillLibrary = new SkillLibraryService({ db, enabled: config.skillLibraryEnabled }); seedSkills(skillLibrary, BUILTIN_STRATEGY_SKILLS); // 内置策略技能 seed（幂等；未启用静默 0）
   // 工具启用的判定口径与 ToolsController 共用同一份 ToolEnableContext，  // 否则「工具管理里显示禁用、但能力目录算作可用」会两边打架。
   const toolEnableCtx = { sandboxRoot: config.sandboxRoot, mcpConnected: false };
   const capabilityRegistry = new CapabilityRegistryService({

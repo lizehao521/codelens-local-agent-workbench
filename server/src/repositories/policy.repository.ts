@@ -13,11 +13,16 @@
 
 import type { Db } from './db.js';
 
+/** 单条经验的生命周期状态：缺省（未记录）视为 active。 */
+export type LessonStatus = 'active' | 'superseded' | 'contradicted';
+
 export interface Policy {
   /** 经验/提示（π 的「提示」面）：注入下一轮 Act 的 system prompt。 */
   lessons: string[];
   /** 可调阈值（π 的「阈值」面）：预留给后续真实使用者。 */
   thresholds: Record<string, number>;
+  /** 每条经验的状态（可选，缺省视为全 active；仅在有值时写入以保持旧 JSON 形状不变）。 */
+  lessonStatus?: Record<string, LessonStatus>;
 }
 
 export const EMPTY_POLICY: Policy = { lessons: [], thresholds: {} };
