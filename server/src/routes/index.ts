@@ -18,6 +18,7 @@ import { createSkillsRoutes } from './skills.routes.js';
 import { createCheckpointsRoutes } from './checkpoints.routes.js';
 import { createSandboxGrantsRoutes } from './sandbox-grants.routes.js';
 import { createRunsRoutes } from './runs.routes.js';
+import { createPlanRoutes } from './plan.routes.js';
 import type { AgentController } from '../controllers/agent.controller.js';
 import type { ApprovalController } from '../controllers/approval.controller.js';
 import type { SessionsController } from '../controllers/sessions.controller.js';
@@ -34,6 +35,7 @@ import type { SkillsController } from '../controllers/skills.controller.js';
 import type { CheckpointsController } from '../controllers/checkpoints.controller.js';
 import type { SandboxGrantsController } from '../controllers/sandbox-grants.controller.js';
 import type { RunsController } from '../controllers/runs.controller.js';
+import type { PlanController } from '../controllers/plan.controller.js';
 
 export interface ApiRouterDeps {
   agent: AgentController;
@@ -52,6 +54,7 @@ export interface ApiRouterDeps {
   checkpoints: CheckpointsController;
   sandboxGrants: SandboxGrantsController;
   runs: RunsController;
+  plans: PlanController;
 }
 
 export function createApiRouter(deps: ApiRouterDeps): Router {
@@ -62,6 +65,7 @@ export function createApiRouter(deps: ApiRouterDeps): Router {
 
   // /api/v1/*
   const v1 = Router();
+  v1.use(createPlanRoutes({ plans: deps.plans }));
   v1.use(createAgentRoutes(deps.agent, deps.approvals));
   v1.use(createSessionsRoutes(deps.sessions));
   v1.use(createToolsRoutes(deps.tools));

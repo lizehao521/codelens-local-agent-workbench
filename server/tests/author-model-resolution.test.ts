@@ -33,8 +33,10 @@ describe('resolveAuthorModel（出题人模型解析）', () => {
     const envTxt = readFileSync(SERVER_ENV_PATH, 'utf8');
     const model = resolveAuthorModel(envTxt, {} as NodeJS.ProcessEnv);
     expect(model).not.toBe('gpt-4o');
-    // 当前 .env 既无 RSI_AUTHOR_MODEL 也无 TRIAL_MODEL 时才可能是 gpt-4o；前者优先。
-    expect(model).toBe('nvidia/nemotron-3-ultra-550b-a55b');
+    //不断言硬编码模型名：本机 .env 的 TRIAL_MODEL 可能被换成别的有效模型。
+    // 断言与现场一致——无 RSI_AUTHOR_MODEL 时应落到该文件自己的 TRIAL_MODEL。
+    const trialModel = /^TRIAL_MODEL=(.*)$/m.exec(envTxt)?.[1]?.trim();
+    expect(model).toBe(trialModel);
   });
 });
 
