@@ -1,0 +1,13 @@
+{
+  "id": "fs-read-oob-line-window-silent-empty",
+  "title": "fs.read 越界行窗口静默返回空内容",
+  "allowed": [
+    "src/tools/builtin/fs-read.tool.ts"
+  ],
+  "judge": "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts",
+  "probe": "fs-read-oob-line-window-silent-empty.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改动 directory/glob/keyword 等其它分支；不新增字段、不改 schema"
+}

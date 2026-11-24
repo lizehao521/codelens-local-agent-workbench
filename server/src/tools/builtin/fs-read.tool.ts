@@ -145,6 +145,20 @@ export const fsReadTool: ToolDefinition = {
       // lineEnd 超出真实末尾时夹到末尾
       if (lineEnd > realTotal) lineEnd = realTotal;
 
+      // 起始行超过文件总行数（或夹逼后 start > end）：不得静默返回空内容
+      if (lineStart > lineEnd) {
+        return {
+          ok: false,
+          summary: 'lineStart 超过文件总行数',
+          error: {
+            code: 'TOOL_INVALID_ARGS',
+            kind: 'invalid_args',
+            message: `lineStart 超过文件总行数（文件共 ${realTotal} 行，请求的起始行 ${lineStart}）`,
+            retryable: false,
+          },
+        };
+      }
+
       // 在真实行数组上切窗口
       let lines = realAllLines.slice(lineStart - 1, lineEnd);
 

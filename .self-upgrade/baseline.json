@@ -1,11 +1,11 @@
 {
-  "createdAt": "2026-11-24T08:02:13.061Z",
+  "createdAt": "2026-11-24T08:47:10.639Z",
   "allowed": [
     "src/tools/builtin/fs-read.tool.ts"
   ],
-  "judge": "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts",
+  "judge": "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-read.tool.ts": "fc854d4a63bf421ee336022f424181db02e3dad5ef6ed5d1a1959827be3d34cb"
+    "src/tools/builtin/fs-read.tool.ts": "e55e91fe3fe9092572bb9e588d501f60b99a572cfed98e63956699d6575f9b6a"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "a5a0df77061744d4d2772985a0fb6804a01609d2a891c600c82ba9be974d1857",
@@ -158,6 +158,7 @@
     "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts": "7d7b58d6f6a5f389bede41baf75eaf31a6548679a3b9e715dfa891c5a4f266e2",
     "tests/self-upgrade/fs-read-line-window.test.ts": "580772d23fb9f387e0b5e00808786ffd48bd3e653389e01a4e85d8c0637dacd0",
     "tests/self-upgrade/fs-read-observation.test.ts": "fbfdce7e0c9b1570adead5f808940a142557c43d63d766b1d468fc9abb217a3e",
+    "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts": "1dae42669e8d875a52e0eb9d0ddf4a6962a3efb040b891db0e0048efd2df2d2b",
     "tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts": "ed2f855cc5e610f0f2fdba4e49d25e1f4dfeb761fd91e600a7aaab111b9fccd5",
     "tests/self-upgrade/fs-replace-empty-oldtext.test.ts": "bd975624a02680b0cd6b1d34ecdf695e811cc7f35ae7c29961a45121ef347299",
     "tests/self-upgrade/fs-replace-match-count.test.ts": "e3452936a247808aefc7f619e01520f93d0ad7cce2a4121e805409944ea052aa",
@@ -355,8 +356,8 @@
     "client/tests/tool-skill-modal.test.ts": "4ee523728c87bf79c13e6541bd9f7b13e7fff966c83675ca5f3ecf2276c128eb",
     "client/tests/use-async-data.test.ts": "1bbadffbebfb9b48d76e19d3e60e9fa8a99b55b28b716817385083fa4c413b6d",
     "self-upgrade/backlog.json": "38b7db2dd521945e6d6e39cd50980242a2b337f1ede934ede16845149a3d52eb",
-    "self-upgrade/tasks.json": "4a79fc4b5700633cb91fcca85d92f577c55dea5521b18f05da54f2ca3e7cab59",
-    "scripts/author-task.ts": "ae25c607859699290671d9580620ff23c367e73ee289db1fb08c9e363b278857",
+    "self-upgrade/tasks.json": "53cc58ea710db562260099da63e55082f508d11d1f45c6632873e09112c389d8",
+    "scripts/author-task.ts": "25eb68cccf44dc7c6eabf6d0cdbc283c18f42ec2c14a78e716b73a46ff6c2184",
     "scripts/auto-adopt.ts": "7b0400e821792e87028f79a6410a95b0ba6f094251e11fd267e6feb177bb83d4",
     "scripts/check-rsi-contract.mjs": "92ef5a771c995ada5f45062f8b3ab1b52a162f918e5c6b374e69834e3b7cb24b",
     "scripts/check-runtime-view.mjs": "4456dd10039584e0973613942a51e85ff733b99eaa11ff519253b72cf94f06d0",
@@ -395,7 +396,6 @@
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "scripts/author-task.ts",
-    "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts"
+    "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts"
   ]
 }

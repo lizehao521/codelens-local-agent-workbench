@@ -1069,6 +1069,32 @@
       "releasedIn": "2.30.0",
       "completedAt": "2026-11-24",
       "note": "fs.read keyword-only 过滤不再误标 truncated(userRequestedKeyword 纳入豁免)；判据 6/6 绿且有区分力；干净 env 全套 2338 测试绿；RSI loop env 污染假失败已人工验收排除。"
+    },
+    {
+      "id": "fs-read-oob-line-window-silent-empty",
+      "title": "fs.read 越界行窗口静默返回空内容",
+      "allowed": [
+        "src/tools/builtin/fs-read.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts",
+      "probe": "fs-read-oob-line-window-silent-empty.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不改动 directory/glob/keyword 等其它分支；不新增字段、不改 schema",
+      "adoptedAt": "2026-11-24T08:45:59.251Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "用户显式指定 lineStart 超过文件总行数（或 lineStart/lineEnd 经夹逼后 start>end）时，工具返回空内容且 truncated=false，无任何报错或提示",
+      "observable": "对 5 行文件请求 lineStart=10,lineEnd=20 → 期望报错或至少 truncated=true 并给出可继续读取的提示，现返回 ok=true、content=''、truncated=false",
+      "evidence": [
+        "codelens-local-agent-workbench/server/src/tools/builtin/fs-read.tool.ts:132-149 行窗口校验在夹逼 lineEnd 前进行，夹逼后可能出现 lineStart > lineEnd 导致 slice 返回空数组",
+        "codelens-local-agent-workbench/server/src/tools/builtin/fs-read.tool.ts:201 truncated 判定逻辑在用户显式请求行窗口时直接短路为 false，掩盖了空结果"
+      ],
+      "strengthens": "Act",
+      "attribution": "human",
+      "releasedIn": "2.30.0",
+      "completedAt": "2026-11-24",
+      "note": "越界行窗口（lineStart 夹逼后 > lineEnd）不再静默返回空，显式 TOOL_INVALID_ARGS 报错；判据 6/6 有区分力；干净 env 全套 2344 测试绿；loop env 污染假失败人工验收排除。"
     }
   ]
 }
