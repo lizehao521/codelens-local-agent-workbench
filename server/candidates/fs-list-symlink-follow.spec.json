@@ -1,0 +1,13 @@
+{
+  "id": "fs-list-symlink-follow",
+  "title": "fs.list 遍历时跟随符号链接，可能泄露沙箱外文件元数据",
+  "allowed": [
+    "src/tools/builtin/fs-list.tool.ts"
+  ],
+  "judge": "tests/self-upgrade/fs-list-symlink-follow.test.ts",
+  "probe": "fs-list-symlink-follow.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改动 fs.glob/code.search、不新增参数、不改变非递归模式行为"
+}

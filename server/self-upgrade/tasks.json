@@ -1095,6 +1095,29 @@
       "releasedIn": "2.30.0",
       "completedAt": "2026-11-24",
       "note": "越界行窗口（lineStart 夹逼后 > lineEnd）不再静默返回空，显式 TOOL_INVALID_ARGS 报错；判据 6/6 有区分力；干净 env 全套 2344 测试绿；loop env 污染假失败人工验收排除。"
+    },
+    {
+      "id": "fs-list-symlink-follow",
+      "title": "fs.list 遍历时跟随符号链接，可能泄露沙箱外文件元数据",
+      "strengthens": "Act",
+      "allowed": [
+        "src/tools/builtin/fs-list.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-list-symlink-follow.test.ts",
+      "probe": "fs-list-symlink-follow.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "pending",
+      "boundary": "不改动 fs.glob/code.search、不新增参数、不改变非递归模式行为",
+      "adoptedAt": "2026-11-24T09:51:45.441Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "fs.list 在递归遍历目录时对每个条目调用 stat()，会跟随符号链接；若沙箱内有指向沙箱外的软链，会把目标文件的大小/类型暴露给模型，fs.glob 与 code.search 同类工具均显式跳过符号链接",
+      "observable": "在沙箱内建立指向沙箱外文件的软链，用 fs.list recursive=true 读取该目录，期望软链不出现在结果或 type 为 'other' 且 sizeBytes=null，不得泄露目标文件大小",
+      "evidence": [
+        "src/tools/builtin/fs-list.tool.ts:74-79 先 readdir 再 stat，stat 会跟随软链",
+        "src/tools/builtin/sandbox-walk.ts:77-79 同代码库的共用遍历件显式用 isSymbolicLink() 跳过软链"
+      ],
+      "note": "第51轮派单3次判据红经诊断系判据环境隔离缺陷：sandboxRoot=process.cwd()=server/（含6.8万条.artifacts证据链），recursive path=\".\" 默认maxEntries=200被.artifacts占满，目标软链进不了结果→find undefined。受控实验证实CodeLens实现在干净os.tmpdir小沙箱里三条行为断言全绿、type=other/sizeBytes=null、无secret泄露。下轮派单前须先把本判据沙箱根改成os.tmpdir隔离目录（照fs-glob.test.ts的g2a-sandbox-*写法），否则判定不可信。原3条failed账本保留不抹除，已append correction纠正归因。"
     }
   ]
 }

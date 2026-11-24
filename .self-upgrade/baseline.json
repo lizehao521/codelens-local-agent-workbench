@@ -1,11 +1,11 @@
 {
-  "createdAt": "2026-11-24T08:47:10.639Z",
+  "createdAt": "2026-11-24T09:52:22.272Z",
   "allowed": [
-    "src/tools/builtin/fs-read.tool.ts"
+    "src/tools/builtin/fs-list.tool.ts"
   ],
-  "judge": "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts",
+  "judge": "tests/self-upgrade/fs-list-symlink-follow.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-read.tool.ts": "e55e91fe3fe9092572bb9e588d501f60b99a572cfed98e63956699d6575f9b6a"
+    "src/tools/builtin/fs-list.tool.ts": "ef5b177b9509e126ec22248c79ec2359e3f9e3d0e52821350f6133d155a8d03e"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "a5a0df77061744d4d2772985a0fb6804a01609d2a891c600c82ba9be974d1857",
@@ -155,6 +155,7 @@
     "tests/self-upgrade/fixtures/root-probe.test.ts": "3b7f547bb5319e57aac117e2d074544cd3d6ae8799b4411b4acfc5a6a539b91a",
     "tests/self-upgrade/fs-delete-dir-requires-recursive.test.ts": "df55c7f2682b9fcb099a6012ebb02c7d8a5dc528a86ea97372c6741a82a7628d",
     "tests/self-upgrade/fs-glob.test.ts": "d3a90325606e599945292db077fe8b991540ab2073c300afbb4b38e216e7b2cf",
+    "tests/self-upgrade/fs-list-symlink-follow.test.ts": "6f07c6489e0d48773024936c2f67716d5a891b59179d31d5c5b365f45b49606e",
     "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts": "7d7b58d6f6a5f389bede41baf75eaf31a6548679a3b9e715dfa891c5a4f266e2",
     "tests/self-upgrade/fs-read-line-window.test.ts": "580772d23fb9f387e0b5e00808786ffd48bd3e653389e01a4e85d8c0637dacd0",
     "tests/self-upgrade/fs-read-observation.test.ts": "fbfdce7e0c9b1570adead5f808940a142557c43d63d766b1d468fc9abb217a3e",
@@ -356,12 +357,12 @@
     "client/tests/tool-skill-modal.test.ts": "4ee523728c87bf79c13e6541bd9f7b13e7fff966c83675ca5f3ecf2276c128eb",
     "client/tests/use-async-data.test.ts": "1bbadffbebfb9b48d76e19d3e60e9fa8a99b55b28b716817385083fa4c413b6d",
     "self-upgrade/backlog.json": "38b7db2dd521945e6d6e39cd50980242a2b337f1ede934ede16845149a3d52eb",
-    "self-upgrade/tasks.json": "53cc58ea710db562260099da63e55082f508d11d1f45c6632873e09112c389d8",
+    "self-upgrade/tasks.json": "a7bdbad2223535704589fa48bebb6511df673faf6d51a190599422682319650b",
     "scripts/author-task.ts": "25eb68cccf44dc7c6eabf6d0cdbc283c18f42ec2c14a78e716b73a46ff6c2184",
     "scripts/auto-adopt.ts": "7b0400e821792e87028f79a6410a95b0ba6f094251e11fd267e6feb177bb83d4",
     "scripts/check-rsi-contract.mjs": "92ef5a771c995ada5f45062f8b3ab1b52a162f918e5c6b374e69834e3b7cb24b",
     "scripts/check-runtime-view.mjs": "4456dd10039584e0973613942a51e85ff733b99eaa11ff519253b72cf94f06d0",
-    "scripts/check-self-upgrade.mjs": "cac72e1b66f055c60baf6fecf7301f7096bda34edd72b54b619b86a10683b7ff",
+    "scripts/check-self-upgrade.mjs": "b33c53c508d996bd614de5d77df466ba344de931d0877a298fa75b99f258d796",
     "scripts/check-suite-floor.mjs": "ab837e6004af221acd94e96acaaad1ea70a4e2e10bc830bb561db0b3fc631ab7",
     "scripts/dispatch-bridge.ts": "f0ff920a981fcf52c1714cc88116c5bca9b9adf03f05d175f43829ef2cfb9940",
     "scripts/failure-attribution.ts": "2c0b1ec6757466d69fb199b5cd098cecab02357fb2f08c99280bd22c70837bea",
@@ -396,6 +397,6 @@
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "tests/self-upgrade/fs-read-oob-line-window-silent-empty.test.ts"
+    "tests/self-upgrade/fs-list-symlink-follow.test.ts"
   ]
 }

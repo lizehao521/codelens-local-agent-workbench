@@ -71,23 +71,46 @@ export const fsListTool: ToolDefinition = {
     const entries: Array<{ name: string; type: 'file' | 'dir' | 'other'; sizeBytes: number | null }> = [];
     const walk = async (dir: string, prefix: string, depth: number): Promise<boolean> => {
       if (entries.length >= maxEntries) return false;
-      const names = await readdir(dir);
-      for (const name of names) {
+      let dirEntries;
+      try {
+        dirEntries = await readdir(dir, { withFileTypes: true });
+      } catch {
+        return false;
+      }
+      for (const entry of dirEntries) {
         if (entries.length >= maxEntries) return false;
-        const abs = `${dir}/${name}`;
+        // Skip symlinks entirely (don't follow them) to avoid leaking sandbox-external metadata
+        if (entry.isSymbolicLink()) {
+          entries.push({
+            name: prefix ? `${prefix}/${entry.name}` : entry.name,
+            type: 'other',
+            sizeBytes: null,
+          });
+          continue;
+        }
+        const abs = `${dir}/${entry.name}`;
         try {
           const s = await stat(abs);
+          // Skip symlinks that may have been resolved by stat (e.g., broken symlinks or race conditions)
+          if (s.isSymbolicLink()) {
+            entries.push({
+              name: prefix ? `${prefix}/${entry.name}` : entry.name,
+              type: 'other',
+              sizeBytes: null,
+            });
+            continue;
+          }
           entries.push({
-            name: prefix ? `${prefix}/${name}` : name,
+            name: prefix ? `${prefix}/${entry.name}` : entry.name,
             type: s.isDirectory() ? 'dir' : s.isFile() ? 'file' : 'other',
             sizeBytes: s.isFile() ? s.size : null,
           });
           if (s.isDirectory() && args.recursive === true && depth < 6) {
-            const proceed = await walk(abs, prefix ? `${prefix}/${name}` : name, depth + 1);
+            const proceed = await walk(abs, prefix ? `${prefix}/${entry.name}` : entry.name, depth + 1);
             if (!proceed) return false;
           }
         } catch {
-          entries.push({ name: prefix ? `${prefix}/${name}` : name, type: 'other', sizeBytes: null });
+          entries.push({ name: prefix ? `${prefix}/${entry.name}` : entry.name, type: 'other', sizeBytes: null });
         }
       }
       return true;
