@@ -1,0 +1,13 @@
+{
+  "id": "fs-read-keyword-truncated-false-positive",
+  "title": "fs.read 仅用 keyword 过滤时被误判为截断",
+  "allowed": [
+    "src/tools/builtin/fs-read.tool.ts"
+  ],
+  "judge": "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts",
+  "probe": "fs-read-keyword-truncated-false-positive.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改变 maxBytes/MAX_LINES_RETURNED 硬截断的 truncated 语义，仅修正显式过滤请求的误判"
+}

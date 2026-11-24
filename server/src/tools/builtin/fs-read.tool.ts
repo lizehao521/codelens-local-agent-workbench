@@ -120,6 +120,7 @@ export const fsReadTool: ToolDefinition = {
     let truncatedBytes = false;
     const userRequestedLineStart = args.lineStart !== undefined;
     const userRequestedLineEnd = args.lineEnd !== undefined;
+    const userRequestedKeyword = args.keyword !== undefined;
 
     if (encoding === 'utf8') {
       // 先用完整文件建立真实行号坐标系
@@ -197,7 +198,7 @@ export const fsReadTool: ToolDefinition = {
         encoding,
         sizeBytes: stats.size,
         // 显式请求行窗口且未被 MAX_LINES_RETURNED/字节上限进一步截断时，不视为 truncated
-        truncated: truncatedBytes || overLimit || (lineInfo ? (lineInfo.returned < (lineInfo.total ?? 0) && !(userRequestedLineStart || userRequestedLineEnd)) : false),
+        truncated: truncatedBytes || overLimit || (lineInfo ? (lineInfo.returned < (lineInfo.total ?? 0) && !(userRequestedLineStart || userRequestedLineEnd || userRequestedKeyword)) : false),
         lines: lineInfo,
         content,
       },

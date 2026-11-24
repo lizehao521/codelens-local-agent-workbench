@@ -1043,6 +1043,32 @@
       "releasedIn": "2.30.0",
       "completedAt": "2026-11-15",
       "note": "RSI bridge 围栏 PASS；prolong 重新签发取 min(5min TTL, park deadline)；无 deadline 仍保留 TTL；判据 4/4；版本 2.30.0。"
+    },
+    {
+      "id": "fs-read-keyword-truncated-false-positive",
+      "title": "fs.read 仅用 keyword 过滤时被误判为截断",
+      "allowed": [
+        "src/tools/builtin/fs-read.tool.ts"
+      ],
+      "judge": "tests/self-upgrade/fs-read-keyword-truncated-false-positive.test.ts",
+      "probe": "fs-read-keyword-truncated-false-positive.probe.ts",
+      "mode": "red-baseline",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不改变 maxBytes/MAX_LINES_RETURNED 硬截断的 truncated 语义，仅修正显式过滤请求的误判",
+      "adoptedAt": "2026-11-24T08:00:56.247Z",
+      "adoptedBy": "auto-adopt",
+      "gap": "用户仅提供 keyword 参数（无 lineStart/lineEnd）时，工具把「命中行数 < 文件总行数」误判为 truncated=true，实则用户已显式请求过滤子集",
+      "observable": "fs.read({ path: 'file.txt', keyword: 'foo' }) 返回匹配行且 truncated=false（而非 true）",
+      "evidence": [
+        "codelens-local-agent-workbench/server/src/tools/builtin/fs-read.tool.ts:200 truncated 判定仅检查 userRequestedLineStart/LineEnd，未纳入 keyword 过滤场景",
+        "codelens-local-agent-workbench/server/tests/self-upgrade/fs-read-truncated-flag-false-positive.test.ts 仅覆盖显式行窗口，无 keyword-only 用例"
+      ],
+      "strengthens": "Judge",
+      "attribution": "human",
+      "releasedIn": "2.30.0",
+      "completedAt": "2026-11-24",
+      "note": "fs.read keyword-only 过滤不再误标 truncated(userRequestedKeyword 纳入豁免)；判据 6/6 绿且有区分力；干净 env 全套 2338 测试绿；RSI loop env 污染假失败已人工验收排除。"
     }
   ]
 }
