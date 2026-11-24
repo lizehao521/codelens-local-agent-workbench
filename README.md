@@ -60,7 +60,19 @@ CI（GitHub Actions）双 job：`server`（typecheck + 验收套件 + krsi）、
 
 ## RSI 自我演进
 
-RSI 模块（`server/src/services/rsi/` 60 文件）为近三个月主线，已落地跨代判决、一致性阴影旁路（仅审计）、failure 证据落表、diff 乙/丁、CHECKPOINT_ENABLED 实跑裁定与只读回读。门禁达标：双树 tsc 0、上游 2207 passed、生产 2274 passed、结构棘轮上游 593/593/0。关键边界：**CHECKPOINT_ENABLED 默认关闭**、**diff 丁真实代际覆盖率增量为 0**、**sys.exec/MCP 无快照**、**diffGuard.el=1 仅必要条件**、**生产库无 rsi_generation_diff 表（只读回读返回 []/null）**、**rollback/INV-2 冻结（需真实数据+人工批准+可审计，不支持自动/多代回退）**、**一致性阴影旁路与 diff 乙不构成解封**、**账本补 3 条 verified 为事实归档非能力认定**。里程碑 tag：`rsi-exp166-172`（c89cc71）、`rsi-exp166-172-final`（6ff42fa），收尾报告 `docs/handoff/2026-11-20/reports/rsi_pi_final_wrapup_report.html`。
+RSI 模块（`server/src/services/rsi/` 60 文件）为近三个月主线，已落地跨代判决、一致性阴影旁路（仅审计）、failure 证据落表、diff 乙/丁、CHECKPOINT_ENABLED 实跑裁定与只读回读。
+
+**近期迭代（已投产）**：
+
+- **长任务分解内核**：`server/src/services/plan/task-decomposer.ts` 把长任务拆成小执行单元，配套执行单元经验正例与格式契约强锁。
+- **计划准入闭环（生产可用）**：从"纯函数 + 单测"升级为接进真实执行循环——`plan-admission.ts`（准入判定）/`plan.service.ts`（活跃条目派生）/`plan-write-context.ts`（从 `agent_plans` 派生写上下文）三件套；`fs.write` 携带 `planItemId` 经写闸逐条准入，无活跃计划会话自动跳过（向后兼容老会话）。
+- **判据塔第 6 条 `plan.admission`**：`plan-admission-criterion.ts` 注册进 `L0_CRITERIA`（现 6 条），规则单一事实来源复用准入纯函数；canary GOOD/BAD 夹具实测判别力。`collectPlanAdmissionEvidence` 从 `agent_plans` + 本轮最后一条 `fs.write` 采集生产证据，使第 6 条在真实 run 中可复算（无证据时诚实 `unexec`，不假判、不影响 score）。
+- **进化策略技能库**：`SKILL_LIBRARY_ENABLED` 开关，5 条策略技能 seed，与 RSI 判决流程搭配。
+- **写权限边界**：连接器 token 只读无写权限；仓库写操作需用户 PAT，沙箱 DNS 污染 github.com 时按真实 IP 重试推送。
+
+**当前门禁**：全套 **231 文件 / 2332 tests** 全绿、双树 tsc 0、`git diff --check` 0、行数棘轮 33/33、变异体全杀；提交 `5709835` 推送后 CI #45（server + client 双 job）**success**。最新版本号以 `package.json` 为准（2.30.0）。
+
+**关键边界（未变，勿误读为能力升级）**：**CHECKPOINT_ENABLED 默认关闭**、**diff 丁真实代际覆盖率增量为 0**、**sys.exec/MCP 无快照**、**diffGuard.el=1 仅必要条件**、**生产库无 rsi_generation_diff 表（只读回读返回 []/null）**、**rollback/INV-2 冻结（需真实数据+人工批准+可审计，不支持自动/多代回退）**、**一致性阴影旁路与 diff 乙不构成解封**、**账本补 3 条 verified 为事实归档非能力认定**、**产品不对外承诺"自我改进闭环"完整体**。里程碑 tag：`rsi-exp166-172`（c89cc71）、`rsi-exp166-172-final`（6ff42fa），收尾报告 `docs/handoff/2026-11-20/reports/rsi_pi_final_wrapup_report.html`。
 
 ## 代理手册
 
