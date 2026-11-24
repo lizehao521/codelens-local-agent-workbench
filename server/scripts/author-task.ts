@@ -31,7 +31,7 @@ import {
   isExhausted,
   recentRejections,
 } from './lib/agent-feedback.js';
-import { withVendorPrefix } from './lib/resolve-model.js';
+import { withVendorPrefix } from './lib/resolve-model.js'; import { getNextKey } from './lib/api-key-pool.js';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -417,7 +417,7 @@ export async function askAuthor(p: Proposal, feedback?: string): Promise<string>
     return m ? m[1]!.trim() : '';
   };
   const base = (process.env.RSI_BASE_URL || get('RSI_BASE_URL') || get('TRIAL_BASE_URL')).replace(/\/$/, '');
-  const key = process.env.RSI_API_KEY || get('RSI_API_KEY') || get('LLM_SERVER_API_KEY');
+  const key = getNextKey();
   // 模型回退链见 resolveAuthorModel()。
   const model = resolveAuthorModel(envTxt);
 

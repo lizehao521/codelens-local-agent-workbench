@@ -26,7 +26,7 @@
 import http from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { buildDispatchTail } from './lib/sse-tail.mjs';
+import { buildDispatchTail } from './lib/sse-tail.mjs'; import { getNextKey } from './lib/api-key-pool.js';
 
 // 凭证与上游地址只从 .env / 进程环境读，源码里不写（与 env.ts 同一口径）。
 const envPath = path.join(process.cwd(), '.env');
@@ -888,7 +888,7 @@ async function main(): Promise<void> {
     provider: 'custom',
     model: process.env.RSI_MODEL ?? '平衡',
     customBaseUrl: process.env.RSI_BASE_URL ?? process.env.TRIAL_BASE_URL ?? '',
-    apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
+    apiKey: getNextKey(),
     channelMode: 'native',
     // 8192 是服务端校验的硬上限（>`maxTokens Too big: expected <= 8192`）。
     // 取满：实测有一轮它先写 29000 字符的「计划」再准备调工具，8k 输出在写计划时

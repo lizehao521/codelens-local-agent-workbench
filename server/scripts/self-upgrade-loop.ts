@@ -37,7 +37,7 @@ import { parseResult, proposeStatusLine } from './lib/propose-result.js';
 import { filterServableRotation, readToolCallEvidence } from './lib/dispatch-fidelity.mjs';
 import { DISPATCH_HEADROOM_MS, dispatchTimeoutMs, timeoutMarker } from './lib/dispatch-timeout.mjs';
 import { readSseDump, waitForSseDump } from './lib/dispatch-evidence.mjs';
-import { pickFenceEvidence } from './lib/fence-diag.mjs'; import { resolveModel } from './lib/resolve-model.js';
+import { pickFenceEvidence } from './lib/fence-diag.mjs'; import { resolveModel } from './lib/resolve-model.js'; import { getNextKey } from './lib/api-key-pool.js';
 
 const SERVER = process.cwd();
 
@@ -414,7 +414,7 @@ async function preflightUpstream(): Promise<{
   // 与 author-task/seed-agent-loop/propose-gaps 同口径：RSI_API_KEY 优先。
   // NVIDIA 直连只认 RSI_API_KEY；只用 LLM_SERVER_API_KEY（中继键）会 401，
   // 把完全可用的上游误判成故障，整轮停机。
-  const key = process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '';
+  const key = getNextKey();
   const auth = { Authorization: `Bearer ${key}` };
   try {
     // 第一跳：/models 只证明「连得上」。实测 AMD OneClick 的日限额耗尽时，

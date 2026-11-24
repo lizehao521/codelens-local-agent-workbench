@@ -16,6 +16,7 @@ import http from 'node:http';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getNextKey } from './lib/api-key-pool.js';
 
 // tsx 不会自动读 .env，而凭证只从环境变量取，所以这里自己加载一次。
 const ENV_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.env');
@@ -102,7 +103,7 @@ async function main() {
     provider: 'custom',
     model: 'deepseek-chat',
     customBaseUrl: 'http://1.92.150.5:8787/v1',
-    apiKey: process.env.LLM_SERVER_API_KEY ?? '',
+    apiKey: getNextKey(),
     channelMode: 'react',
     maxIterations: 8,
     temperature: 0.2,

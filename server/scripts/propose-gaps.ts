@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { checkDomain } from '../src/services/rsi/change-domain.js';
 import { TOOL_CONTRACT, appendRejection, recentExemplars, recentRejections } from './lib/agent-feedback.js';
 import { PROTECTED_PATHS, isProtected } from './lib/protected-paths.js';
-import { formatResult } from './lib/propose-result.js'; import { resolveModel } from './lib/resolve-model.js';
+import { formatResult } from './lib/propose-result.js'; import { resolveModel } from './lib/resolve-model.js'; import { getNextKey } from './lib/api-key-pool.js';
 
 const SERVER = process.cwd();
 const ROOT = path.join(SERVER, '..');
@@ -550,7 +550,7 @@ async function main(): Promise<void> {
     provider: 'custom',
     model: MODEL,
     customBaseUrl: process.env.RSI_BASE_URL ?? process.env.TRIAL_BASE_URL ?? '',
-    apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
+    apiKey: getNextKey(),
     channelMode: 'native',
     maxTokens: 8192,
     // 6 次不够：要求它先读源码后，实测 6 次会全花在读文件上、被截断在半句话里。

@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { createDb } from '../src/repositories/db.js';
 import { runEvalBattery } from '../src/services/eval/runner.js';
 import { pickTaskByScore } from '../src/services/eval/task-picker.js';
-import { restoreEvalState, snapshotEvalState } from './lib/eval-state.js';
+import { restoreEvalState, snapshotEvalState } from './lib/eval-state.js'; import { getNextKey } from './lib/api-key-pool.js';
 
 /** 目标 server；做隔离对照实验时用 RSI_SERVER_URL 指向独立实例。 */
 const BASE = process.env.RSI_SERVER_URL ?? 'http://127.0.0.1:8080';
@@ -420,7 +420,7 @@ const baseArgs = {
   // 离线演练用 RSI_BASE_URL 指到本地 fake 上游（见 tests/fixtures/fake-llm.ts）。
   customBaseUrl: process.env.RSI_BASE_URL ?? process.env.TRIAL_BASE_URL ?? '',
   // 凭证只从环境变量读（.env / 进程环境），绝不写进源码 —— 源码会进 git。
-  apiKey: process.env.RSI_API_KEY ?? process.env.LLM_SERVER_API_KEY ?? '',
+  apiKey: getNextKey(),
   channelMode: 'native',
   // 自改进要写整个测试文件：文件正文是 fs.write 的**参数**，算在 completion 里。
   // 1024 会在写到一半被截断 → 工具调用参数不完整 → 什么都写不出来。
