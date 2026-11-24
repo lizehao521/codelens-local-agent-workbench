@@ -10,6 +10,7 @@
  */
 
 import type { CriterionVerdict, JudgeEvidence } from './types.js';
+import { planAdmissionCriterion } from './plan-admission-criterion.js';
 
 export interface L0Thresholds {
   /** 工具调用成功率下限。 */
@@ -245,12 +246,21 @@ export const budgetEfficiency: L0Criterion = (evidence, thresholds) => {
   };
 };
 
+/**
+ * 方向二第 6 条：把独立的计划准入判据接进 L0 塔。
+ * 只做签名适配（L0Criterion 双参 → 判据单参），判定规则仍单一事实来源于 plan-admission.ts。
+ * 无 planAdmission 证据时判据返回 unexec + weightExcluded，不计分、不假判。
+ */
+const planAdmissionL0: L0Criterion = (evidence) =>
+  planAdmissionCriterion(evidence.planAdmission ?? { items: [] });
+
 export const L0_CRITERIA: L0Criterion[] = [
   toolSuccessRate,
   taskTerminal,
   loopHealth,
   approvalFriction,
   budgetEfficiency,
+  planAdmissionL0,
 ];
 
 /** 统一保留三位小数，避免浮点噪声污染判决比对与聚合。 */

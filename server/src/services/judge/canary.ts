@@ -36,7 +36,7 @@ const GOOD: CanaryCase = {
       { status: 'success', display_name: '写入文件' },
       { status: 'success', display_name: '计算结果' },
     ],
-    approvals: [{ status: 'decided', decision: 'allow_once' }],
+    approvals: [{ status: 'decided', decision: 'allow_once' }], planAdmission: { items: [{ id: 'p1', status: 'approved' }], activeItemId: 'p1', requestedItemId: 'p1', toolName: 'fs_write', operation: 'create' },
     circuitOpened: false,
   },
 };
@@ -56,7 +56,7 @@ const BAD_TOOLING: CanaryCase = {
       { status: 'failed', display_name: '写入文件', error_kind: 'PATH_OUTSIDE_SANDBOX' },
       { status: 'failed', display_name: 'HTTP 请求', error_kind: 'HTTP_DENIED' },
     ],
-    approvals: [],
+    approvals: [], planAdmission: { items: [{ id: 'p1', status: 'approved' }], activeItemId: 'p1', requestedItemId: 'p2', toolName: 'fs_write', operation: 'create' },
     circuitOpened: false,
   },
 };
@@ -76,7 +76,7 @@ const BAD_CIRCUIT: CanaryCase = {
       { status: 'timeout', display_name: 'HTTP 请求' },
       { status: 'failed', display_name: 'HTTP 请求', error_kind: 'TIMEOUT' },
     ],
-    approvals: [],
+    approvals: [], planAdmission: { items: [{ id: 'p1', status: 'approved' }], activeItemId: 'p1', requestedItemId: 'p2', toolName: 'fs_write', operation: 'create' },
     circuitOpened: true,
   },
 };
@@ -96,7 +96,7 @@ const BAD_FRICTION: CanaryCase = {
       { status: 'decided', decision: 'reject' },
       { status: 'decided', decision: 'reject' },
       { status: 'decided', decision: 'allow_once' },
-    ],
+    ], planAdmission: { items: [{ id: 'p1', status: 'approved' }], activeItemId: 'p1', requestedItemId: 'p2', toolName: 'fs_write', operation: 'create' },
     circuitOpened: false,
   },
 };

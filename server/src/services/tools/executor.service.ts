@@ -72,6 +72,11 @@ export interface ExecutorDeps {
     approvalMode: 'soft' | 'hard' | 'two_step';
     decision: 'allow_once' | 'allow_session' | 'reject' | 'expired' | 'aborted' | 'revised_direct';
   }) => void;
+  /**
+   * 计划写上下文 provider（方向一残留②）：按 sessionId 派生活跃条目准入上下文。
+   * 缺失时 ctx 不带 planWrite，写闸跳过计划准入，行为与改造前一致。
+   */
+  planWriteProvider?: (sessionId: string) => import('../plan/plan-write-context.js').PlanWriteContext | undefined;
 }
 /** What the loop feeds back to the LLM as the `role: tool` message content. */
 export interface ExecutionOutcome {
@@ -560,6 +565,7 @@ export class ToolExecutor {
       reportProgress: (stage, message) => {
         this.deps.sse.emit('tool_progress', { callId: toolCall.call_id, stage, message, at: Date.now() });
       },
+      planWrite: this.deps.planWriteProvider?.(toolCall.session_id),
     };
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {

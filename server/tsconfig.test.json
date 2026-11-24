@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src",
+    "tests/plan-admission.test.ts",
+    "tests/self-upgrade/write-guard.test.ts",
+    "tests/plan-active-item.test.ts",
+    "tests/plan-admission-criterion.test.ts",
+    "tests/plan-admission-l0.test.ts"
+  ]
+}

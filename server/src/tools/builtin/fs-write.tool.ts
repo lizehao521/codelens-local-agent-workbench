@@ -64,6 +64,7 @@ export const fsWriteTool: ToolDefinition = {
     properties: {
       path: { type: 'string', description: '沙箱相对路径', maxLength: 512 },
       operation: { type: 'string', enum: [...OPERATIONS], description: '操作类型，必填' },
+      planItemId: { type: 'string', description: '本次写请求归属的计划条目 id（有活跃计划时必填且须匹配）', maxLength: 128 },
       content: { type: 'string', description: 'create/overwrite/append 的内容', maxLength: 2000000 },
       newPath: { type: 'string', description: 'rename 的目标相对路径', maxLength: 512 },
       oldText: { type: 'string', description: '要被替换的原文片段（必须在文件里恰好出现一次）', maxLength: 200000 },
@@ -94,7 +95,8 @@ export const fsWriteTool: ToolDefinition = {
         },
       };
     }
-    const gate = gateWriteCall({ occupancy: ctx.contextOccupancy, finishReason: ctx.finishReason, operation });
+    const gate = gateWriteCall({ occupancy: ctx.contextOccupancy, finishReason: ctx.finishReason, operation,
+      ...(ctx.planWrite ? { admissionItems: ctx.planWrite.items, activeItemId: ctx.planWrite.activeItemId, planItemId: typeof args.planItemId === 'string' ? args.planItemId : null } : {}) });
     if (!gate.allowed) return gateRejectionOutcome(gate.reason);
     const jail = await resolveInSandboxAsync(ctx.sandboxRoot, String(args.path ?? ''), true, undefined, ctx.allowedDirs);
     if (!jail.ok) return {

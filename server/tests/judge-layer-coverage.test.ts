@@ -82,27 +82,27 @@ function round3(n: number): number {
 }
 
 describe('A1/A2：分母只算 available 层', () => {
-  it('A1 无审批 + 1 次成功工具 + 预算充足 → coverage 0.7 / tower 0.583 / degraded / pass', () => {
+  it('A1 无审批 + 1 次成功工具 + 预算充足 → coverage 0.636 / tower 0.538 / degraded / pass', () => {
     const judge = newJudge(); // 不注入语义评估器 → L2 不可用
     const sid = newSession();
     seedCleanRun(sid);
 
     const run = judge.judge(sid, cleanRuntime);
 
-    // 主口径：L0 5 条 + 工具纪律 4 条 + L1 1 条 = 10；
+    // 主口径：L0 6 条（含第6条 plan.admission）+ 工具纪律 4 条 + L1 1 条 = 11；
     // 执行 7 条（approval.friction 无审批；2 条纪律闸在静态时代无适用证据）。
-    expect(run.total).toBe(10);
+    expect(run.total).toBe(11);
     expect(run.executed).toBe(7);
-    expect(run.coverage).toBe(0.7);
-    // 全塔口径只用于展示：12 条判据里执行了 7 条
-    expect(run.towerTotal).toBe(12);
+    expect(run.coverage).toBe(0.636);
+    // 全塔口径只用于展示：13 条判据里执行了 7 条
+    expect(run.towerTotal).toBe(13);
     expect(run.towerExecuted).toBe(7);
-    expect(run.towerCoverage).toBe(0.583);
+    expect(run.towerCoverage).toBe(0.538);
 
     expect(run.degraded).toBe(true);
     expect(run.unavailableLayers.map((p) => p.layer)).toEqual(['L2', 'L3']);
     expect(run.verdict).toBe('pass');
-    expect(run.layerCoverage.L0).toBe(0.8);
+    expect(run.layerCoverage.L0).toBe(0.667);
     // L1 现在含 4 条工具纪律闸：5 条里 3 条有结论（金丝雀 + 2 条静态闸）。
     expect(run.layerCoverage.L1).toBe(0.6);
     // 不可用层是 null（未知），不是 0（全红）
@@ -207,7 +207,7 @@ describe('A5：金丝雀未执行 ⇒ L0 全 unexec，且不能误报自证故�
     const run = judge.judge(sid, cleanRuntime);
 
     const l0 = run.verdicts.filter((v) => v.layer === 'L0');
-    expect(l0).toHaveLength(5);
+    expect(l0).toHaveLength(6);
     expect(l0.every((v) => v.status === 'unexec')).toBe(true);
   });
 });

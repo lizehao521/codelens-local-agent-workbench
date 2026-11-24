@@ -38,6 +38,8 @@ export interface ToolExecutionContext {
   contextOccupancy?: number | null;
   /** 写闸信号：run 的收尾原因（context_full/circuit_open/aborted 等）。可选，缺失时默认放行。 */
   finishReason?: string | null;
+  /** 计划准入上下文（方向一残留②）：本会话活跃条目派生。缺失时写闸跳过计划准入（向后兼容）。 */
+  planWrite?: { items: readonly { id: string; status: string }[]; activeItemId: string };
 }
 
 export interface ToolEnableContext {

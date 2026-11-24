@@ -62,3 +62,53 @@ describe('write-guard · firstSyntaxError 语法闸', () => {
     expect(firstSyntaxError('function g( {\n', 'g.ts')).not.toBeNull();
   });
 });
+
+/**
+ * gateWriteCall 计划条目准入集成断言（方向一第一刀）。
+ * 纯函数层验证：不碰引擎执行循环（历史上接入执行循环写出残片，已归档），
+ * 只验证 gateWriteCall 收到准入上下文时的判定 + 向后兼容。
+ */
+import { gateWriteCall } from '../../src/services/agent/write-guard.js';
+
+describe('write-guard · gateWriteCall 计划条目准入', () => {
+  const items = [{ id: 'u01', status: 'approved' }, { id: 'u02', status: 'running' }];
+  const base = { toolName: 'fs_write', operation: 'create' } as const;
+
+  it('向后兼容：不传任何准入字段时，行为与改造前一致（默认放行）', () => {
+    expect(gateWriteCall({ ...base, occupancy: 0.1 }).allowed).toBe(true);
+  });
+
+  it('无活跃条目时拒绝写类调用，reason 含 no-active-item 与引导语', () => {
+    const v = gateWriteCall({ ...base, admissionItems: items, activeItemId: null, planItemId: 'u01' });
+    expect(v.allowed).toBe(false);
+    expect(v.reason).toContain('no-active-item');
+    expect(v.reason).toContain('先建/认领');
+  });
+
+  it('活跃条目 + planItemId 匹配 → 放行', () => {
+    expect(gateWriteCall({ ...base, admissionItems: items, activeItemId: 'u01', planItemId: 'u01' }).allowed).toBe(true);
+  });
+
+  it('声明别的条目解锁写入 → 拒绝（item-unknown），杀"忽略匹配"变异体', () => {
+    const v = gateWriteCall({ ...base, admissionItems: items, activeItemId: 'u01', planItemId: 'u02' });
+    expect(v.allowed).toBe(false);
+    expect(v.reason).toContain('item-unknown');
+  });
+
+  it('replace/purge/rename 等写操作同样受准入约束，不能绕过', () => {
+    for (const operation of ['create', 'overwrite', 'append', 'replace', 'purge', 'delete', 'rename']) {
+      const v = gateWriteCall({ toolName: 'fs_write', operation, admissionItems: items, activeItemId: null, planItemId: null });
+      expect(v.allowed, operation).toBe(false);
+    }
+  });
+
+  it('读操作不受准入影响，一律放行', () => {
+    expect(gateWriteCall({ toolName: 'fs.read', operation: 'read', admissionItems: items, activeItemId: null, planItemId: null }).allowed).toBe(true);
+  });
+
+  it('异常收尾原因仍优先于准入：即便准入通过也拒绝', () => {
+    const v = gateWriteCall({ ...base, admissionItems: items, activeItemId: 'u01', planItemId: 'u01', occupancy: 0.1, finishReason: 'context_full' });
+    expect(v.allowed).toBe(false);
+    expect(v.reason).toContain('context_full');
+  });
+});

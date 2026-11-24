@@ -18,6 +18,7 @@ import { LoopDetector } from './loop-detector.js';
 import { buildContextManager, buildToolExecutor } from './run-services.js';
 import { buildReverseIndex } from '../../utils/tool-name.js';
 import { config } from '../../config/env.js';
+import { buildPlanWriteContext } from '../plan/plan-write-context.js';
 
 type AssembleDeps = Pick<
   AgentLoopDeps,
@@ -32,6 +33,7 @@ type AssembleDeps = Pick<
   | 'grants'
   | 'runState'
   | 'review'
+  | 'db'
 >;
 
 export interface PreparedRun {
@@ -70,6 +72,7 @@ export function prepareRun(
       sse: p.sse,
       sandboxRoot: deps.sandboxRoot,
       allowedDirs,
+      planWriteProvider: (sid) => buildPlanWriteContext(deps.db, sid),
     },
     {
       budget: p.budget,

@@ -116,6 +116,6 @@ describe('金丝雀与判据塔的耦合约束', () => {
     // 若两者不同源，就会出现「金丝雀用一套阈值、生产用另一套」的假自证。
     const out = runCanary(T);
     expect(out.verdict.status).toBe('pass');
-    expect(L0_CRITERIA).toHaveLength(5);
+    expect(L0_CRITERIA).toHaveLength(6);
   });
 });

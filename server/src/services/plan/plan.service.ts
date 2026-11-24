@@ -134,4 +134,35 @@ export class PlanService {
     this.plans.updateStatus(id, to, Date.now());
     return this.get(id);
   }
+
+  /**
+   * 当前活跃条目（只读派生）：从会话计划里确定性挑一条 approved/running。
+   * 判定的纯逻辑在 selectActiveItem，本方法只做仓储读取 + 调用，不引入业务分支。
+   */
+  activeItem(sessionId: string, limit = 50): PlanView | null {
+    return selectActiveItem(this.listBySession(sessionId, limit));
+  }
+}
+
+/**
+ * 从计划列表里确定性选出"当前活跃条目"（方向一第二刀，纯函数无 IO）。
+ *
+ * 规则：
+ *  1. 只考虑 approved / running 状态；draft/done/cancelled 一律排除；
+ *  2. 多条候选时按确定性 tie-break 选唯一一条：updatedAt 大者优先，
+ *     相同则 createdAt 大者优先，仍相同则 id 字典序小者优先（全序、无随机、无时间依赖）；
+ *  3. 无任何候选返回 null。
+ *
+ * 为什么纯函数：验收对象是"列表 → 选中项或 null"的映射，表驱动单测 + 变异体
+ * 可直接复算；仓储只提供列表，不在本函数内读时间/随机/外部状态。
+ */
+export function selectActiveItem(items: readonly PlanView[]): PlanView | null {
+  const candidates = items.filter((it) => it.status === 'approved' || it.status === 'running');
+  if (candidates.length === 0) return null;
+  const sorted = [...candidates].sort((a, b) => {
+    if (b.updatedAt !== a.updatedAt) return b.updatedAt - a.updatedAt;
+    if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return sorted[0] ?? null;
 }

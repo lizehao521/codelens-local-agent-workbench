@@ -20,7 +20,7 @@ import type { RunStateService } from './run-state.service.js';
 
 type ExecutorBase = Pick<
   ExecutorDeps,
-  'toolCalls' | 'toolResults' | 'approvals' | 'sse' | 'sandboxRoot' | 'allowedDirs'
+  'toolCalls' | 'toolResults' | 'approvals' | 'sse' | 'sandboxRoot' | 'allowedDirs' | 'planWriteProvider'
 >;
 
 export function buildToolExecutor(

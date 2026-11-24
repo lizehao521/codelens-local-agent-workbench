@@ -132,9 +132,9 @@ describe('A12：replay 只读且幂等', () => {
     expect(body.judgeVersion?.rules).toBe('criterion-set-v2');
     expect(body.recorded.coverageVersion).toBe(2);
 
-    // 只读：判决行数、判据行数都没变（全塔 12 条 = L0×5 + 工具纪律×4 + L1 + L2 + L3）
+    // 只读：判决行数、判据行数都没变（全塔 13 条 = L0×6 + 工具纪律×4 + L1 + L2 + L3）
     expect(judge.repository.countRuns()).toBe(runsBefore);
-    expect(judge.repository.listVerdicts(runId)).toHaveLength(12);
+    expect(judge.repository.listVerdicts(runId)).toHaveLength(13);
   });
 
   it('非法 id → 400；不存在的 id → 404；evidence 参数非法时回落 snapshot', () => {

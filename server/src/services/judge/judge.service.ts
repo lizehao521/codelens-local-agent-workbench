@@ -8,6 +8,7 @@
  */
 
 import { generationStart } from '../rsi/controlled-release.js';
+import { collectPlanAdmissionEvidence } from './plan-admission-evidence.js';
 import type { Db } from '../../repositories/db.js';
 import type { ToolCallRepository } from '../memory/tool-call.repository.js';
 import { JudgeRepository, type JudgeRunRow, type LessonEffectiveness } from '../../repositories/judge.repository.js';
@@ -998,6 +999,7 @@ export class JudgeService {
       `SELECT status, decision FROM approvals WHERE session_id = ?`,
       [sessionId],
     );
+    const planAdmission = collectPlanAdmissionEvidence(this.deps.db, sessionId, runtime.runStartedAt);
 
     return {
       sessionId,
@@ -1009,6 +1011,7 @@ export class JudgeService {
       toolCalls,
       approvals,
       circuitOpened: runtime.circuitOpened,
+      ...(planAdmission ? { planAdmission } : {}),
     };
   }
 

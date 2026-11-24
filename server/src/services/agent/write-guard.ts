@@ -20,6 +20,7 @@
  */
 
 import ts from 'typescript';
+import { evaluatePlanAdmission, type AdmissionItem } from '../plan/plan-admission.js';
 
 /**
  * 接近上下文上限即落闸的阈值。刻意低于压缩触发线（0.75），留出一轮
@@ -118,6 +119,12 @@ export interface GateWriteCallInput {
   toolName?: string;
   /** fs_write 的 operation；不在写操作集合内（读操作/未知）一律放行。 */
   operation?: string;
+  /** 计划条目准入：会话的计划条目列表（来自 plan.service）。缺失时不启用计划准入（向后兼容）。 */
+  admissionItems?: readonly AdmissionItem[];
+  /** 计划条目准入：被认领为当前活跃的条目 id。 */
+  activeItemId?: string | null;
+  /** 计划条目准入：本次写请求声明执行的条目 id（planItemId）。 */
+  planItemId?: string | null;
 }
 
 /**
@@ -132,6 +139,27 @@ export function gateWriteCall(input: GateWriteCallInput): WriteGateVerdict {
   if (toolName !== 'fs_write' && toolName !== 'fs.write') return { allowed: true };
   const operation = input.operation ?? '';
   if (!FS_WRITE_OPERATIONS.has(operation)) return { allowed: true };
+
+  // 计划条目准入：仅当调用方提供了准入上下文时启用（向后兼容）。
+  // 旧调用方不传这些字段 → 跳过，行为与改造前完全一致。
+  if (input.admissionItems !== undefined || input.activeItemId !== undefined || input.planItemId !== undefined) {
+    const decision = evaluatePlanAdmission({
+      items: input.admissionItems ?? [],
+      activeItemId: input.activeItemId,
+      requestedItemId: input.planItemId,
+      toolName,
+      operation,
+    });
+    if (!decision.allowed) {
+      const hint: Record<string, string> = {
+        'no-active-item': '请先建/认领一个活跃计划条目再写入',
+        'item-not-active': '请声明本次写请求的 planItemId',
+        'item-unknown': 'planItemId 必须等于当前活跃条目 id',
+      };
+      return { allowed: false, reason: `NOT_RUN：计划条目准入拒绝（${decision.reason}）。${hint[decision.reason] ?? ''}` };
+    }
+  }
+
   const occupancy = typeof input.occupancy === 'number' && Number.isFinite(input.occupancy) ? input.occupancy : 0;
   return writeGateFor(occupancy, input.finishReason ?? null);
 }

@@ -451,6 +451,7 @@ export class AgentLoopService {
       const { executor, contextManager, breaker, detector, convergence, reportedCircuit, resolver } = prepareRun(
         {
           toolCalls: this.deps.toolCalls, toolResults: this.deps.toolResults, registry: this.deps.registry,
+          db: this.deps.db,
           messages: this.deps.messages, adapter: this.deps.adapter, sandboxRoot: this.deps.sandboxRoot,
           sandboxPermissions: this.deps.sandboxPermissions, checkpoint: this.deps.checkpoint,
           grants: this.deps.grants, runState: this.deps.runState, review,
@@ -583,7 +584,6 @@ export class AgentLoopService {
       emitMeta(budget.iteration + 1, null, null);
 
       // ── π 注入视图：run 级求值，一次 ─────────────────────────────────────────
-      //
       // 这里是**唯一求值点**，且在 turn loop 之外。两个理由，缺一不可：
       //
       // 1. 语义：经验集合是**这次 run 的输入**，不是每轮 turn 的输入。若中途

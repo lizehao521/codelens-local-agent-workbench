@@ -71,6 +71,17 @@ export interface JudgeEvidence {
   approvals: Array<{ status: string; decision: string | null }>;
   /** 运行期信号：本轮是否触发过熔断。 */
   circuitOpened: boolean;
+  /**
+   * 计划条目准入证据（方向二第 6 条判据）。无 plan 上下文的 run 缺席，
+   * 判据据此返回 unexec + weightExcluded —— 没证据不假判，是内核的诚实口径。
+   */
+  planAdmission?: {
+    items: readonly { id: string; status: string }[];
+    activeItemId?: string | null;
+    requestedItemId?: string | null;
+    toolName?: string;
+    operation?: string;
+  };
 }
 
 /**

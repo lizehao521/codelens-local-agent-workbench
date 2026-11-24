@@ -236,13 +236,13 @@ describe('阈值安全区间（防止自我修改把闸拧松）', () => {
 
 describe('判据集合完整性', () => {
   it('L0 恰好 5 条，且判据名唯一', () => {
-    expect(L0_CRITERIA).toHaveLength(5);
+    expect(L0_CRITERIA).toHaveLength(6);
     const names = new Set<string>();
     for (const fn of L0_CRITERIA) {
       const v = fn(evidence(), T);
       names.add(v.criterion);
       expect(v.layer).toBe('L0');
     }
-    expect(names.size).toBe(5);
+    expect(names.size).toBe(6);
   });
 });
