@@ -24,6 +24,22 @@ import { fileURLToPath } from 'node:url';
 import { deletedRationaleComments } from './lib/rationale-guard.mjs';
 import { classifyJudgeRun, failedFilesOf, regressionRunEvidence } from './lib/judge-run-classify.mjs';
 
+// 全量回归子进程必须与「人工干净 env 直跑」一致：剥离宿主/派单注入的配置键，
+// 否则一批断言「默认关闭态」的用例只在围栏里红，被误判成 Agent 踩坏既有行为。
+const AMBIENT_ENV_KEYS = [
+  'LLM_SERVER_API_KEY', 'TRIAL_MODE_ENABLED', 'TRIAL_BASE_URL', 'TRIAL_MODEL', 'TRIAL_DAILY_LIMIT',
+  'SANDBOX_ROOT', 'UPSTREAM_TIMEOUT_MS', 'AGENT_DB_PATH', 'AGENT_APPROVAL_SECRET',
+  'HOST', 'PORT', 'NODE_ENV', 'RSI_API_KEY', 'RSI_BASE_URL', 'RSI_MODEL', 'RSI_AUTHOR_MODEL',
+  'RSI_AUTHOR_MAX_TOKENS', 'RSI_PROPOSE_MAX_TOKENS', 'RSI_DISPATCH', 'RSI_MODEL_ROTATION',
+  'SKILL_LIBRARY_ENABLED', 'CHECKPOINT_ENABLED', 'CHAT_MODEL', 'AGENT_TOKEN_BUDGET_FACTOR',
+  'AGENT_MAX_ITERATIONS', 'AGENT_MAX_TOOL_CALLS', 'AGENT_TASK_BUDGET_MS', 'AGENT_CONVERGENCE_ROUNDS',
+];
+function cleanRegressionEnv() {
+  const env = { ...process.env };
+  for (const k of AMBIENT_ENV_KEYS) delete env[k];
+  return env;
+}
+
 const SERVER = fileURLToPath(new URL('..', import.meta.url));
 
 // ── C1 元数据闸（2026-11-13）────────────────────────────────────────────────
@@ -485,6 +501,7 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
         encoding: 'utf8',
         timeout: 600_000,
         shell: process.platform === 'win32',
+        env: cleanRegressionEnv(),
       });
       return { ok: true, out: '', err: null };
     } catch (e) {
@@ -534,6 +551,7 @@ if (process.argv.includes('--full') && judgeOk && typeOk && judgeSelfOk) {
           encoding: 'utf8',
           timeout: 600_000,
           shell: process.platform === 'win32',
+          env: cleanRegressionEnv(),
         });
         full = { ok: true, out: '', err: null };
       } catch (e) {
