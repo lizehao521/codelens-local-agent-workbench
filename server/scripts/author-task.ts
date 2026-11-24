@@ -20,8 +20,7 @@
  * 落进仓库后判据即受围栏指纹保护，Agent 改一个字符就作废。
  */
 
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { checkDomain } from '../src/services/rsi/change-domain.js';
 import { acquireRateLimit } from '../src/providers/rate-limit.js';
 import { baselineMustBeRed, type CandidateSpec } from './auto-adopt.js';
@@ -32,6 +31,7 @@ import {
   isExhausted,
   recentRejections,
 } from './lib/agent-feedback.js';
+import { withVendorPrefix } from './lib/resolve-model.js';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -406,7 +406,7 @@ export function resolveAuthorModel(envTxt: string, env: NodeJS.ProcessEnv = proc
   // 却会停在 ''，导致 askAuthor 拿空模型名去打 NVIDIA → 404。
   const fromEnv = (env.RSI_AUTHOR_MODEL ?? '').trim();
   const fromFile = (get('RSI_AUTHOR_MODEL') || get('TRIAL_MODEL')).trim();
-  return fromEnv || fromFile || 'gpt-4o';
+  return withVendorPrefix(fromEnv || fromFile || 'gpt-4o');
 }
 
 /** 调出题人模型写判据。 */

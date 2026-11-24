@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { checkDomain } from '../src/services/rsi/change-domain.js';
 import { TOOL_CONTRACT, appendRejection, recentExemplars, recentRejections } from './lib/agent-feedback.js';
 import { PROTECTED_PATHS, isProtected } from './lib/protected-paths.js';
-import { formatResult } from './lib/propose-result.js';
+import { formatResult } from './lib/propose-result.js'; import { resolveModel } from './lib/resolve-model.js';
 
 const SERVER = process.cwd();
 const ROOT = path.join(SERVER, '..');
@@ -45,7 +45,7 @@ const TASKS = path.join(SERVER, 'self-upgrade', 'tasks.json');
 const BACKLOG = path.join(SERVER, 'self-upgrade', 'backlog.json');
 
 const BASE = (process.env.UPGRADE_BASE ?? 'http://127.0.0.1:8099').replace(/\/$/, '');
-const MODEL = process.env.RSI_MODEL ?? 'nemotron-3-ultra-550b-a55b';
+const MODEL = resolveModel();
 
 const arg = (name: string): string | undefined => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));

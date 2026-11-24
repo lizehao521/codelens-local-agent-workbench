@@ -37,7 +37,7 @@ import { parseResult, proposeStatusLine } from './lib/propose-result.js';
 import { filterServableRotation, readToolCallEvidence } from './lib/dispatch-fidelity.mjs';
 import { DISPATCH_HEADROOM_MS, dispatchTimeoutMs, timeoutMarker } from './lib/dispatch-timeout.mjs';
 import { readSseDump, waitForSseDump } from './lib/dispatch-evidence.mjs';
-import { pickFenceEvidence } from './lib/fence-diag.mjs';
+import { pickFenceEvidence } from './lib/fence-diag.mjs'; import { resolveModel } from './lib/resolve-model.js';
 
 const SERVER = process.cwd();
 
@@ -57,7 +57,7 @@ const ROOT = path.join(SERVER, '..');
 const LEDGER = path.join(ROOT, '.self-upgrade', 'ledger.jsonl');
 const TASKS_FILE = path.join(SERVER, 'self-upgrade', 'tasks.json');
 const WORK = path.join(ROOT, '.self-upgrade', 'loop');
-const MODEL = process.env.RSI_MODEL ?? 'nemotron-3-ultra-550b-a55b';
+const MODEL = resolveModel();
 
 /**
  * 换模型的候选顺序。归因判成 behavior 层（有预算但一次工具都不调）时按此轮换。
