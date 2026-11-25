@@ -188,6 +188,8 @@ export interface AgentLoopDeps {
    * 收尾生成汇报卡。不提供时不记录，行为与历史一致。
    */
   runState?: RunStateService;
+  /** 技能库（可选）：提供且启用时按当前 message 匹配 topK=3 技能注入 system prompt；否则零开销（向后兼容）。 */
+  skillLibrary?: import('../skills/skill-library.service.js').SkillLibraryService;
 }
 
 export interface TrialLock {
@@ -629,10 +631,7 @@ export class AgentLoopService {
           session.id,
           req.provider,
           req.model,
-          this.withWorkspace(
-            buildSystemPrompt(req.taskKind, policyForPrompt, req.executionMode),
-            this.deps.sandboxRoot,
-          ),
+          this.withWorkspace(buildSystemPrompt(req.taskKind, policyForPrompt, req.executionMode, this.deps.skillLibrary, req.message), this.deps.sandboxRoot),
           channel === 'native' ? providerTools : renderToolCatalogue(toolDefs),
         );
         if (view.compactionFailed) {

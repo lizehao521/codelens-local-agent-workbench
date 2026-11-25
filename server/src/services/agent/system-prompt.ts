@@ -7,6 +7,7 @@ import { loadProjectInstructions } from './project-instructions.js';
 import { loadExemplars, renderExemplarBlock, selectExemplars } from './exemplar-injection.js';
 import { config } from '../../config/env.js';
 import path from 'node:path';
+import type { SkillLibraryService, SkillDefinition } from '../skills/skill-library.service.js';
 
 /**
  * 基座提示词（native 与 react 通道共用；react 通道叠加文本协议段，不丢弃本段）。
@@ -41,17 +42,39 @@ export const AGENT_BASE_PROMPT = `你是 CodeLens Agent，一个通过调用工�
 export const AGENT_SYSTEM_PROMPT = AGENT_BASE_PROMPT;
 
 /**
- * 合成完整 system prompt：基座 + 任务段（可选）+ π' 经验段（可选）。
+ * 合成完整 system prompt：基座 + 任务段（可选）+ π' 经验段（可选）+ 技能注入段（可选）。
  * 消费者：agent-loop（每轮 buildView）；taskKind 缺省 = 自由对话，不追加任务段。
  * policy 来自 Update 闭环的当前 π'，使上一轮沉积的经验进入下一轮 Act（关闭 C2 开环）。
  * policy 缺省时行为与历史完全一致（向后兼容）。
+ * skillLibrary 与 userMessage 同时提供时，按 match(userMessage, topK=3, matchMinScore=0.15) 注入相关技能；
+ * 任一缺省或技能库未启用 → 零开销返回，不注入。
  */
-export function buildSystemPrompt(taskKind?: TaskKind, policy?: Policy, executionMode?: ExecutionMode): string {
+export function buildSystemPrompt(
+  taskKind?: TaskKind,
+  policy?: Policy,
+  executionMode?: ExecutionMode,
+  skillLibrary?: SkillLibraryService,
+  userMessage?: string,
+): string {
   const base = taskKind ? `${AGENT_BASE_PROMPT}\n\n${buildTaskSection(taskKind)}` : AGENT_BASE_PROMPT;
   const withMode = executionMode ? `${base}\n\n${buildExecutionModeSection(executionMode)}` : base;
-  if (!policy || policy.lessons.length === 0) return withMode;
+
+  // Skill injection (runs once per turn, before policy lessons)
+  let skillsBlock = '';
+  if (skillLibrary && skillLibrary.enabled && userMessage && userMessage.trim()) {
+    const matched = skillLibrary.match(userMessage.trim(), 3);
+    if (matched.length > 0) {
+      const lines = matched.map((skill: SkillDefinition, i: number) => {
+        const steps = skill.steps.length > 0 ? `\n    步骤：\n${skill.steps.map((s, j) => `      ${j + 1}. ${s}`).join('\n')}` : '';
+        return `${i + 1}. ${skill.name} — ${skill.description}${steps}`;
+      });
+      skillsBlock = `\n\n【相关技能（命中即遵循其步骤）】\n${lines.join('\n')}`;
+    }
+  }
+
+  if (!policy || policy.lessons.length === 0) return withMode + skillsBlock;
   const lessonsBlock = policy.lessons.map((lesson, i) => `${i + 1}. ${lesson}`).join('\n');
-  return `${withMode}\n\n【来自过往经验的策略（强化内核自动沉淀，仅供本次任务参考）】\n${lessonsBlock}`;
+  return `${withMode}${skillsBlock}\n\n【来自过往经验的策略（强化内核自动沉淀，仅供本次任务参考）】\n${lessonsBlock}`;
 }
 
 /** Observation fed back for a hallucinated or disabled tool (no retry budget burn). */
