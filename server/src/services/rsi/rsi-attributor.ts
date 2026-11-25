@@ -75,9 +75,10 @@ export async function attributeDegradation(deps: AttributorDeps): Promise<Attrib
     tokens: { prompt: 0, completion: 0 },
   };
 
-  // ── 只对 not_improved / refused 做归因 ──────────────────────────────────
-  if (rsiResult.state !== 'not_improved' && rsiResult.state !== 'refused') {
-    // improved / skipped / undecidable / error 都不需要归因
+  // ── 需要归因的 RSI 状态集合：not_improved / refused / undecidable ─────────────
+  // improved / skipped / error 不触发归因
+  const ATTRIBUTION_STATES = new Set(['not_improved', 'refused', 'undecidable']);
+  if (!ATTRIBUTION_STATES.has(rsiResult.state)) {
     outcome.latencyMs = Date.now() - startedAt;
     return outcome;
   }
@@ -163,14 +164,17 @@ export async function attributeDegradation(deps: AttributorDeps): Promise<Attrib
 
 // ── Prompt 构造 ──────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `你是 RSI 自回归归因器。当 Agent 跨代对比后 krsi 判 not_improved 或 refused，
+const SYSTEM_PROMPT = `你是 RSI 自回归归因器。当 Agent 跨代对比后 krsi 判 not_improved、refused 或 undecidable，
 你要基于 krsi 的报告和 Agent 本轮 verdicts，写一段**具体、可行动**的中文经验，帮助 Agent 下一轮做得更好。
 
 规则：
 1. 只写 1-2 句，不要长段落
 2. 要具体：点名哪个指标、哪个动作、什么方向
 3. 可行动：下次遇到类似情况应该怎么做
-4. 绝对不要加寒暄或解释，直接输出 LESSON: <内容>`;
+4. 绝对不要加寒暄或解释，直接输出 LESSON: <内容>
+
+特别说明：
+- undecidable 表示：起点已绿（基线通过），但 mode/账实不符，且 attempts 耗尽。经验应指导如何识别此类题并尽早销账/重出题，而不是空泛的"换个策略"。`;
 
 function buildAttributionPrompt(args: {
   state: string;

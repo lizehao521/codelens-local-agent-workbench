@@ -585,6 +585,29 @@ export function applyMigrations(db: MigrationDb): number[] {
   // 008：可编辑计划面板（agent_plans）—— DDL/记账拆到 plan-schema.ts
   applied.push(...applyPlanMigration(db));
 
+  // 009：scheduler 心跳专表（与 krsi 四态判决表 policy_rsi_runs 语义隔离）
+  const v9 = db.get<{ n: number }>('SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 9');
+  if ((v9?.n ?? 0) === 0) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS scheduler_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        trigger TEXT NOT NULL CHECK (trigger IN ('cron', 'manual')),
+        ok INTEGER NOT NULL CHECK (ok IN (0, 1)),
+        output TEXT,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_scheduler_runs_created_at ON scheduler_runs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_scheduler_runs_trigger ON scheduler_runs(trigger);
+    `);
+    db.run(
+      `INSERT OR IGNORE INTO schema_migrations (version, name, applied_at) VALUES (9, '009-scheduler-runs', ?)`,
+      [Date.now()],
+    );
+    applied.push(9);
+  }
+
   return applied;
 }
 

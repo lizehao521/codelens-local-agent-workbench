@@ -12,6 +12,8 @@ import { createProvidersRoutes } from './providers.routes.js';
 import { createSandboxPermissionsRoutes } from './sandbox-permissions.routes.js';
 import { createJudgeRoutes } from './judge.routes.js';
 import { createRsiRoutes } from './rsi.routes.js';
+import { createRsiSchedulerRoutes } from './rsi-scheduler.routes.js';
+import { getRsiScheduler } from '../services/rsi/scheduler.service.js';
 import { createCapabilitiesRoutes } from './capabilities.routes.js';
 import { createTracesRoutes } from './traces.routes.js';
 import { createSkillsRoutes } from './skills.routes.js';
@@ -77,6 +79,7 @@ export function createApiRouter(deps: ApiRouterDeps): Router {
   v1.use('/sandbox-permissions', createSandboxPermissionsRoutes(deps.sandboxPermissions));
   v1.use(createJudgeRoutes(deps.judge));
   v1.use(createRsiRoutes(deps.rsi));
+  v1.use(createRsiSchedulerRoutes(() => getRsiScheduler()));
   v1.use(createCapabilitiesRoutes({ capabilities: deps.capabilities }));
   v1.use(createTracesRoutes({ traces: deps.traces }));
   v1.use(createSkillsRoutes({ skills: deps.skills }));

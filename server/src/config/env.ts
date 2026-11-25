@@ -42,6 +42,12 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   ALLOWED_ORIGINS: z.string().default(''),
   LLM_SERVER_API_KEY: z.string().default(''),
+  /**
+   * 失败自动切换的 API Key 池（逗号分隔，按书写顺序轮换）。
+   * 空 = 不启用轮换，沿用 LLM_SERVER_API_KEY 单 key 行为。
+   * 仅存本地 .env，服务端不落库、不记日志；密钥仅在请求时以 Bearer 透传。
+   */
+  LLM_API_KEYS: z.string().default(''),
   // ── L2 深判专用（会话 provider/model 不命中时用这些兜底） ──
   DEEP_ASSESSOR_BASE_URL: z.string().default(''),
   DEEP_ASSESSOR_MODEL: z.string().default(''),
@@ -167,6 +173,11 @@ export interface AppConfig {
   nodeEnv: 'development' | 'production' | 'test';
   allowedOrigins: string[];
   serverApiKey: string;
+  /**
+   * 失败自动切换的 API Key 池（有序）。空数组 = 不启用轮换。
+   * serverApiKey 恒为池中第一个（或池为空时的单 key），保持现有兜底语义不变。
+   */
+  apiKeyPool: string[];
   /** L2 深判兜底 provider/model/baseUrl（会话不命中时用）。 */
   deepAssessorProvider: string;
   deepAssessorModel: string;
@@ -277,6 +288,22 @@ function parseAllowlist(raw: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+/**
+ * 解析 API Key 池：逗号分隔、去首尾空白、去重、保序。
+ * 密钥大小写敏感（不做 lowercase）；空项丢弃。
+ * LLM_API_KEYS 为空时，回退到单 key（LLM_SERVER_API_KEY）作为唯一成员，
+ * 保证「未配池」时 serverApiKey 仍是池首、行为零变化。
+ */
+function parseApiKeyPool(rawPool: string, singleKey: string): string[] {
+  const fromPool = rawPool
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  const ordered = fromPool.length > 0 ? fromPool : singleKey.length > 0 ? [singleKey] : [];
+  // 去重且保序（Set 保留插入顺序）。
+  return [...new Set(ordered)];
+}
+
 function parseBool(raw: string): boolean {
   return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase());
 }
@@ -329,12 +356,15 @@ function buildConfig(source: NodeJS.ProcessEnv): AppConfig {
   }
   const env = parsed.data;
   const packageRoot = findPackageRoot(currentModuleDir());
+  const apiKeyPool = parseApiKeyPool(env.LLM_API_KEYS, env.LLM_SERVER_API_KEY.trim());
   return {
     port: env.PORT,
     host: env.HOST.trim(),
     nodeEnv: env.NODE_ENV,
     allowedOrigins: parseAllowedOrigins(env.ALLOWED_ORIGINS),
-    serverApiKey: env.LLM_SERVER_API_KEY.trim(),
+    // 池首即兜底 key：现有所有读 config.serverApiKey 的调用点自动获得轮换能力。
+    serverApiKey: apiKeyPool[0] ?? '',
+    apiKeyPool,
     deepAssessorProvider: env.DEEP_ASSESSOR_PROVIDER.trim(),
     deepAssessorModel: env.DEEP_ASSESSOR_MODEL.trim(),
     deepAssessorBaseUrl: env.DEEP_ASSESSOR_BASE_URL.trim(),

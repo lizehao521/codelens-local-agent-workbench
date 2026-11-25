@@ -1,11 +1,11 @@
 {
-  "createdAt": "2026-11-24T09:52:22.272Z",
+  "createdAt": "2026-11-25T03:48:23.740Z",
   "allowed": [
     "src/tools/builtin/fs-list.tool.ts"
   ],
   "judge": "tests/self-upgrade/fs-list-symlink-follow.test.ts",
   "allowedHashes": {
-    "src/tools/builtin/fs-list.tool.ts": "ef5b177b9509e126ec22248c79ec2359e3f9e3d0e52821350f6133d155a8d03e"
+    "src/tools/builtin/fs-list.tool.ts": "bbce356ac3a55917ae400639ff5ca29c12eeb4ce6eedc9fe81baac076d1b84df"
   },
   "protected": {
     "tests/accounting-integrity.test.ts": "a5a0df77061744d4d2772985a0fb6804a01609d2a891c600c82ba9be974d1857",
@@ -18,6 +18,7 @@
     "tests/agent-stage-events.test.ts": "e49e94c54a61f4722591f8ab7b301117ac30eb1863178220df327c648ff1ccb8",
     "tests/agent-stage-timeout.test.ts": "4710b21611e933d4da8f926f1c5f68bdf0d816da09032c6999e2d77c83318f2e",
     "tests/api-error-shape.test.ts": "25394422d99fe5d758e7572c537e08611d8d5785a4e45f1e19ddf256dafb611c",
+    "tests/api-key-rotation.test.ts": "3ccc0c93a0205ca5205028e777cbb1a8f53234b84240015949f8030a6ea4e81b",
     "tests/approval-dedup.test.ts": "306ad4debdf5a1be1753609f8133280f21b9e62e4806cb225320ffbf3416f8e8",
     "tests/approval-repository.test.ts": "517e6f0988bb6af7d2edf3598e87122678398a5cb2c86eed64dfc915beef53bb",
     "tests/approval-secret.test.ts": "f0059dd909db279fbffffebeb1cd9725382dd697d7af05988f40660401ce2491",
@@ -187,7 +188,7 @@
     "tests/session-export-markdown.test.ts": "08754d408c91fb7c95179c953dd9a0a204d40e1cfbc2ec1f5f0e2d51a6402827",
     "tests/sessions-access.test.ts": "dc837489f998a865102ea1f3d01cd92a499a260b74d50a9f8678cbd8def7fafc",
     "tests/sessions-detail.test.ts": "c613e64ab8d467ee046675685599e87adb2a3830b53355edae5884271d299318",
-    "tests/setup-hermetic-env.ts": "a6ced3f9269a82ab0542a12cb73656b35f5047c0472ee6c3f1d2fa114edb42d6",
+    "tests/setup-hermetic-env.ts": "2f5754abceac736f5f161a9d7260efcb5870befe3075be627e953a23f8a2b768",
     "tests/skill-library.service.test.ts": "477155873854ed84e9caf25c1f9f11c8680108b00089498a4cbb5bf035e6c312",
     "tests/snapshot-green-gate.test.ts": "63c8723b7ddc93fd3f356469bad2c253576d41907d693385a27d2060e2cc30ad",
     "tests/ssrf-guard.test.ts": "fa92e53f3e85816efe54faeec1894111acac219bbd03d30daf9f2fdd95fc575a",
@@ -356,13 +357,15 @@
     "client/tests/tool-call-hydration.test.ts": "523db6639e898ee95f9d5021b6383621cbd42d4cb4a62100c83abf560ef9f428",
     "client/tests/tool-skill-modal.test.ts": "4ee523728c87bf79c13e6541bd9f7b13e7fff966c83675ca5f3ecf2276c128eb",
     "client/tests/use-async-data.test.ts": "1bbadffbebfb9b48d76e19d3e60e9fa8a99b55b28b716817385083fa4c413b6d",
-    "self-upgrade/backlog.json": "38b7db2dd521945e6d6e39cd50980242a2b337f1ede934ede16845149a3d52eb",
-    "self-upgrade/tasks.json": "a7bdbad2223535704589fa48bebb6511df673faf6d51a190599422682319650b",
-    "scripts/author-task.ts": "25eb68cccf44dc7c6eabf6d0cdbc283c18f42ec2c14a78e716b73a46ff6c2184",
+    "self-upgrade/backlog.json": "0d88e66638405ea6582a21971489b1b270b66c9c115c442d2d55008126cacc0a",
+    "self-upgrade/backlog.json.bak": "38b7db2dd521945e6d6e39cd50980242a2b337f1ede934ede16845149a3d52eb",
+    "self-upgrade/tasks.json": "284aad0d807cc1e3dd59f61a1442224dd50439b7c4915b32d2f8734a8c822c3d",
+    "self-upgrade/tasks.json.bak": "6c5260cf35f2fc19566635de705340c49dc7b22eafdad55728bba7eda4e5e7f0",
+    "scripts/author-task.ts": "c58403222ce3052beed9501979d00407beb67bea6cd57b2e7b10b918ba0af522",
     "scripts/auto-adopt.ts": "7b0400e821792e87028f79a6410a95b0ba6f094251e11fd267e6feb177bb83d4",
     "scripts/check-rsi-contract.mjs": "92ef5a771c995ada5f45062f8b3ab1b52a162f918e5c6b374e69834e3b7cb24b",
     "scripts/check-runtime-view.mjs": "4456dd10039584e0973613942a51e85ff733b99eaa11ff519253b72cf94f06d0",
-    "scripts/check-self-upgrade.mjs": "b33c53c508d996bd614de5d77df466ba344de931d0877a298fa75b99f258d796",
+    "scripts/check-self-upgrade.mjs": "57323b1be08c5112f6a9095d978bbec4153cae605896fac93921ec8763c69739",
     "scripts/check-suite-floor.mjs": "ab837e6004af221acd94e96acaaad1ea70a4e2e10bc830bb561db0b3fc631ab7",
     "scripts/dispatch-bridge.ts": "f0ff920a981fcf52c1714cc88116c5bca9b9adf03f05d175f43829ef2cfb9940",
     "scripts/failure-attribution.ts": "2c0b1ec6757466d69fb199b5cd098cecab02357fb2f08c99280bd22c70837bea",
@@ -381,22 +384,28 @@
     "scripts/lib/propose-result.ts": "8fe87edb7f25beb21becd304b0fcc614b2774ca91f0017d16c69e6ff579047e9",
     "scripts/lib/protected-paths.ts": "af0700754da14932ebc6f95adbdb57f2cdcd08009af93057d2399e072b911de1",
     "scripts/lib/rationale-guard.mjs": "ae89ecae94307d39510f09e12a73d076f7e7c0f076a5d3e7fb2efdbfe760012a",
+    "scripts/lib/resolve-model.ts": "a530eccc33e12eae351d8bb0c5c1c7247c25bea976c79590fa346a118624786d",
     "scripts/lib/sse-tail.mjs": "c61247d7d8964e655aabe4f42a6c2afb6715bbb5659097b168ec3e4a7d8d7042",
     "scripts/live-nvidia-probe.ts": "9f60b2a0b297345b88f321b832d1e45923e48ef99acc5da0475f03e290c7ca23",
     "scripts/loop-service.ts": "14adfe59f430ee61a1e0c0ffc03cca6c5bb4dfe0ebf4e1cfb29521143611ce03",
     "scripts/migrate-rsi-hash-version.ts": "8aeefa81927a892f7b4e4d5083b839d4f32827ab896ef1fe275c61560fab6526",
-    "scripts/propose-gaps.ts": "6b9438cf0e70d700f814495bf56f87f0a8a62250017a0c94424d0019a7a55576",
+    "scripts/propose-gaps.ts": "be1b9c894d963e5ddf62b78d33370e1b66d551d8f1adc27fa4c86c46c7cb1a30",
     "scripts/run-krsi-conformance.mjs": "2839420f90bf5102184b894358704b4feae91492d8c9fb10858e16fb2d3c8a7a",
     "scripts/seed-agent-loop.ts": "d0dfd5ac6fd60bdcc15815ca68a112ad6c90a8e723cdd2127fa059101140c681",
     "scripts/seed-agent-run.ts": "a90339477bf05696718d02094576fed230c991fcc010addd19daa225e08b5d92",
     "scripts/seed-rsi-demo.ts": "f1baabca06501fcf499c22777f62a4605bd303fac5f7653398450d44407d02c9",
-    "scripts/self-upgrade-loop.ts": "5ec1a432895de5b726681ad928359885c23965a1876f66e640bbe6ebdcd9269a",
+    "scripts/self-upgrade-loop.ts": "77f4ec12c44c3ef7e3d9da5743a869660b1e7c659797018b5559876863cdb8d7",
     "scripts/smoke-real.mjs": "70951b0d9e5d141441d4c629e41a13ded70ef23e1d99e6466ddb25fec1ae5eea",
     "scripts/task-self-upgrade.ts": "a62c18290d965c8609f89fa01cdc9f82db3438bc3cb1c49a11571c7867cfd9bf",
     "scripts/verify-rsi-ledger.ts": "65718c9481ff3080aec6ab1a2aaffdc4cdbe991937e528b94687a4e975b8ef7e",
     "scripts/version-bump.ts": "7d42782e1bf45800879f5ed0d7ad743f787706304d47f9f4c8eddb1a23a5e0f6"
   },
   "preexistingDirty": [
-    "tests/self-upgrade/fs-list-symlink-follow.test.ts"
+    "scripts/check-self-upgrade.mjs",
+    "src/config/env.ts",
+    "src/providers/openai-compatible.adapter.ts",
+    "src/runtime.ts",
+    "tests/api-key-rotation.test.ts",
+    "tests/setup-hermetic-env.ts"
   ]
 }

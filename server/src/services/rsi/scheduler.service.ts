@@ -18,6 +18,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Db } from '../../repositories/db.js';
 
 export interface SchedulerConfig {
@@ -53,26 +54,11 @@ const DEFAULT_CONFIG: Required<SchedulerConfig> = {
   baseUrl: '',
 };
 
-let cronJob: { stop: () => void } | null = null;
+// 方案 C：零依赖固定间隔驱动。currentIntervalMs 供 getStatusAsync 计算 nextCron。
+let currentIntervalMs = 6 * 60 * 60 * 1000;
 let currentConfig: Required<SchedulerConfig> = DEFAULT_CONFIG;
 let isRunning = false;
 let lastRunResult: { ok: boolean; output: string; at: string } | null = null;
-
-/**
- * 解析 cron 表达式并返回下一次触发时间（用于健康检查显示）。
- * 简易实现：只支持标准 5 位 cron，不处理秒位。
- */
-async function parseCronNext(cron: string): Promise<Date | null> {
-  try {
-    // 动态导入 cron-parser（可选依赖），失败则返回 null
-    // @ts-expect-error optional dependency
-    const cronParser = await import('cron-parser');
-    const interval = cronParser.parseExpression(cron, { utc: false });
-    return interval.next().toDate();
-  } catch {
-    return null;
-  }
-}
 
 /**
  * 运行一次 self-upgrade-loop。
@@ -84,7 +70,8 @@ async function runOnce(reason: string): Promise<{ ok: boolean; output: string }>
   }
   isRunning = true;
 
-  const SERVER = path.join(process.cwd(), 'server');
+  // 复用项目范式（见 iteration-store.ts）：以模块自身位置定位 server 根，与启动 cwd 无关。
+  const SERVER = fileURLToPath(new URL('../../..', import.meta.url));
   const loopScript = path.join(SERVER, 'scripts', 'self-upgrade-loop.ts');
 
   if (!existsSync(loopScript)) {
@@ -139,8 +126,20 @@ async function runOnce(reason: string): Promise<{ ok: boolean; output: string }>
 /**
  * 调度器服务类。
  */
+/** 异步触发结果：立即返回，供受限超时窗口内的调用方（如 rsi.exec 60s）使用。 */
+export interface AsyncTriggerResult {
+  accepted: boolean;
+  runId: string;
+  reason: string;
+  /** 轮询该地址拿 lastRun / running 观测后台循环结果。 */
+  statusUrl: string;
+}
+
 export class RsiSchedulerService {
   private db: Db;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  /** 实例级在途闸：与模块级 isRunning 一起挡住并发（避免两次快速 async 调用竞态）。 */
+  private inFlight = false;
 
   constructor(db: Db) {
     this.db = db;
@@ -157,26 +156,39 @@ export class RsiSchedulerService {
       return;
     }
 
-    try {
-      // @ts-expect-error optional dependency
-      const cronModule = await import('node-cron');
-      cronJob = cronModule.schedule(currentConfig.cron, async () => {
-        console.log(`[RSI Scheduler] 定时触发 @ ${new Date().toISOString()}`);
-        const result = await runOnce('定时触发');
-        await this.logRun('cron', result.ok, result.output);
-      });
-      const next = await parseCronNext(currentConfig.cron);
-      console.log(`[RSI Scheduler] 已启动，cron=${currentConfig.cron}，下一次约 ${next?.toISOString() ?? '未知'}`);
-    } catch (e) {
-      console.warn('[RSI Scheduler] node-cron 未安装，定时触发不可用：', e instanceof Error ? e.message : String(e));
+    // 幂等：已启动则直接返回，避免重复 setInterval
+    if (this.intervalId !== null) {
+      return;
     }
+
+    // 方案 C：零依赖固定间隔（默认 6h），下限 1h 防刷指标
+    const DEFAULT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    const MIN_INTERVAL_MS = 60 * 60 * 1000;
+    let intervalMs = Number(process.env.RSI_SCHEDULER_INTERVAL_MS || DEFAULT_INTERVAL_MS);
+    if (!Number.isFinite(intervalMs) || intervalMs < MIN_INTERVAL_MS) {
+      console.warn(`[RSI Scheduler] RSI_SCHEDULER_INTERVAL_MS=${intervalMs} 低于下限 ${MIN_INTERVAL_MS}，已调整为下限`);
+      intervalMs = MIN_INTERVAL_MS;
+    }
+    currentIntervalMs = intervalMs;
+
+    this.intervalId = setInterval(async () => {
+      console.log(`[RSI Scheduler] 定时触发 @ ${new Date().toISOString()}`);
+      try {
+        const result = await runOnce('定时触发');
+        this.logRun('cron', result.ok, result.output);
+      } catch (e) {
+        this.logRun('cron', false, e instanceof Error ? e.message : String(e));
+      }
+    }, intervalMs);
+
+    console.log('[RSI] Scheduler started', { intervalMs, cron: 'fixed-interval' });
   }
 
   /** 停止定时任务。 */
   stop(): void {
-    if (cronJob) {
-      cronJob.stop();
-      cronJob = null;
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
       console.log('[RSI Scheduler] 已停止');
     }
   }
@@ -185,8 +197,32 @@ export class RsiSchedulerService {
   async trigger(reason = 'manual'): Promise<{ ok: boolean; output: string }> {
     console.log(`[RSI Scheduler] 手工触发：${reason} @ ${new Date().toISOString()}`);
     const result = await runOnce(reason);
-    await this.logRun(reason, result.ok, result.output);
+    this.logRun(reason, result.ok, result.output);
     return result;
+  }
+
+  /**
+   * 异步触发一次 self-upgrade-loop：同步返回受理结果，循环在后台跑。
+   * 专供 rsi.exec 等 60s 硬超时窗口内的调用方——不再让重脚本（含上游限流重试）
+   * 把工具调用拖到超时→连续失败→熔断。后台结果仍由 trigger() 落 scheduler_runs。
+   * 并发：inFlight 或模块 isRunning 任一为真即拒（accepted=false, reason=busy）。
+   */
+  triggerAsync(reason = 'manual-async'): AsyncTriggerResult {
+    const runId = `async-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const statusUrl = '/api/v1/rsi/scheduler/status';
+    if (this.inFlight || isRunning) {
+      return { accepted: false, runId, reason: 'busy', statusUrl };
+    }
+    this.inFlight = true;
+    // 后台跑：trigger 内部已 logRun；finally _release 在途闸。
+    void this.trigger(`${reason} [runId=${runId}]`)
+      .catch((e) => {
+        this.logRun('manual', false, `async 后台异常：${e instanceof Error ? e.message : String(e)}`);
+      })
+      .finally(() => {
+        this.inFlight = false;
+      });
+    return { accepted: true, runId, reason, statusUrl };
   }
 
   /** 获取当前状态（同步版本，nextCron 可能为 null）。 */
@@ -215,7 +251,7 @@ export class RsiSchedulerService {
     return {
       running: isRunning,
       config: currentConfig,
-      nextCron: await parseCronNext(currentConfig.cron),
+      nextCron: new Date(Date.now() + currentIntervalMs),
       lastRun: lastRunResult,
     };
   }
@@ -223,19 +259,21 @@ export class RsiSchedulerService {
   /** 更新配置（热更改，定时任务会重启）。 */
   async updateConfig(config: Partial<SchedulerConfig>): Promise<void> {
     currentConfig = { ...currentConfig, ...config };
-    if (cronJob) {
+    if (this.intervalId !== null) {
       this.stop();
       await this.start();
     }
   }
 
   /** 记录运行结果到 policy_rsi_runs（复用现有表）或单独表。 */
-  private async logRun(trigger: string, ok: boolean, output: string): Promise<void> {
+  private logRun(trigger: string, ok: boolean, output: string): void {
+    const triggerType = trigger === 'cron' || trigger === 'manual' ? trigger : 'manual';
+    const sessionId = `scheduler-${triggerType}-${Date.now()}`;
     try {
       this.db.run(
-        `INSERT INTO policy_rsi_runs (session_id, generation, prev_manifest_json, next_manifest_json, verdict, created_at)
-         VALUES (?, 0, '', '', ?, datetime('now'))`,
-        [`scheduler-${trigger}`, ok ? 'scheduled_ok' : 'scheduled_failed'],
+        `INSERT INTO scheduler_runs (session_id, trigger, ok, output, duration_ms, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?)`,
+        [sessionId, triggerType, ok ? 1 : 0, output, Date.now()],
       );
     } catch {
       // 记账失败不阻断主流程

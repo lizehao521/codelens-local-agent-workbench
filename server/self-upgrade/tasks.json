@@ -1107,7 +1107,7 @@
       "probe": "fs-list-symlink-follow.probe.ts",
       "mode": "red-baseline",
       "maxAttempts": 3,
-      "status": "pending",
+      "status": "done",
       "boundary": "不改动 fs.glob/code.search、不新增参数、不改变非递归模式行为",
       "adoptedAt": "2026-11-24T09:51:45.441Z",
       "adoptedBy": "auto-adopt",
@@ -1117,7 +1117,33 @@
         "src/tools/builtin/fs-list.tool.ts:74-79 先 readdir 再 stat，stat 会跟随软链",
         "src/tools/builtin/sandbox-walk.ts:77-79 同代码库的共用遍历件显式用 isSymbolicLink() 跳过软链"
       ],
-      "note": "第51轮派单3次判据红经诊断系判据环境隔离缺陷：sandboxRoot=process.cwd()=server/（含6.8万条.artifacts证据链），recursive path=\".\" 默认maxEntries=200被.artifacts占满，目标软链进不了结果→find undefined。受控实验证实CodeLens实现在干净os.tmpdir小沙箱里三条行为断言全绿、type=other/sizeBytes=null、无secret泄露。下轮派单前须先把本判据沙箱根改成os.tmpdir隔离目录（照fs-glob.test.ts的g2a-sandbox-*写法），否则判定不可信。原3条failed账本保留不抹除，已append correction纠正归因。"
+      "note": "第51轮派单3次判据红经诊断系判据环境隔离缺陷：sandboxRoot=process.cwd()=server/（含6.8万条.artifacts证据链），recursive path=\".\" 默认maxEntries=200被.artifacts占满，目标软链进不了结果→find undefined。受控实验证实CodeLens实现在干净os.tmpdir小沙箱里三条行为断言全绿、type=other/sizeBytes=null、无secret泄露。下轮派单前须先把本判据沙箱根改成os.tmpdir隔离目录（照fs-glob.test.ts的g2a-sandbox-*写法），否则判定不可信。原3条failed账本保留不抹除，已append correction纠正归因。",
+      "resolvedAt": "2026-11-25T03:47:40.649185+00:00",
+      "resolution": "closed-as-already-satisfied: 起点判据 6/6 绿、源码已正确跳过软链，red-baseline 记账错误导致的账实不符僵尸题；RSI decide halt 留痕后人工销账，不抹除历史 failed 记录。 releasedIn=2.30.0 标记本次销账落点。",
+      "releasedIn": "2.30.0"
+    },
+    {
+      "id": "rsi-exec-tool-unapproval",
+      "title": "Agent 缺少免审批执行 RSI 循环的通道",
+      "allowed": [
+        "src/tools/builtin/index.ts"
+      ],
+      "judge": "tests/self-upgrade/rsi-exec-tool-unapproval.test.ts",
+      "probe": "rsi-exec-tool-unapproval.probe.ts",
+      "mode": "implement-first",
+      "maxAttempts": 3,
+      "status": "done",
+      "boundary": "不得绕过 path-jail/SSRF/白名单；不得降低现有 sys.exec 的 hard 审批档位；能力边界由出题人与机械闸裁定，不由被衡量者自批",
+      "implementedAt": "2026-11-25T08:45:56.581Z",
+      "implementedBy": "implement-task",
+      "gap": "sys.exec 硬编码 approvalMode=hard，每次调用需人工审批且 5 分钟过期，导致自升级循环 88 轮空转、零文件落地、烧 216 万 token；agent.verify 仅能跑 package.json 声明的 verify 脚本，无法启动 self-upgrade-loop。Agent 因此无法自主 RSI/π 闭环。",
+      "observable": "新增受约束工具（如 rsi.exec）注册进 BUILTIN_TOOLS，approvalMode=none，仅允许白名单命令（node、npm、vitest 等）且强制 timeoutMs≤60000，Agent 能自主跑完 self-upgrade-loop 无需人工介入",
+      "evidence": [
+        "src/tools/builtin/sys-exec.tool.ts:132 approvalMode: 'hard' 硬编码，无豁免路径",
+        "src/tools/builtin/index.ts:35 sysExecTool 仅注册这一个执行工具，无受约束的替代工具",
+        "server/tests/self-upgrade/approval-expired-tool-success.test.ts 只覆盖审批过期的计账语义，未覆盖『免审批受约束执行』能力",
+        "server/tests/self-upgrade/write-gate-call.test.ts / test-run.test.ts 只覆盖写闸与测试运行工具，未覆盖自升级循环启动通道"
+      ]
     }
   ]
 }

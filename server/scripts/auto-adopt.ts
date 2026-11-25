@@ -106,7 +106,7 @@ function relocateImports(code: string): string {
     .replaceAll(`${PH}src/`, '../../src/');
 }
 
-function candidateSource(file: string): string {
+export function candidateSource(file: string): string {
   return relocateImports(readFileSync(file, 'utf8'));
 }
 
@@ -148,7 +148,7 @@ export function probeFixHint(pc: { reason: string; kind?: string }): string {
   }
 }
 
-export function probeCheck(probeFile: string): { ok: boolean; reason: string; kind?: string } {
+export function probeCheck(probeFile: string, mode?: AdoptMode): { ok: boolean; reason: string; kind?: string } {
   const src = readFileSync(probeFile, 'utf8');
   if (!/handler\s*!?\s*\(/.test(src)) {
     return { ok: false, reason: '探针里没有真的调用 handler（不许写一个假的 reachedBehavior）' };
@@ -194,6 +194,10 @@ export function probeCheck(probeFile: string): { ok: boolean; reason: string; ki
     if (parsed.reachedBehavior !== true) {
       const kind = parsed.kind ?? '?';
       const msg = String(parsed.message ?? '').trim();
+      // implement-first 模式：工具尚未实现时探针返回 not_found 是预期的，视为通过
+      if (mode === 'implement-first' && kind === 'not_found') {
+        return { ok: true, reason: `implement-first 模式：探针确认工具尚未实现（kind=not_found），符合预期` };
+      }
       return {
         ok: false,
         kind,
@@ -257,7 +261,7 @@ function firstArgObject(src: string, from: number): string | null {
 
 function callSites(src: string): CallSite[] {
   const out: CallSite[] = [];
-  for (const m of src.matchAll(/([A-Za-z_$][\w$]*)\.handler\s*!?\s*\(/g)) {
+  for (const m of src.matchAll(/([A-Za-z_$][\w$]*)!?\.handler\s*!?\s*\(/g)) {
     const from = (m.index ?? 0) + m[0]!.length;
     const body = firstArgObject(src, from);
     if (body === null) continue;
@@ -406,7 +410,7 @@ export function baselineMustBeRed(
     /* 还原失败会在下面的 A3 结论里被挡下 */
   }
 
-  const verdict = judgeBaselineVerdict(rawOut, run.status);
+  const verdict = judgeBaselineVerdict(rawOut, run.status, spec);
   if (!verdict.ok || !perTest) return verdict;
 
   const greenModel = snapshotGreens(perTest);
@@ -469,6 +473,7 @@ export function extractFailureEvidence(out: string): string {
 export function judgeBaselineVerdict(
   rawOut: string,
   status: number | null,
+  spec: CandidateSpec,
 ): { ok: boolean; reason: string; premature: boolean; evidence?: string } {
   // vitest 在非 TTY 下仍会往数字周围塞 ANSI 色码，先剥再匹配，否则会漏判。
   const out = rawOut.replace(/\x1b\[[0-9;]*m/g, '');
@@ -495,6 +500,19 @@ export function judgeBaselineVerdict(
     return {
       ok: false,
       reason: `判据没走到被测行为（命中「${hardPremature[0]}」：导入或调用本身失败）—— 这是假红，不是缺口未实现`,
+      premature: true,
+      evidence: ev,
+    };
+  }
+
+  // implement-first 专用：识别「新符号未实现」形态（toBeDefined / toBeTruthy / expected ... to be defined / Received: undefined）
+  // 只有在 implement-first 模式下才判 premature=true；defect 类题（red-baseline）仍按原逻辑拒绝。
+  const isImplementFirst = spec?.mode === 'implement-first';
+  const newSymbolUndefined = /(?:toBeDefined|toBeTruthy|expected.+to be defined|Received:\s*undefined)/i.exec(out);
+  if (isImplementFirst && newSymbolUndefined) {
+    return {
+      ok: false,
+      reason: `判据命中「${newSymbolUndefined[0].slice(0, 50)}」—— 新增符号尚未实现（implement-first 预期的 premature），路由去实现`,
       premature: true,
       evidence: ev,
     };
@@ -605,7 +623,7 @@ function main(): void {
     }
 
     // A2.5 探针：出题人先证明自己会合法调用靶子
-    const pc = probeCheck(probeFile);
+    const pc = probeCheck(probeFile, spec.mode);
     if (!pc.ok) {
       console.log(`  ✗ A2.5 ${pc.reason}`);
       appendRejection({

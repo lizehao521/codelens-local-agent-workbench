@@ -25,6 +25,10 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       '**/dist/**',
+      // 沙箱镜像副本：Agent 的 fs 工具 jail 在 workspace/ 下，跑脚本需要一份
+      // 完整 server 代码镜像（含 tests/）。它不是主仓库的测试源，重复扫描会让
+      // 同一批用例跑两遍且副本环境不对（DB/env 路径不同）→ 假失败。
+      'workspace/**',
       // 未采纳的判据草案：它们针对尚未实现的缺口，跑进全量回归必然红。
       // 命名上已经用 .candidate.ts 避开 include，这里再兜一层（有人改了后缀也不至于污染回归）。
       'candidates/**',

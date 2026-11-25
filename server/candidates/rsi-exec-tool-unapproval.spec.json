@@ -1,0 +1,13 @@
+{
+  "id": "rsi-exec-tool-unapproval",
+  "title": "Agent 缺少免审批执行 RSI 循环的通道",
+  "allowed": [
+    "src/tools/builtin/index.ts"
+  ],
+  "judge": "tests/self-upgrade/rsi-exec-tool-unapproval.test.ts",
+  "probe": "rsi-exec-tool-unapproval.probe.ts",
+  "mode": "implement-first",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不得绕过 path-jail/SSRF/白名单；不得降低现有 sys.exec 的 hard 审批档位；能力边界由出题人与机械闸裁定，不由被衡量者自批"
+}

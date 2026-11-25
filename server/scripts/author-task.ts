@@ -23,7 +23,7 @@
 import { spawnSync } from 'node:child_process'; import { fileURLToPath } from 'node:url';
 import { checkDomain } from '../src/services/rsi/change-domain.js';
 import { acquireRateLimit } from '../src/providers/rate-limit.js';
-import { baselineMustBeRed, type CandidateSpec } from './auto-adopt.js';
+import { baselineMustBeRed, type CandidateSpec, candidateSource } from './auto-adopt.js';
 import {
   TOOL_CONTRACT,
   appendRejection,
@@ -636,6 +636,17 @@ async function finalizeCandidate(p: Proposal, modelPart: string, probePartIn: st
     rmSync(outFile, { force: true });
     return false;
   }
+
+  // For implement-first mode, also write the candidate to the judge location
+  // so that auto-adopt.ts can find it when running vitest on spec.judge
+  if (p.gapType === 'capability') {
+    const judgePath = path.join(SERVER, 'tests', 'self-upgrade', `${p.id}.test.ts`);
+    mkdirSync(path.dirname(judgePath), { recursive: true });
+    // Use candidateSource which applies relocateImports (../src/ -> ../../src/)
+    writeFileSync(judgePath, candidateSource(outFile), 'utf8');
+    console.log(`  ✔ 判据已落地到正式位置：${path.relative(ROOT, judgePath)}`);
+  }
+
   writeFileSync(path.join(OUT_DIR, `${p.id}.probe.ts`), probePart.trim() + '\n', 'utf8');
   writeFileSync(
     path.join(OUT_DIR, `${p.id}.spec.json`),

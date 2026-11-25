@@ -1,0 +1,13 @@
+{
+  "id": "sys-exec-truncated-flag-off-by-reserve",
+  "title": "sys.exec 输出截断标记在预留区间内误判为 false",
+  "allowed": [
+    "src/tools/builtin/sys-exec.tool.ts"
+  ],
+  "judge": "tests/self-upgrade/sys-exec-truncated-flag-off-by-reserve.test.ts",
+  "probe": "sys-exec-truncated-flag-off-by-reserve.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改变 EXEC_STDOUT_CAP/STDERR_CAP、不新增字段、不改 handler 签名"
+}

@@ -62,7 +62,18 @@ export interface AdapterOptions {
    * 超时与 HTTP 4xx 不重试——超时重试会把用户等待翻倍，401 重试只是重复失败。
    */
   retries?: number;
+  /**
+   * 失败自动切换的兜底 API Key 池（有序）。仅当请求携带的 key 命中池时启用轮换；
+   * BYOK 用户自带 key 不在池中，行为零变化。空/单 key = 不轮换。
+   */
+  apiKeyPool?: string[];
 }
+
+/**
+ * 触发轮换的上游状态码：认证失效（401/403）、额度耗尽（402）、限流（429）。
+ * 不含 5xx —— 那是上游故障，换 key 无意义且会放大等待。
+ */
+const ROTATE_ON_STATUS = new Set([401, 402, 403, 429]);
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 // 长流式超时放宽：550B 等慢模型在思考期常长时间不吐 chunk，Node 内置 fetch（undici）默认
@@ -98,9 +109,23 @@ export type ProbeOutcome =
    */
   | { status: 'cancelled'; evidence: 'aborted' };
 
+/**
+ * 所有需要脱敏的密钥（兜底池 + 请求 key）。注册到模块级集合后，任意错误报文
+ * 里的任一池 key 都会被遮蔽——避免「用 key A 请求失败、错误体回显 key B」时泄露。
+ */
+const MASKED_KEYS = new Set<string>();
+function registerMaskedKeys(keys: string[]): void {
+  for (const key of keys) {
+    if (key && key.length > 0) MASKED_KEYS.add(key);
+  }
+}
 function maskKey(text: string, apiKey: string): string {
-  if (!apiKey) return text;
-  return text.split(apiKey).join('***');
+  let out = text;
+  if (apiKey) out = out.split(apiKey).join('***');
+  for (const key of MASKED_KEYS) {
+    if (key && key !== apiKey) out = out.split(key).join('***');
+  }
+  return out;
 }
 
 /** 从上游错误报文中提取 relay 网关给出的 key 指纹（形如「指纹 0207eaa1」）。 */
@@ -425,6 +450,8 @@ export class OpenAICompatibleAdapter {
   private readonly fetchFn: FetchLike;
   private readonly timeoutMs: number;
   private readonly retries: number;
+  /** 兜底 key 轮换池；空/单 key 时轮换逻辑自动退化为原行为。 */
+  private readonly apiKeyPool: string[];
 
   constructor(options: AdapterOptions = {}) {
     this.fetchFn =
@@ -433,9 +460,74 @@ export class OpenAICompatibleAdapter {
         undiciFetch(url, { ...(init ?? {}), dispatcher: LONG_STREAM_DISPATCHER } as unknown as Parameters<typeof undiciFetch>[1]));
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.retries = Math.max(0, Math.min(3, options.retries ?? 0));
+    this.apiKeyPool = [...new Set((options.apiKeyPool ?? []).filter((k) => typeof k === 'string' && k.length > 0))];
+    registerMaskedKeys(this.apiKeyPool);
+  }
+
+  /**
+   * 为本次请求计算候选 key 序列。
+   *
+   * 仅在「请求 key 命中轮换池」时启用轮换（服务端兜底场景）：从该 key 起、
+   * 按池顺序轮一圈。BYOK 用户自带 key 不在池中 → 返回单元素数组，行为零变化，
+   * 严守 BYOK「绝不拿服务端 key 顶替用户 key」的边界。
+   */
+  private candidateKeys(requestKey: string): string[] {
+    if (this.apiKeyPool.length < 2 || !this.apiKeyPool.includes(requestKey)) return [requestKey];
+    const start = this.apiKeyPool.indexOf(requestKey);
+    return [...this.apiKeyPool.slice(start), ...this.apiKeyPool.slice(0, start)];
   }
 
   private async post(
+    params: ChatParams,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    const candidates = this.candidateKeys(params.apiKey);
+    let lastStatus = -1;
+
+    for (let ki = 0; ki < candidates.length; ki += 1) {
+      const key = candidates[ki]!;
+      const isLast = ki === candidates.length - 1;
+      const keyParams: ChatParams = { ...params, apiKey: key };
+      try {
+        const response = await this.postWithRetries(keyParams, body, signal);
+        const rotating = candidates.length > 1;
+        if (response.ok || !ROTATE_ON_STATUS.has(response.status) || signal?.aborted) {
+          return response;
+        }
+        if (isLast) {
+          // 轮换模式下最后一个 key 也失败：读掉错误体，落到下方汇总错误，
+          // 避免上层 readErrorBody 给出「去设置填 key」这种兜底场景下无意义的引导。
+          if (rotating) {
+            await response.body?.cancel().catch(() => {});
+            lastStatus = response.status;
+            break;
+          }
+          return response; // 单 key / BYOK：原样交上层报错，行为零变化。
+        }
+        // 认证/额度/限流失败且还有候选：读掉并丢弃本次错误体，换下一个 key。
+        await response.body?.cancel().catch(() => {});
+        lastStatus = response.status;
+      } catch (err) {
+        // 网络类错误已经由 postWithRetries 在单 key 内重试过；继续换 key 会重复等待，
+        // 因此非轮换状态下原样抛出。中止也直接抛出。
+        if (err instanceof AppError || signal?.aborted || candidates.length === 1) throw err;
+        lastStatus = 0;
+      }
+    }
+    // 所有候选都失败：抛出一个汇总错误（不泄露 key，maskKey 覆盖全池）。
+    const status = lastStatus >= 0 ? `HTTP ${lastStatus}` : '未知错误';
+    throw new AppError(
+      ErrorCode.UPSTREAM_ERROR,
+      maskKey(
+        `全部 ${candidates.length} 个 API Key 均不可用（最后一个：${status}）。请检查兜底 Key 池是否有效，或在 设置 → Provider 填写自己的 API Key。`,
+        params.apiKey,
+      ),
+    );
+  }
+
+  /** 单 key 的连接类重试（原有语义，原样保留）。 */
+  private async postWithRetries(
     params: ChatParams,
     body: Record<string, unknown>,
     signal?: AbortSignal,

@@ -106,7 +106,7 @@
     },
     {
       "file": "server/src/config/env.ts",
-      "ceiling": 399
+      "ceiling": 428
     },
     {
       "file": "server/src/controllers/judge.controller.ts",
@@ -114,7 +114,7 @@
     },
     {
       "file": "server/src/providers/openai-compatible.adapter.ts",
-      "ceiling": 667
+      "ceiling": 759
     },
     {
       "file": "server/src/repositories/judge.repository.ts",
@@ -126,7 +126,7 @@
     },
     {
       "file": "server/src/runtime.ts",
-      "ceiling": 450
+      "ceiling": 452
     },
     {
       "file": "server/src/services/agent/agent-loop.service.ts",
@@ -329,5 +329,7 @@
       "ceiling": 369
     }
   ],
-  "_tightenedAt": "2026-11-14T02:19:16.830Z"
+  "_tightenedAt": "2026-11-14T02:19:16.830Z",
+  "_raisedAt": "2026-11-25T02:43:43.676162Z",
+  "_raisedReason": "key 轮换功能（LLM_API_KEYS 池 + adapter 轮换 + runtime 注入）净增行；attribution=human；env.ts/adapter.ts/runtime.ts 按实测封顶"
 }

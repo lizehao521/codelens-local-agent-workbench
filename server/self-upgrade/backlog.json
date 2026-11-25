@@ -1,6 +1,6 @@
 {
   "note": "已知缺口池。来源：server/docs/rsi-kernel-charter.md 第 10 节 UNEXEC 清单 + 各文档边界。propose-gaps.ts 只把 agentActionable=true 的条目交给 Agent——因为靶子在 scripts/ 或 src/services/{judge,rsi,eval}/ 下的缺口，改它等于改尺子，只能人做。人维护此文件，Agent 够不到。 已完成的缺口保留在池里作留痕，但 status=done 且 agentActionable=false，不会再喂给提议模型。",
-  "updatedAt": "2026-11-14",
+  "updatedAt": "2026-11-25",
   "items": [
     {
       "id": "orphan-tool-gate",
@@ -204,6 +204,168 @@
       "source": "approval-wait 后续审计",
       "taskId": "approval-prolong-budget",
       "note": "已修复并经 bridge 2.30.0 验证；人工 prolong 也受任务 wall-clock deadline 限制。"
+    },
+    {
+      "id": "scheduler-not-wired",
+      "title": "RSI 调度器未挂载：self-upgrade-loop 无人值守循环没有常驻驱动",
+      "why": "scheduler.service.ts 已实现 cron/trigger，但 app.ts 启动时未初始化并 start()，路由也未挂载 /rsi/scheduler/trigger。手册与会话均记录『没有任何地方启动 self-upgrade-loop，只有只读 rsi-tick』——自我升级闭环代码在、判据在，但没有循环驱动它。",
+      "targetHint": "src/app.ts / src/runtime.ts / src/routes/index.ts",
+      "size": "中",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10 已知边界：调度未实现）",
+      "blockedBy": "装配入口在 app.ts/routes，且调度器属 RSI 核心（src/services/rsi），改它等于改系统驱动层——按宪法只能人做",
+      "note": "2026-11-25 会话登记；已核实 scheduler.service.ts 存在但未被 app 初始化。"
+    },
+    {
+      "id": "update-dim-empty",
+      "title": "Update 维题源空白：判据题几乎全落在 Act/Judge，π 自我修改缺少可回归的 Update 样本",
+      "why": "tasks.json 中 24 道题按 strengthens 分布，Update/π 维为 0（Memory 刚破零）。Update 是『按判决产出新版本 π、可回滚』的唯一自我修改表面，却没有任何题目驱动它，π 迭代形同虚设。",
+      "targetHint": "self-upgrade/tasks.json（题源，人维护）",
+      "size": "中",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：Update 维空白）",
+      "blockedBy": "题源表由人维护，Agent 不得自己给自己出题；判据须人写并落在仓库之外的候选池",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "ledger-history-thin",
+      "title": "账本历史稀疏：verified 仅覆盖 13/25，早期条目为重建，历史归因不可完全复算",
+      "why": ".self-upgrade/ledger.jsonl 早期条目是事后重建而非当时落账，verified 覆盖不全，导致历史判决链无法逐条复算——RSI 归因依赖可信账本，这是根基缺口。",
+      "targetHint": ".self-upgrade/ledger.jsonl（外部账本，Agent 不可写）",
+      "size": "大",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：账本历史稀）",
+      "blockedBy": "外部账本在沙箱之外，Agent 够不到；历史事实不可凭空补写",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "ci-e2e-fence-gap",
+      "title": "CI 覆盖不全：只跑 acceptance + client 测试，不跑 e2e / 变异探针 / 围栏",
+      "why": "CI 绿不代表关键判据绿——e2e、变异探针、围栏三套门禁都在 CI 之外，回归防线存在缺口。",
+      "targetHint": ".github/workflows / scripts/ci-*（CI 与脚本层）",
+      "size": "中",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：CI 覆盖不全）",
+      "blockedBy": "靶子在 CI 配置与 scripts/，属改尺子/改门禁，只能人做",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "ratchet-scan-blindspot",
+      "title": "棘率扫描盲区：行数棘轮只扫 server/src 与 client/src，scripts/、tests/ 无约束",
+      "why": "行数棘轮只覆盖两个 src 目录，scripts/ 与 tests/ 下的膨胀不受约束，棘率防线存在盲区。",
+      "targetHint": "scripts/ 行数棘轮脚本",
+      "size": "小",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：棘率扫描盲区）",
+      "blockedBy": "靶子在 scripts/（受保护 D4），改它等于改尺子，只能人做",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "reissue-no-diagnosis",
+      "title": "重派不带诊断：跨运行重派时上一轮诊断书不喂回 Agent，需重新推一遍",
+      "why": "self-upgrade-loop 在单次运行内的重派会带机械诊断，但跨运行重派不会把上一轮诊断书注入，Agent 每次都要从零复现问题。",
+      "targetHint": "server/scripts/self-upgrade-loop.ts",
+      "size": "中",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：重派不带诊断）",
+      "blockedBy": "靶子在 scripts/self-upgrade-loop.ts（D4 受保护），Agent 改不得",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "dsh-tools-not-installed",
+      "title": "DSH 工具未装：19 个工具需 DSH 宿主，不能当 CLI；1 条技能因命名触发密钥规则未入库",
+      "why": "能力清单中 19 个工具依赖 DSH 宿主环境，脱离宿主无法独立调用；另有技能因命名命中密钥规则而未入库，能力登记不完整。",
+      "targetHint": "宿主环境 / 工具注册配置",
+      "size": "大",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：DSH 工具未装）",
+      "blockedBy": "属宿主环境与外部配置，非代码可解；工具名触发密钥规则须人工裁定",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "no-pixel-baseline",
+      "title": "无像素基线：UI 只有结构判据与静态卫生门禁，没有视觉回归",
+      "why": "前端改动只验结构与静态卫生，缺少像素级视觉回归基线，UI 退化无法被自动发现。",
+      "targetHint": "client/ 视觉回归基线（需引入新工具链）",
+      "size": "大",
+      "agentActionable": false,
+      "source": "会话提取（手册 §10：无像素基线）",
+      "blockedBy": "需引入视觉回归工具链与基线Recording，属新增能力建设，非单题可回归",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "checkpoint-default-off",
+      "title": "CHECKPOINT 快照默认关闭，sys.exec/MCP 无快照",
+      "why": "产品宪法明确 CHECKPOINT 快照默认关闭，且 sys.exec/MCP 路径不产生快照——回滚与一致性校验缺少覆盖。",
+      "targetHint": "产品配置 / 快照策略",
+      "size": "中",
+      "agentActionable": false,
+      "source": "会话提取（README 产品级边界）",
+      "blockedBy": "产品级决策边界，默认关闭是刻意设计；变更须人工批准",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "rollback-inv2-frozen",
+      "title": "rollback / INV-2 冻结：需真实数据 + 人工批准，不支持自动 / 多代回退",
+      "why": "一致性阴影旁路与 diff 乙不构成解封，rollback 与 INV-2 处于冻结态，需真实数据与人工批准才能解封，且不支持自动或多代回退。",
+      "targetHint": "回滚策略 / 一致性判定",
+      "size": "大",
+      "agentActionable": false,
+      "source": "会话提取（README 产品级边界）",
+      "blockedBy": "冻结约束属安全红线，明确不构成解封条件，须人工批准且不得自动化",
+      "note": "2026-11-25 会话登记。"
+    },
+    {
+      "id": "rsi-exec-tool-unapproval",
+      "title": "Agent 缺少免审批执行 RSI 循环的通道，sys.exec 逐次 hard 审批 5 分钟过期致自升级空转",
+      "why": "本轮 self-upgrade 派单实证：Agent 空转 88 轮、零文件落地、烧 216 万 token。根因是工具集里唯一能跑脚本的 sys.exec 是 approvalMode=hard，每次触发审批且 5 分钟有效期，长探索中 7 次审批全过期被跳过；agent.verify 只能跑 package.json 声明的 verify 脚本，无法启动 self-upgrade-loop。Agent 因此无法自主 RSI/π 闭环。",
+      "targetHint": "src/tools/builtin/ (新增受约束工具) + src/tools/index.ts 注册",
+      "size": "中",
+      "agentActionable": true,
+      "gapType": "capability",
+      "source": "2026-11-25 会话实证 + RSI 决策销账复盘",
+      "boundary": "必须是白名单命令+沙箱根内+有墙钟/预算上限的受约束执行，不得等同任意命令执行；不得绕过 sys.exec 的 hard 审批语义去开放通用 shell；产物与判据由出题/采纳角色机械裁定，不由被衡量者自批。",
+      "note": "这是增量内修改：让 CodeLens 用 RSI/π 递归回归自行出题、采纳、实现、验证该能力。安全边界由出题人与机械闸裁定。"
+    },
+    {
+      "id": "delivery-template-converged-task",
+      "title": "增量题投递模板：具体目标+禁读artifact+绝对路径，使 Agent 从空转熔断转为 converged 落地",
+      "why": "本轮实证：同样一批问题，此前 3 轮元任务（『修自升级系统自身』）全部空转/熔断/零落地；换成『给内核加一道具体增量』+ 三条纪律后，Agent 首次 converged 且真正落地代码（零 artifact 读取、零 sys.exec、81KB 流 vs 之前 42MB）。差异不在模型（6 个模型全试过），在任务颗粒度与纪律。",
+      "targetHint": "投递 prompt 规范",
+      "size": "小",
+      "agentActionable": false,
+      "gapType": "methodology",
+      "source": "2026-11-25 增量内核首题复盘",
+      "boundary": "这是已验证有效的投递方法论，非待修缺陷。作为后续所有增量题的投递模板：①目标必须具体到代码行+改动方向；②禁止读 .artifacts 旧账（熔断根因）；③路径用绝对路径；④分步小改+每步验证；⑤maxTokens=8192；⑥严禁 sys.exec（hard审批过期）。",
+      "status": "adopted-as-template"
+    },
+    {
+      "id": "implement-first-green-fastpath",
+      "title": "implement-task 缺完成态快路径：判据已绿仍派 agent，浪费且可能改坏已实现能力",
+      "gap": "rsi-exec-tool-unapproval 的能力已实现、判据 7/7 全绿，但 implement-task.ts 没有「落判据后先跑一次、已绿则直接落库(status=done + implemented 账本 + IMPLEMENTED=1)、跳过派 agent」的幂等快路径，总会再派一轮 agent。同时 auto-adopt 的 judgeBaselineVerdict 第483行 status===0 一刀切判橡皮图章，implement-first 完成态无法被识别。需在不放松橡皮图章安全底线的前提下，给 implement-first 加完成态识别。",
+      "evidence": [
+        "scripts/implement-task.ts:124-127 落判据后无绿检查直接派 agent",
+        "scripts/auto-adopt.ts:483 status===0 无条件判橡皮图章",
+        "rsi-exec 能力已落地且判据 7/7 绿但未进 tasks.json"
+      ],
+      "targetFile": "src/../scripts/implement-task.ts",
+      "gapType": "capability",
+      "status": "open"
+    },
+    {
+      "id": "sandbox-root-workspace-trap",
+      "title": "主 Agent sandboxRoot 默认 server/workspace，导致 fs 工具困在镜像、够不到真实 src/scripts",
+      "gap": "src/config/env.ts:379 里 sandboxRoot = SANDBOX_ROOT 或 path.join(packageRoot,'workspace')。.env 未设 SANDBOX_ROOT，主 Agent(/api/v1/agent/stream) 的 fs 工具相对 server/workspace 解析，相对路径 server/src/... 被解析成 server/workspace/server/src/...；allowDirs 依赖 allowedDirs 参数透传，复合交互易失效。后果：指向 scripts/* 的派单必空转（CodeLens 无法自修脚本类代码），每轮退化成会话侧辅助。修复：.env 设 SANDBOX_ROOT=/workspace/codelens-local-agent-workbench 并重启服务，或让 validateAllowDir/resolveInSandbox 更宽松。",
+      "evidence": [
+        "src/config/env.ts:379 sandboxRoot 默认 packageRoot/workspace",
+        "path-jail.ts:112 绝对路径仅当 allowedDirs 非空才接受",
+        "sandbox-permission.ts:144 normalizeConfig 用 sandboxRoot 校验 allowDirs",
+        "实测：Agent 把 server/src/tools/builtin/rsi-exec.tool.ts 写到 server/workspace/server/src/..."
+      ],
+      "targetFile": "../.env（SandboxRoot 配置）",
+      "gapType": "capability",
+      "status": "resolved-by-convention",
+      "resolution": "Judge 复核 CodeLens 方案后确认：allowDirs 机制正常(validateAllowDir 已正确保留绝对路径)，真实根因是派单用了相对路径。修复=派单模板统一用 /workspace/codelens-local-agent-workbench 绝对路径前缀；不改代码/不重启/不拆沙箱。CodeLens 方案B(放行一切绝对路径)会拆防线，已驳回。"
     }
   ]
 }

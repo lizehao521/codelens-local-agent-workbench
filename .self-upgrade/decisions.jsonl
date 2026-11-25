@@ -1,0 +1,1 @@
+{"at":"2026-11-25T03:47:36.390Z","iterationId":"fs-list-symlink-follow#182","task":"fs-list-symlink-follow","action":"halt","note":"RSI/π 销账：起点判据 6/6 绿、源码已正确跳过软链(line83/95)，但 tasks.json 标 red-baseline 且 attempts=3 耗尽，属账实不符僵尸题；decide=halt 停止继续派单，转人工销账，不抹除历史 failed 记录。","decision":"retry","domain":"D1","verdict":"undecidable"}

@@ -184,6 +184,11 @@ function isMainModule(): boolean {
 if (isMainModule()) {
   const runtime = createRuntime();
   const app = createApp({ runtime });
+  // RSI 自升级循环常驻驱动：非测试环境且未显式关闭时启动 cron 调度。
+  // 调度器实例在 createRuntime() 内已装配为 runtime.scheduler 单例。
+  if (config.nodeEnv !== 'test' && process.env.RSI_SCHEDULER_ENABLED !== 'false') {
+    void runtime.scheduler.start({ cron: process.env.RSI_CRON || '0 */6 * * *' });
+  }
   const server = app.listen(config.port, config.host, () => {
     // eslint-disable-next-line no-console
     console.log(`codelens-server listening on ${config.host}:${config.port} (${config.nodeEnv})`);

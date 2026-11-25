@@ -63,9 +63,11 @@ import { SandboxGrantsController } from './controllers/sandbox-grants.controller
 import { RunsController } from './controllers/runs.controller.js';
 import { probeSandboxWritable } from './utils/sandbox-probe.js';
 import { RsiBridgeService } from './services/rsi/rsi-bridge.service.js';
+import { RsiSchedulerService, setRsiScheduler } from './services/rsi/scheduler.service.js';
 
 export interface Runtime {
   db: Db;
+  scheduler: RsiSchedulerService;
   sandboxRoot: string;
   loop: AgentLoopService;
   abortRegistry: AbortRegistry;
@@ -129,6 +131,9 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   }
   const db = createDb(dbPath);
   db.exec(SCHEMA_SQL);
+  // RSI Scheduler：装配调度器单例（start 由 app.ts 主模块块按环境开关触发，避免测试环境自动跑）。
+  const rsiScheduler = new RsiSchedulerService(db);
+  setRsiScheduler(rsiScheduler);
   // 增量迁移必须在任何仓储/服务构造前跑完：旧库（无 parent_run）在补列之前，任何 `INSERT ... parent_run` 都会直接报 no such column。
   applyMigrations(db);
 
@@ -151,6 +156,8 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   const adapter = new OpenAICompatibleAdapter({
     timeoutMs: opts.upstreamTimeoutMs ?? config.upstreamTimeoutMs,
     retries: opts.upstreamMaxRetries ?? config.upstreamMaxRetries,
+    // 兜底 key 池：仅服务端 key 失败时轮换，BYOK 自带 key 不受影响。
+    apiKeyPool: config.apiKeyPool,
   });
   // 工作区快照服务：构造顺序上必须在 approvalService 之前 —— 审批的后果预览需要读 checkpoint.enabled 判断 overwrite 是否可恢复。
   const checkpointService = new CheckpointService({
@@ -407,6 +414,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   let closed = false;
   return {
     db,
+    scheduler: rsiScheduler,
     sandboxRoot: config.sandboxRoot,
     loop,
     abortRegistry,

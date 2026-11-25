@@ -21,6 +21,7 @@ import { typeCheckTool } from './type-check.tool.js';
 import { fsGlobTool } from './fs-glob.tool.js';
 import { codeSearchTool } from './code-search.tool.js';
 import { agentVerifyTool } from './agent-verify.tool.js';
+import { rsiExecTool } from './rsi-exec.tool.js';
 
 export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   httpRequestTool,
@@ -43,4 +44,5 @@ export const BUILTIN_TOOLS: readonly ToolDefinition[] = [
   fsGlobTool,
   codeSearchTool,
   agentVerifyTool,
+  rsiExecTool,
 ];
