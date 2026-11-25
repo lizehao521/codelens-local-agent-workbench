@@ -21,3 +21,9 @@
 - client：`cd client && npm test`。
 - 端到端：`bash scripts/e2e.sh`（Git Bash；可用 `E2E_PORT` 指定端口）。
 - 改动 `src/` 后必须重跑对应验证；未跑 = UNEXEC，不算通过。
+
+## 4. 合并原则
+
+- **带上后台产出**：合并时把 RSI 后台循环自然落盘的变动（`.self-upgrade/rejections.jsonl`、ledger、`server/candidates/` 的 candidate/draft 演进）一并提交，不要丢弃或只挑源码。改前留档 `.bak` 不入库。
+- **不再抬尺子**：CI 再报行数棘轮（`check:file-size`）超标，优先压代码净增或拆分，**不再抬高 `scripts/file-size-baseline.json` 的 ceiling**。确需抬必须 `attribution=human` 且在 `_raisedReason` 写明不可压的理由；默认视为不通过。
+- **账本 append-only 冲突**：ledger 冲突保留双方记录、按时间排序、去重，不做覆盖式合并。
