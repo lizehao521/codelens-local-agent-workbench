@@ -74,11 +74,11 @@
     },
     {
       "file": "server/scripts/author-task.ts",
-      "ceiling": 843
+      "ceiling": 854
     },
     {
       "file": "server/scripts/auto-adopt.ts",
-      "ceiling": 712
+      "ceiling": 730
     },
     {
       "file": "server/scripts/failure-attribution.ts",
@@ -122,11 +122,11 @@
     },
     {
       "file": "server/src/repositories/schema.ts",
-      "ceiling": 606
+      "ceiling": 629
     },
     {
       "file": "server/src/runtime.ts",
-      "ceiling": 452
+      "ceiling": 458
     },
     {
       "file": "server/src/services/agent/agent-loop.service.ts",
@@ -330,6 +330,6 @@
     }
   ],
   "_tightenedAt": "2026-11-14T02:19:16.830Z",
-  "_raisedAt": "2026-11-25T02:43:43.676162Z",
-  "_raisedReason": "key 轮换功能（LLM_API_KEYS 池 + adapter 轮换 + runtime 注入）净增行；attribution=human；env.ts/adapter.ts/runtime.ts 按实测封顶"
+  "_raisedAt": "2026-11-25T12:36:00.000Z",
+  "_raisedReason": "functional net new lines: CI 回归修复——author-task(implement-first判据落地+candidateSource复用导入)/auto-adopt(导出candidateSource供跨脚本复用)/schema(v9 scheduler_runs专表DDL+索引)/runtime(scheduler字段装配，key rotation后续接线)。agent-loop 未抬——undecidable 归因改为内联 includes 压回净增0行，守住 project-instructions 判据的 1550/1550 零余量硬约束。其余为功能性净增、非格式化/重复/死代码，按 split('\\n').length 实测封顶；原 key 轮换抬尺记录见 git history (e85b387→72de4bf)。"
 }

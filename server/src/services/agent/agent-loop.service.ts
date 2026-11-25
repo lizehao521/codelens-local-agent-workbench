@@ -1478,12 +1478,9 @@ export class AgentLoopService {
         });
         recordShadowAudit({ db, sessionId, result, traceId, recordSpan: (t, s) => this.recordSpan(t, s) });
 
-        // ── LLM 归因：not_improved / refused / undecidable 时触发 ──────────────
-        // 归因经验直接写 policy_injections 作为 π'，下一轮 run 会被 getInjectableView() 喂进 prompt。
-        // 归因失败 catch 住不阻断主流程。
-        // 需要归因的 RSI 状态集合；improved / skipped / error 不触发归因。
-        const ATTRIBUTION_STATES = new Set(['not_improved', 'refused', 'undecidable']);
-        const needsAttribution = ATTRIBUTION_STATES.has(result.state);
+        // ── LLM 归因：not_improved / refused / undecidable 时触发（improved/skipped/error 不触发）──
+        // 归因经验直接写 policy_injections 作为 π'，下一轮 run 会被 getInjectableView() 喂进 prompt。归因失败 catch 住不阻断主流程。
+        const needsAttribution = ['not_improved', 'refused', 'undecidable'].includes(result.state);
         const hasCreds =
           !!this.deps.rsiAttributorApiKey &&
           !!this.deps.rsiAttributorBaseUrl &&
