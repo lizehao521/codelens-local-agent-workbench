@@ -1143,7 +1143,9 @@
         "src/tools/builtin/index.ts:35 sysExecTool 仅注册这一个执行工具，无受约束的替代工具",
         "server/tests/self-upgrade/approval-expired-tool-success.test.ts 只覆盖审批过期的计账语义，未覆盖『免审批受约束执行』能力",
         "server/tests/self-upgrade/write-gate-call.test.ts / test-run.test.ts 只覆盖写闸与测试运行工具，未覆盖自升级循环启动通道"
-      ]
+      ],
+      "strengthens": "Act",
+      "releasedIn": "2.30.0"
     }
   ]
 }
