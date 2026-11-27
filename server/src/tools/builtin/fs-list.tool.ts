@@ -69,53 +69,53 @@ export const fsListTool: ToolDefinition = {
 
     ctx.reportProgress('listing', `浏览 ${jail.sandboxRelative}`);
     const entries: Array<{ name: string; type: 'file' | 'dir' | 'other'; sizeBytes: number | null }> = [];
-    const walk = async (dir: string, prefix: string, depth: number): Promise<boolean> => {
-      if (entries.length >= maxEntries) return false;
+    // BFS（逐层）而不是 DFS：DFS 会先把第一棵子树钻到底，一个大目录就能把
+    // maxEntries 配额吃光，当前层的文件（含软链）根本排不上。列表语义天然
+    // 是「先看到有什么」，更深的内容按层展开才对。
+    const queue: Array<{ dir: string; prefix: string; depth: number }> = [
+      { dir: jail.absolutePath, prefix: '', depth: 0 },
+    ];
+    let complete = true;
+    while (queue.length > 0) {
+      if (entries.length >= maxEntries) {
+        complete = false;
+        break;
+      }
+      const { dir, prefix, depth } = queue.shift()!;
       let dirEntries;
       try {
         dirEntries = await readdir(dir, { withFileTypes: true });
       } catch {
-        return false;
+        continue;
       }
       for (const entry of dirEntries) {
-        if (entries.length >= maxEntries) return false;
-        // Skip symlinks entirely (don't follow them) to avoid leaking sandbox-external metadata
+        if (entries.length >= maxEntries) {
+          complete = false;
+          break;
+        }
+        const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+        // 软链只报「有这个东西」，绝不跟进去：跟进去会泄露沙箱外目标的
+        // sizeBytes / 目录内子条目（sizeBytes 恒 null，type 恒 other）。
         if (entry.isSymbolicLink()) {
-          entries.push({
-            name: prefix ? `${prefix}/${entry.name}` : entry.name,
-            type: 'other',
-            sizeBytes: null,
-          });
+          entries.push({ name, type: 'other', sizeBytes: null });
           continue;
         }
         const abs = `${dir}/${entry.name}`;
         try {
           const s = await stat(abs);
-          // Skip symlinks that may have been resolved by stat (e.g., broken symlinks or race conditions)
-          if (s.isSymbolicLink()) {
-            entries.push({
-              name: prefix ? `${prefix}/${entry.name}` : entry.name,
-              type: 'other',
-              sizeBytes: null,
-            });
-            continue;
-          }
           entries.push({
-            name: prefix ? `${prefix}/${entry.name}` : entry.name,
+            name,
             type: s.isDirectory() ? 'dir' : s.isFile() ? 'file' : 'other',
             sizeBytes: s.isFile() ? s.size : null,
           });
           if (s.isDirectory() && args.recursive === true && depth < 6) {
-            const proceed = await walk(abs, prefix ? `${prefix}/${entry.name}` : entry.name, depth + 1);
-            if (!proceed) return false;
+            queue.push({ dir: abs, prefix: name, depth: depth + 1 });
           }
         } catch {
-          entries.push({ name: prefix ? `${prefix}/${entry.name}` : entry.name, type: 'other', sizeBytes: null });
+          entries.push({ name, type: 'other', sizeBytes: null });
         }
       }
-      return true;
-    };
-    const complete = await walk(jail.absolutePath, '', 0);
+    }
 
     return {
       ok: true,

@@ -51,7 +51,9 @@ export function checkRule(summary, rule) {
     return { ...rule, pct: null, status: 'unexec', reason: '报告里没有这个范围/指标' };
   }
   if (metric.total === 0) {
-    return { ...rule, pct: 100, status: 'pass', reason: null };
+    // 分母为 0 = 这段代码没有可测对象：既不能算「100% 覆盖」也不能算「达标」。
+    // 判 pass 等于凭空发明覆盖率（见 scripts/lib/mutations.mjs 的 zeroDenominator 夹具）。
+    return { ...rule, pct: null, status: 'unexec', reason: '分母为 0：该范围没有可测对象，无法判定覆盖' };
   }
   const pct = Number(((metric.covered / metric.total) * 100).toFixed(2));
   return { ...rule, pct, status: pct >= rule.min ? 'pass' : 'fail', reason: null };

@@ -101,13 +101,16 @@ export const testRunTool: ToolDefinition = {
       };
     }
 
-    // ② format check
-    if (false) {
-      return {
-        ok: false,
-        summary: '只接受 tests/ 下的 .test.ts',
-        error: { code: 'UNSUPPORTED_TARGET', kind: 'invalid_args', message: '只接受 tests/ 下的 .test.ts' },
-      };
+    // ② format check：只接受 tests/ 下的 *.test.ts（.test.ts.bak 这类伪装必须拒绝）
+    {
+      const rel = jail.sandboxRelative.replace(/\\/g, '/');
+      if (!rel.startsWith('tests/') || !rel.endsWith('.test.ts')) {
+        return {
+          ok: false,
+          summary: '只接受 tests/ 下的 .test.ts',
+          error: { code: 'UNSUPPORTED_TARGET', kind: 'invalid_args', message: '只接受 tests/ 下的 .test.ts' },
+        };
+      }
     }
 
     // ③ exists
