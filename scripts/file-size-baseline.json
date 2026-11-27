@@ -1,6 +1,6 @@
 {
   "_why": "存量豁免清单（棘轮）。本机实测 server/src 34 件 + client/src 15 件超 300 行，一刀切会让闸从诞生起就红 49 处、结局是被关掉。语义：存量按现状封顶只许缩不许涨，增量一律 ≤300。",
-  "_measuredAt": "2026-11-27 @ 2.31.0，物理行口径（含空行与注释）",
+  "_measuredAt": "2026-11-27 @ 2.32.0，物理行口径（含空行与注释）",
   "_tighten": "node scripts/check-file-size.mjs --tighten 只下调上限；缩到 300 以内的文件应从本清单移除。改这份清单等于改尺子：attribution=human + 重锚 .self-upgrade/baseline.json。",
   "limit": 300,
   "entries": [

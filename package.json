@@ -1,6 +1,6 @@
 {
   "name": "codelens",
-  "version": "2.31.0",
+  "version": "2.32.0",
   "verify": [
     "check:config"
   ],
@@ -14,7 +14,9 @@
     "dev:server": "npm run dev --prefix server",
     "test": "npm test --prefix server && npm test --prefix client",
     "e2e": "bash scripts/e2e.sh",
-    "check:config": "node scripts/check-eval-config.mjs"
+    "check:config": "node scripts/check-eval-config.mjs",
+    "changelog": "node scripts/gen-changelog.mjs --write",
+    "changelog:release": "node scripts/gen-changelog.mjs --release"
   },
   "engines": {
     "node": ">=22.5.0"

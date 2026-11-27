@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-11-27
+
 ### 新增
 
 #### P1-1 判决统计趋势（Judge Stats Trend）
@@ -18,6 +20,11 @@
 - 服务端 `POST /api/v1/policy/rollback {version}` — 回滚到指定版本并写入新版本号（审计可追溯）
 - `services/agent/policy-diff.ts` — 策略差异计算（`added` / `removed` / `thresholdChanges`）
 - 前端 `PolicyVersionsModal` — 侧栏「策略版本」入口，展示版本链与差异，一键回滚（含 404 `POLICY_VERSION_NOT_FOUND` 与参数错误提示）
+
+#### 自动 Changelog 生成
+- `scripts/gen-changelog.mjs` — 读 `git log` 的 `type(scope)` 归类，按 Keep a Changelog 分组并进 `[Unreleased]`（幂等，同一批提交跑两遍不重复）；`--release x.y.z` 把 Unreleased 冻结成正式版本段
+- `scripts/lib/changelog.mjs` — 纯函数核心（解析 / 分组 / 合并 / 切版），17 条用例钉住「中文提交不丢、合并与发版提交不进日志、重复跑不重复、切过的版本不能再切」
+- 根 `package.json` 增 `npm run changelog` 与 `npm run changelog:release -- 2.32.0`；无 tag 时按最近 30 条回看，有 tag 时只取 `tag..HEAD`
 
 #### 修复
 - `PolicyVersionsModal` 在接口返回缺 `versions` 字段时崩溃（`data?.versions.map` → `(data?.versions ?? [])`）

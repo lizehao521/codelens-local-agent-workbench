@@ -1,13 +1,13 @@
-# CodeLens 核心补强执行计划 (v2.31.0 → v2.32.0)
+# CodeLens 核心补强执行计划 (2.32.0 收口 → P2)
 
 ## 优先级矩阵
 
 | 优先级 | 任务 | 预估工时 | 状态 | 负责 |
 |--------|------|---------|------|------|
 | **P0-1** | Tool Forge 测试生成完善 (`generateTests`) | 1d | ✅ **完成** | Minis 实现 |
-| **P0-2** | Tool Forge 晋升流程集成 generateTests | 1-2d | 🔄 **CodeLens 尝试中，工具调用问题** | CodeLens |
-| **P1-1** | Judge/Update 可视化面板 | 1d | ⏳ 待定 | CodeLens |
-| **P1-2** | Update 策略版本化 + 自动 Changelog | 0.5d | ⏳ 待定 | CodeLens |
+| **P0-2** | Tool Forge 晋升流程集成 generateTests | 1-2d | ✅ **完成**（0d193dc） | Minis 实现 |
+| **P1-1** | Judge/Update 可视化面板 | 1d | ✅ **完成**（7e3c5d7） | Minis 实现 |
+| **P1-2** | Update 策略版本化 + 自动 Changelog | 0.5d | ✅ **完成**（da9e919 + 本轮自动 Changelog） | Minis 实现 |
 | **P2-1** | 检查点/回滚 UI | 1d | ⏳ 待定 | CodeLens |
 | **P2-2** | Tool Forge 自动测试生成 | 1-2d | ✅ generateTests 完成 | Minis/CodeLens |
 
@@ -43,7 +43,7 @@ node -e "const { generateTests } = require('./dist/tools/builtin/tool-forge.tool
 - ✅ 任务已创建并派发给 CodeLens (session: `4044ddb7-9348-429d-85a4-d60ae3798486`)
 - ✅ 任务详细需求已通过 SSE 发送给 CodeLens Agent
 - ✅ **API Key 已配置生效** (NVIDIA + RSI_API_KEYS)
-- ✅ Server 健康运行 (v2.31.0)
+- ✅ Server 健康运行 (v2.32.0)
 
 ### CodeLens 尝试情况
 - CodeLens Agent 尝试读取 `tool-forge.tool.ts` 理解代码结构
@@ -70,24 +70,23 @@ CodeLens Agent 需要实现：
 
 ## 下一步行动
 
-**Minis 侧 (我)**:
-1. 继续优化进化引擎（文件发现加速、基因库种子、Patch 质量）
-2. 考虑为 CodeLens 提供更好的文件读取接口
+**已完成（2.32.0 收口）**:
+- Tool Forge 测试生成与晋升集成（P0-1 / P0-2）
+- Judge 统计趋势可视化（P1-1）、π 策略版本历史与回滚（P1-2）
+- 自动 Changelog 生成 + 发版切段（`npm run changelog` / `npm run changelog:release -- x.y.z`）
 
-**CodeLens 侧**:
-- 修复 fs.read 工具调用的 JSON 解析问题
-- 继续实现 P0-2 集成逻辑
-
-**用户可以做**:
-- 观察进度，如需可手动协助 CodeLens 完成集成
+**待办**:
+1. P2-1 检查点/回滚 UI（时间轴、一键恢复、差异预览）
+2. P2-2 Minis 进化引擎优化：文件发现换 rg、基因库种子、候选 Patch 与真实文件内容对齐
+3. 版本号已到 2.32.0，但仓库仍无 git tag —— 需要发布标签时再打 `v2.32.0`
 
 ---
 
 ## 下一步计划 (P1/P2)
 
-| 优先级 | 任务 | 说明 |
-|--------|------|------|
-| **P1-1** | Judge/Update 可视化面板 | 前端图表：通过率/Token/延迟钻取 |
-| **P1-2** | Update 策略版本化 + 自动 Changelog | π 语义化版本 + 自动 Changelog 生成 |
-| **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 |
-| **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 |
+| 优先级 | 任务 | 说明 | 状态 |
+|--------|------|------|------|
+| **P1-1** | Judge/Update 可视化面板 | 前端图表：通过率/Token/延迟钻取 | ✅ 2.31.0 |
+| **P1-2** | Update 策略版本化 + 自动 Changelog | π 语义化版本 + 自动 Changelog 生成 | ✅ 2.32.0 |
+| **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 | ⏳ 待定 |
+| **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | ⏳ 待定 |
