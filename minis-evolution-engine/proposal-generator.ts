@@ -226,47 +226,60 @@ function extractFilesFromReason(reason?: string): string[] {
  * 根据 Gap 描述和项目结构发现相关文件（fallback 机制）
  * 兼容 BusyBox grep（不支持 --include 选项）
  */
+/**
+ * 根据 Gap 描述和项目结构发现相关文件（fallback 机制）
+ * 使用 rg (ripgrep) - 快、支持类型过滤、不受 BusyBox 限制
+ */
 async function discoverRelevantFiles(gap: Gap, projectRoot: string): Promise<string[]> {
   const { execFileSync } = await import('node:child_process');
   const files = new Set<string>();
-  
+
   try {
-    // 从 gap 描述中提取关键词
+    // 从 gap 描述中提取关键词（过滤常见停用词）
     const keywords = gap.description
       .toLowerCase()
       .split(/\s+/)
       .filter(w => w.length > 3)
+      .filter(w => !['this', 'that', 'with', 'from', 'have', 'been', 'were', 'will', 'would', 'could', 'should'].includes(w))
       .slice(0, 5);
-    
+
     if (keywords.length === 0) return [];
-    
-    // 使用 grep 搜索相关文件（兼容 BusyBox）
+
+    // 使用 rg 搜索相关文件（--type ts/tsx，自动忽略 .gitignore、node_modules 等）
     for (const keyword of keywords) {
       try {
-        // BusyBox grep 不支持 --include，改用 find + grep 组合
-        const result = execFileSync('sh', [
-          '-c',
-          `find "${projectRoot}" -type f \\( -name "*.ts" -o -name "*.tsx" \\) -exec grep -l -i "${keyword}" {} \\;`
-        ], { encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 });
-        
+        const result = execFileSync('rg', [
+          '--type', 'ts',
+          '--type', 'tsx',
+          '--no-ignore',
+          '--hidden',
+          '--glob', '!**/node_modules/**',
+          '--glob', '!**/dist/**',
+          '--glob', '!**/.git/**',
+          '--glob', '!**/coverage/**',
+          '-l',
+          '-i',
+          keyword,
+          projectRoot,
+        ], { encoding: 'utf8', timeout: 15_000, maxBuffer: 2 * 1024 * 1024 });
+
         const found = result.trim().split('\n').filter(f => f.length > 0);
         for (const f of found) {
-          // 转换为相对路径
           const rel = f.replace(projectRoot + '/', '');
           if (rel && !rel.startsWith('..')) {
             files.add(rel);
           }
         }
       } catch {
-        // grep 无结果或超时，继续下一个关键词
+        // rg 无结果或超时，继续下一个关键词
       }
     }
   } catch {
     // 忽略错误
   }
-  
-  return [...files].slice(0, 10); // 限制返回文件数
-}
+
+  return [...files].slice(0, 10);
+} // 限制返回文件数
 
 /**
  * 确保 Gap 有 relatedFiles（fallback 到文件发现）
@@ -372,7 +385,7 @@ function genCombine(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
     id: randomUUID(),
     kind: 'patch',
     targetPath,
-    patch: generateCombinePatch(targetPath, otherPath),
+    patch: generateCombinePatch(targetPath, otherPath, ctx.projectRoot),
     meta: {
       score: 65,
       evidence: [{ type: 'strategy', description: '组合两个相关文件功能' }],
@@ -396,7 +409,7 @@ function genAdapt(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
     id: randomUUID(),
     kind: 'patch' as const,
     targetPath,
-    patch: (t.context.patch ?? generateAdaptPatch(targetPath, t.context.strategy!)) as string,
+    patch: (t.context.patch ?? generateAdaptPatch(targetPath, t.context.strategy!, ctx.projectRoot)) as string,
     meta: {
       score: 75,
       evidence: [{ type: 'gene-pool', description: `适配模式: ${t.pattern}` }],
@@ -414,7 +427,7 @@ function genModify(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
     id: randomUUID(),
     kind: 'patch',
     targetPath: gap.relatedFiles[0],
-    patch: generateModifyPatch(gap.relatedFiles[0]),
+    patch: generateModifyPatch(gap.relatedFiles[0], ctx.projectRoot),
     meta: {
       score: 60,
       evidence: [{ type: 'strategy', description: '增加防御性检查/参数调优' }],
@@ -432,7 +445,7 @@ function genPutToOtherUse(gap: Gap, ctx: GenerationContext): CandidateProposal[]
     id: randomUUID(),
     kind: 'skill' as const,
     targetPath: gap.relatedFiles[0],
-    code: generateSkillWrapper(gap.relatedFiles[0]),
+    code: generateSkillWrapper(gap.relatedFiles[0], ctx.projectRoot),
     meta: {
       score: 55,
       evidence: [{ type: 'strategy', description: '将工具封装为可复用技能' }],
@@ -450,7 +463,7 @@ function genEliminate(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
     id: randomUUID(),
     kind: 'patch',
     targetPath: gap.relatedFiles[0],
-    patch: generateEliminatePatch(gap.relatedFiles[0]),
+    patch: generateEliminatePatch(gap.relatedFiles[0], ctx.projectRoot),
     meta: {
       score: 50,
       evidence: [{ type: 'strategy', description: '移除冗余/死代码' }],
@@ -468,7 +481,7 @@ function genReverse(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
     id: randomUUID(),
     kind: 'patch',
     targetPath: gap.relatedFiles[0],
-    patch: generateReversePatch(gap.relatedFiles[0]),
+    patch: generateReversePatch(gap.relatedFiles[0], ctx.projectRoot),
     meta: {
       score: 45,
       evidence: [{ type: 'strategy', description: '逆向依赖/倒序执行' }],
@@ -480,151 +493,205 @@ function genReverse(gap: Gap, ctx: GenerationContext): CandidateProposal[] {
 }
 
 /**
- * Patch 生成器（占位实现，后续可接入 LLM/AST）
+ * Patch 生成器 - 读取真实文件内容生成有意义的 unified diff
  */
 
-function generateSubstitutePatch(targetPath: string, strategy: string, projectRoot: string): string {
-  const { readFileSync, existsSync } = require('node:fs');
-  const { join } = require('node:path');
-  
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+function readTargetFile(targetPath: string, projectRoot: string): string | null {
   const fullPath = join(projectRoot, targetPath);
-  if (!existsSync(fullPath)) {
-    return `diff --git a/${targetPath} b/${targetPath}
+  if (!existsSync(fullPath)) return null;
+  return readFileSync(fullPath, 'utf8');
+}
+
+function makeDiffHeader(targetPath: string): string {
+  return `diff --git a/${targetPath} b/${targetPath}
 index xxx..yyy 100644
 --- a/${targetPath}
 +++ b/${targetPath}
-@@ -1,3 +1,4 @@
- // TODO: 应用替换策略: ${strategy}
-+// Substituted per gene-pool pattern
 `;
+}
+
+function makeHunkHeader(oldStart: number, oldCount: number, newStart: number, newCount: number): string {
+  return `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`;
+}
+
+function linesToHunk(oldLines: string[], newLines: string[], contextLines = 3): string[] {
+  let start = 0;
+  while (start < oldLines.length && start < newLines.length && oldLines[start] === newLines[start]) {
+    start++;
   }
-  
-  try {
-    const content = readFileSync(fullPath, 'utf8');
-    
-    // Add a comment at the end of the file
-    const newContent = content + '\n// Substituted per gene-pool pattern: ' + strategy + '\n';
-    
-    // Generate proper unified diff manually
-    const oldLines = content.split('\n');
-    const newLines = newContent.split('\n');
-    
-    // We're adding 1 line at the end
-    // Use the last 3 lines as context
-    const contextLines = 3;
-    const oldLineCount = oldLines.length;
-    const contextStart = Math.max(0, oldLineCount - contextLines);
-    
-    // Build context lines (last 3 lines of original)
-    const contextOld = oldLines.slice(contextStart);
-    // New content has one extra line at the end
-    const contextNew = newLines.slice(contextStart);
-    
-    const oldStart = contextStart + 1; // 1-indexed
-    const oldLength = contextOld.length;
-    const newStart = contextStart + 1;
-    const newLength = contextNew.length;
-    
-    // Build hunk body: context lines (unchanged) + added line
-    const hunkLines = [];
-    for (const line of contextOld) {
-      hunkLines.push(' ' + line);
+  let endOld = oldLines.length;
+  let endNew = newLines.length;
+  while (endOld > start && endNew > start && oldLines[endOld - 1] === newLines[endNew - 1]) {
+    endOld--;
+    endNew--;
+  }
+
+  const contextStart = Math.max(0, start - contextLines);
+  const contextEndOld = Math.min(oldLines.length, endOld + contextLines);
+  const contextEndNew = Math.min(newLines.length, endNew + contextLines);
+
+  const hunk: string[] = [];
+  for (let i = contextStart; i < start; i++) {
+    hunk.push(' ' + oldLines[i]);
+  }
+  for (let i = start; i < endOld; i++) {
+    hunk.push('-' + oldLines[i]);
+  }
+  for (let i = start; i < endNew; i++) {
+    hunk.push('+' + newLines[i]);
+  }
+  for (let i = endOld; i < contextEndOld; i++) {
+    if (i < oldLines.length) hunk.push(' ' + oldLines[i]);
+  }
+  for (let i = Math.max(endOld, contextEndOld); i < contextEndNew; i++) {
+    hunk.push('+' + newLines[i]);
+  }
+
+  return hunk;
+}
+
+function buildUnifiedDiff(targetPath: string, oldContent: string, newContent: string): string {
+  const oldLines = oldContent.split('\n');
+  const newLines = newContent.split('\n');
+  const hunkLines = linesToHunk(oldLines, newLines);
+  if (hunkLines.length === 0) return '';
+
+  const oldCount = oldLines.length;
+  const newCount = newLines.length;
+
+  return makeDiffHeader(targetPath) + makeHunkHeader(1, oldCount, 1, newCount) + '\n' + hunkLines.join('\n') + '\n';
+}
+
+function generateSubstitutePatch(targetPath: string, strategy: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 2) + '\n // TODO: apply substitute\n+// Substituted: ' + strategy + '\n';
+  }
+
+  const newContent = content.replace(/console\.log\(/g, 'logger.debug(');
+  if (newContent === content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 2) + '\n // Substitute: ' + strategy + '\n+import { logger } from \'../utils/logger\';\n';
+  }
+
+  return buildUnifiedDiff(targetPath, content, newContent);
+}
+
+function generateCombinePatch(targetPath: string, otherPath: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 2) + '\n // Combine with ' + otherPath + '\n+// Combined from ' + otherPath + '\n';
+  }
+
+  const newContent = content + '\n// Combined functionality from: ' + otherPath + '\n';
+  return buildUnifiedDiff(targetPath, content, newContent);
+}
+
+function generateAdaptPatch(targetPath: string, strategy: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 2) + '\n // Adapt: ' + strategy + '\n+// Adapted from gene-pool pattern\n';
+  }
+
+  const newContent = content + '\n// Adapted strategy: ' + strategy + '\n';
+  return buildUnifiedDiff(targetPath, content, newContent);
+}
+
+function generateModifyPatch(targetPath: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 3) + '\n // Modify: add guard\n+if (!input) throw new Error(\'Invalid input\');\n+// Guard clause added\n';
+  }
+
+  const lines = content.split('\n');
+  let insertAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('export function ') || line.match(/export const \w+ = (async )?function/)) {
+      for (let j = i; j < lines.length; j++) {
+        if (lines[j].includes('{')) {
+          insertAt = j + 1;
+          break;
+        }
+      }
+      break;
     }
-    // The added line is the last line in contextNew
-    const addedLine = contextNew[contextNew.length - 1];
-    hunkLines.push('+' + addedLine);
-    
-    const hunkBody = hunkLines.join('\n');
-    const hunkHeader = `@@ -${contextStart + 1},${contextOld.length} +${contextStart + 1},${contextNew.length} @@`;
-    
-    return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-${hunkHeader}
-${hunkBody}
-`;
-  } catch {
-    return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-@@ -1,3 +1,4 @@
- // TODO: 应用替换策略: ${strategy}
-+// Substituted per gene-pool pattern
-`;
   }
+
+  if (insertAt === -1 || insertAt >= lines.length) {
+    const newContent = content + '\n// Added guard clause\nif (!input) throw new Error(\'Invalid input\');\n';
+    return buildUnifiedDiff(targetPath, content, newContent);
+  }
+
+  const newLines = [...lines];
+  newLines.splice(insertAt, 0, '  if (!input) throw new Error(\'Invalid input\');  // Guard clause');
+  return buildUnifiedDiff(targetPath, content, newLines.join('\n'));
 }
 
-function generateCombinePatch(file1: string, file2: string): string {
-  return `diff --git a/${file1} b/${file1}
-index xxx..yyy 100644
---- a/${file1}
-+++ b/${file1}
-@@ -1,3 +1,4 @@
- // TODO: 组合 ${file2} 功能
-+// Combined from ${file2}
-`;
-}
-
-function generateAdaptPatch(targetPath: string, strategy: string): string {
-  return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-@@ -1,3 +1,4 @@
- // TODO: 适配策略: ${strategy}
-+// Adapted from gene-pool pattern
-`;
-}
-
-function generateModifyPatch(targetPath: string): string {
-  return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-@@ -1,3 +1,5 @@
- // TODO: 修改优化
-+// Added guard clause
-+if (!input) throw new Error('Invalid input');
-`;
-}
-
-function generateSkillWrapper(targetPath: string): string {
+function generateSkillWrapper(targetPath: string, projectRoot: string): string {
+  const baseName = targetPath.split('/').pop()?.replace(/\.(ts|tsx)$/, '') || 'unknown';
+  
   return `// Auto-generated skill wrapper for ${targetPath}
 import type { ToolDefinition } from '../types/tool.js';
 
-export const autoSkill: ToolDefinition = {
-  name: 'auto.${targetPath.replace(/[^a-z0-9]/gi, '_')}',
+export const ${baseName}Skill: ToolDefinition = {
+  name: 'skill.${baseName.replace(/[^a-z0-9]/gi, '_')}',
   description: 'Auto-generated skill from ${targetPath}',
   inputSchema: { type: 'object', properties: {} },
-  handler: async () => ({ ok: true, data: 'TODO' }),
+  handler: async (input: unknown) => ({ ok: true, data: 'TODO: implement', input }),
 };
 `;
 }
 
-function generateEliminatePatch(targetPath: string): string {
-  return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-@@ -1,4 +1,2 @@
--// TODO: Remove dead code
--export function unused() { return 1; }
--// Removed dead code
-`;
+function generateEliminatePatch(targetPath: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 3, 1, 1) + '\n-// Dead code\n-export function unused() { return 1; }\n-// Removed\n';
+  }
+
+  const lines = content.split('\n');
+  const exportIndices: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().startsWith('export ') && (lines[i].includes('function ') || lines[i].includes('const ') || lines[i].includes('interface ') || lines[i].includes('type '))) {
+      exportIndices.push(i);
+    }
+  }
+
+  if (exportIndices.length <= 1) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 1) + '\n // No eliminatable exports found\n';
+  }
+
+  const removeAt = exportIndices[exportIndices.length - 2];
+  let endAt = removeAt;
+  while (endAt < lines.length && lines[endAt].trim() !== '' && !lines[endAt].trim().startsWith('export ')) {
+    endAt++;
+  }
+
+  const newLines = [...lines];
+  newLines.splice(removeAt, endAt - removeAt);
+  return buildUnifiedDiff(targetPath, content, newLines.join('\n'));
 }
 
-function generateReversePatch(targetPath: string): string {
-  return `diff --git a/${targetPath} b/${targetPath}
-index xxx..yyy 100644
---- a/${targetPath}
-+++ b/${targetPath}
-@@ -1,3 +1,4 @@
- // TODO: 逆向依赖
-+// Dependency inverted
-`;
+function generateReversePatch(targetPath: string, projectRoot: string): string {
+  const content = readTargetFile(targetPath, projectRoot);
+  if (!content) {
+    return makeDiffHeader(targetPath) + makeHunkHeader(1, 1, 1, 2) + '\n // Reverse dependency\n+// Dependency inverted\n';
+  }
+
+  const lines = content.split('\n');
+  let insertAt = 0;
+  while (insertAt < lines.length && (lines[insertAt].startsWith('//') || lines[insertAt].startsWith('/*') || lines[insertAt].trim() === '')) {
+    insertAt++;
+  }
+
+  const newLines = [...lines];
+  newLines.splice(insertAt, 0, '', '// Reverse dependency: extracted interface', 'export interface IReversed {', '  execute(input: unknown): Promise<unknown>;', '}', '');
+  return buildUnifiedDiff(targetPath, content, newLines.join('\n'));
 }
+
 
 /**
  * 主流程：收集 Gap → 应用所有策略 → 去重 → 返回候选

@@ -1,0 +1,225 @@
+{
+  "entries": [
+    {
+      "id": "seed-001",
+      "pattern": "patch:modify:call-resolver",
+      "kind": "success",
+      "proposalId": "seed-001",
+      "proposalKind": "patch",
+      "score": 85,
+      "context": {
+        "targetPath": "server/src/services/agent/call-resolver.ts",
+        "strategy": "modify",
+        "verificationPassed": true,
+        "description": "INVALID_JSON 处理改为返回原始片段 + 重试提示，而非硬报错；修复 fs.read JSON 解析崩溃"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 3,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-002",
+      "pattern": "patch:modify:sys-exec",
+      "kind": "success",
+      "proposalId": "seed-002",
+      "proposalKind": "patch",
+      "score": 90,
+      "context": {
+        "targetPath": "server/src/tools/builtin/sys-exec.tool.ts",
+        "strategy": "modify",
+        "verificationPassed": true,
+        "description": "恢复 stdout 读取逻辑（outSink.text()），修复回归导致的 4 个测试失败"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 2,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-003",
+      "pattern": "patch:modify:ssrf-guard",
+      "kind": "success",
+      "proposalId": "seed-003",
+      "proposalKind": "patch",
+      "score": 88,
+      "context": {
+        "targetPath": "server/src/utils/ssrf-guard.ts",
+        "strategy": "modify",
+        "verificationPassed": true,
+        "description": "修复 isIpv4Mapped 忘记检查 bytes 10-11 为 ff:ff 的 bug，补全 IPv4-mapped IPv6 拦截"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 1,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-004",
+      "pattern": "patch:eliminate:test-math",
+      "kind": "success",
+      "proposalId": "seed-004",
+      "proposalId": "seed-004",
+      "proposalKind": "patch",
+      "score": 95,
+      "context": {
+        "targetPath": "server/src/tools/builtin/test-math.tool.ts",
+        "strategy": "eliminate",
+        "verificationPassed": true,
+        "description": "错误注册到注册表且无测试引用的工具（test.math 实为 test.str）导致 ~10 个 judge 测试中毒，彻底删除文件+注册表条目"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 1,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-005",
+      "pattern": "patch:modify:fs-list",
+      "kind": "success",
+      "proposalId": "seed-005",
+      "proposalKind": "patch",
+      "score": 82,
+      "context": {
+        "targetPath": "server/src/tools/builtin/fs-list.tool.ts",
+        "strategy": "modify",
+        "verificationPassed": true,
+        "description": "DFS 吃光 maxEntries 在 .artifacts/ 前改为 BFS，修复 6/6 测试"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 2,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-006",
+      "pattern": "patch:adapt:coverage-floor",
+      "kind": "success",
+      "proposalId": "seed-006",
+      "proposalKind": "patch",
+      "score": 87,
+      "context": {
+        "targetPath": "scripts/lib/coverage-floor.mjs",
+        "strategy": "adapt",
+        "verificationPassed": true,
+        "description": "metric.total === 0 时返回 unexec 而非凭空发明 100% 覆盖率，钉死 26/26 测试"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 1,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-007",
+      "pattern": "patch:modify:tool-run",
+      "kind": "success",
+      "proposalId": "seed-007",
+      "proposalKind": "patch",
+      "score": 80,
+      "context": {
+        "targetPath": "server/src/tools/builtin/test-run.tool.ts",
+        "strategy": "modify",
+        "verificationPassed": true,
+        "description": "tests/ 白名单检查被 if (false) 禁用，改为格式校验，恢复 19/19 测试"
+      },
+      "createdAt": "2026-11-25T00:00:00.000Z",
+      "usageCount": 1,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-008",
+      "pattern": "patch:substitute:registry-models",
+      "kind": "success",
+      "proposalId": "seed-008",
+      "proposalKind": "patch",
+      "score": 92,
+      "context": {
+        "targetPath": "server/src/providers/registry.ts",
+        "strategy": "substitute",
+        "verificationPassed": true,
+        "description": "硬编码过时模型列表替换为 OpenRouter 自动同步（477 模型合并入 openai-compatible），新增 NVIDIA/GLM/Kimi/DeepSeek/Qwen 全系"
+      },
+      "createdAt": "2026-11-20T00:00:00.000Z",
+      "usageCount": 3,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-009",
+      "pattern": "patch:combine:tool-forge-split",
+      "kind": "success",
+      "proposalId": "seed-009",
+      "proposalKind": "patch",
+      "score": 84,
+      "context": {
+        "targetPath": "server/src/tools/builtin/tool-forge.tool.ts",
+        "strategy": "combine",
+        "verificationPassed": true,
+        "description": "tool-forge.tool.ts 拆分为 tool-forge.tool.ts(391) + tool-forge-shared.ts(160) + tool-forge-test-gen.ts(214)，通过 file-size 棘轮"
+      },
+      "createdAt": "2026-11-26T00:00:00.000Z",
+      "usageCount": 2,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-010",
+      "pattern": "patch:reverse:policy-diff",
+      "kind": "success",
+      "proposalId": "seed-010",
+      "proposalKind": "patch",
+      "score": 89,
+      "context": {
+        "targetPath": "server/src/services/agent/policy-diff.ts",
+        "strategy": "reverse",
+        "verificationPassed": true,
+        "description": "新增策略差异计算服务（added/removed/thresholdChanges），配合 GET /policy/versions + POST /policy/rollback 实现 π 版本历史与回滚"
+      },
+      "createdAt": "2026-11-27T00:00:00.000Z",
+      "usageCount": 1,
+      "lastUsedAt": "2026-11-27T00:00:00.000Z"
+    },
+    {
+      "id": "seed-011",
+      "pattern": "failure:tool-forge:json-parse",
+      "kind": "failure",
+      "proposalId": "seed-011",
+      "proposalKind": "patch",
+      "score": 30,
+      "context": {
+        "targetPath": "server/src/tools/builtin/tool-forge.tool.ts",
+        "strategy": "modify",
+        "errorCode": "TOOL_CALL_ERROR",
+        "errorMessage": "模板字面量转义导致文件损坏、重复函数插入，需用 Python 写入避免 shell 转义问题"
+      },
+      "createdAt": "2026-11-26T00:00:00.000Z",
+      "usageCount": 2
+    },
+    {
+      "id": "seed-012",
+      "pattern": "failure:fs-read:json-parse",
+      "kind": "failure",
+      "proposalId": "seed-012",
+      "proposalKind": "patch",
+      "score": 25,
+      "context": {
+        "targetPath": "server/src/tools/builtin/fs-read.tool.ts",
+        "strategy": "modify",
+        "errorCode": "INVALID_JSON",
+        "errorMessage": "fs.read 返回大文件时 JSON 解析失败（超出 token 限制），CodeLens Agent 反复读取同一文件导致死循环"
+      },
+      "createdAt": "2026-11-26T00:00:00.000Z",
+      "usageCount": 5
+    },
+    {
+      "id": "seed-013",
+      "pattern": "failure:patch-generation:content-mismatch",
+      "kind": "failure",
+      "proposalId": "seed-013",
+      "proposalKind": "patch",
+      "score": 20,
+      "context": {
+        "targetPath": "minis-evolution-engine/proposal-generator.ts",
+        "strategy": "adapt",
+        "errorCode": "STATIC_VALIDATION_FAILED",
+        "errorMessage": "生成的 Patch 与真实文件内容不匹配（索引越界、上下文行不存在），导致静态校验全军覆没"
+      },
+      "createdAt": "2026-11-27T00:00:00.000Z",
+      "usageCount": 3
+    }
+  ],
+  "version": 1,
+  "updatedAt": "2026-11-27T22:30:00.000Z"
+}

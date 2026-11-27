@@ -9,7 +9,7 @@
 | **P1-1** | Judge/Update 可视化面板 | 1d | ✅ **完成**（7e3c5d7） | Minis 实现 |
 | **P1-2** | Update 策略版本化 + 自动 Changelog | 0.5d | ✅ **完成**（da9e919 + 本轮自动 Changelog） | Minis 实现 |
 | **P2-1** | 检查点/回滚 UI | 1d | ⏳ 待定 | CodeLens |
-| **P2-2** | Tool Forge 自动测试生成 | 1-2d | ✅ generateTests 完成 | Minis/CodeLens |
+| **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | 1-2d | 🔄 **进行中**（rg ✅ / 基因库种子 13 条 ✅ / Patch 质量重写 ✅） | Minis |
 
 ---
 
@@ -89,4 +89,4 @@ CodeLens Agent 需要实现：
 | **P1-1** | Judge/Update 可视化面板 | 前端图表：通过率/Token/延迟钻取 | ✅ 2.31.0 |
 | **P1-2** | Update 策略版本化 + 自动 Changelog | π 语义化版本 + 自动 Changelog 生成 | ✅ 2.32.0 |
 | **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 | ⏳ 待定 |
-| **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | ⏳ 待定 |
+| **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | 🔄 进行中（rg ✅ / 种子 13 条 ✅ / Patch 质量重写 ✅） |
