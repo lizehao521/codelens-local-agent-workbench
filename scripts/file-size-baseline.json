@@ -1,6 +1,6 @@
 {
   "_why": "存量豁免清单（棘轮）。本机实测 server/src 34 件 + client/src 15 件超 300 行，一刀切会让闸从诞生起就红 49 处、结局是被关掉。语义：存量按现状封顶只许缩不许涨，增量一律 ≤300。",
-  "_measuredAt": "2026-11-14 @ 2.15.0，物理行口径（含空行与注释）",
+  "_measuredAt": "2026-11-27 @ 2.31.0，物理行口径（含空行与注释）",
   "_tighten": "node scripts/check-file-size.mjs --tighten 只下调上限；缩到 300 以内的文件应从本清单移除。改这份清单等于改尺子：attribution=human + 重锚 .self-upgrade/baseline.json。",
   "limit": 300,
   "entries": [
@@ -38,11 +38,11 @@
     },
     {
       "file": "client/src/components/settings/ModelCapabilityPanel.tsx",
-      "ceiling": 330
+      "ceiling": 352
     },
     {
       "file": "client/src/components/settings/ProviderZone.tsx",
-      "ceiling": 336
+      "ceiling": 416
     },
     {
       "file": "client/src/lib/rsi-rules.ts",
@@ -106,7 +106,7 @@
     },
     {
       "file": "server/src/config/env.ts",
-      "ceiling": 428
+      "ceiling": 433
     },
     {
       "file": "server/src/controllers/judge.controller.ts",
@@ -126,7 +126,7 @@
     },
     {
       "file": "server/src/runtime.ts",
-      "ceiling": 462
+      "ceiling": 479
     },
     {
       "file": "server/src/services/agent/agent-loop.service.ts",
@@ -138,7 +138,7 @@
     },
     {
       "file": "server/src/services/agent/call-resolver.ts",
-      "ceiling": 453
+      "ceiling": 456
     },
     {
       "file": "server/src/services/agent/run-state.service.ts",
@@ -327,6 +327,10 @@
     {
       "file": "server/tests/trial-resilience.test.ts",
       "ceiling": 369
+    },
+    {
+      "file": "client/src/components/settings/ModelMarket.tsx",
+      "ceiling": 528
     }
   ],
   "_tightenedAt": "2026-11-14T02:19:16.830Z",

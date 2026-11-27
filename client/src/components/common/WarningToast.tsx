@@ -1,14 +1,14 @@
 // WarningToast —— SSE warning 事件的 Toast 组件
 // 支持同时显示最多 5 条，自动消失 5s，悬停暂停
 
-import { CircleAlert, X, AlertTriangle } from 'lucide-react';
+import { CircleAlert, X, TriangleAlert } from 'lucide-react';
 import { useWarningStore } from '../../stores/warningStore';
 import { cn } from '../../lib/cn';
 import { useEffect, useState } from 'react';
 
 const VARIANT_CONFIG = {
   warning: {
-    icon: AlertTriangle,
+    icon: TriangleAlert,
     className: 'text-warning',
     bgClass: 'bg-warning/10 border-warning/30',
   },
@@ -62,7 +62,7 @@ function WarningToastItem({ warning, onDismiss }: WarningToastItemProps) {
     >
       <div className="flex-shrink-0 mt-0.5">
         {warning.variant === 'warning' ? (
-          <AlertTriangle size={16} className="text-warning" />
+          <TriangleAlert size={16} className="text-warning" />
         ) : (
           <CircleAlert size={16} className="text-danger" />
         )}

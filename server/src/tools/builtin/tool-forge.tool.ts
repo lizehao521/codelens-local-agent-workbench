@@ -15,7 +15,6 @@
  *   · 宏的每一步都是既有工具，审计口径与主链路完全一致。
  */
 import { mkdir, readFile, writeFile, rm, appendFile } from 'node:fs/promises';
-import { execSync } from 'node:child_process';
 import path from 'node:path';
 import type { ToolDefinition, ToolExecutionContext, ToolOutcome } from '../../types/tool.js';
 import { fsReadTool } from './fs-read.tool.js';
@@ -26,6 +25,7 @@ import { textDiffTool } from './text-diff.tool.js';
 import { timeNowTool } from './time-now.tool.js';
 import { uuidGenerateTool } from './uuid-generate.tool.js';
 import { recordForgedTool, markForgedToolUsed, markForgedToolRecycled } from '../../services/tools/forged-tool-lifecycle.js';
+import { scopeDir, libraryDir, defPath, libraryPath, appendEvent, runPromotion } from './tool-forge-shared.js';
 /** 允许被宏调用的工具（读/算类）。刻意排除 sys.exec / http.request / fs.write：
  *  宏是「复用读算能力」，不是「批量执行副作用」的通道。 */
 const STEP_TOOLS = [fsReadTool, fsListTool, calcEvaluateTool, jsonFormatTool, textDiffTool, timeNowTool, uuidGenerateTool];
@@ -149,96 +149,6 @@ export function composeLesson(
   };
 }
 
-
-/** bumpVersion: semantic version increment */
-function bumpVersion(current: string, type: 'major' | 'minor' | 'patch'): string {
-  const parts = current.split('.').map((p) => parseInt(p, 10) || 0);
-  const major = parts[0] ?? 0;
-  const minor = parts[1] ?? 0;
-  const patch = parts[2] ?? 0;
-  if (type === 'major') return (major + 1) + '.0.0';
-  if (type === 'minor') return major + '.' + (minor + 1) + '.0';
-  return major + '.' + minor + '.' + (patch + 1);
-}
-
-/** determineBumpType: infer bump type from references content */
-function determineBumpType(references: Array<{ title: string; url: string }>): 'major' | 'minor' | 'patch' {
-  const joined = references.map((r) => r.title + ' ' + r.url).join(' ').toLowerCase();
-  if (joined.includes('breaking')) return 'major';
-  if (joined.includes('new') || joined.includes('feature')) return 'minor';
-  return 'patch';
-}
-
-/** generateChangelogEntry: produce a changelog block */
-function generateChangelogEntry(name: string, version: string, spec: ForgeSpec, bumpType: string): string {
-  const date = new Date().toISOString().split('T')[0];
-  return [
-    '## [' + version + '] - ' + date,
-    '### ' + name,
-    '- ' + spec.description,
-    '- steps: ' + spec.steps.map((s) => s.tool).join(', '),
-    '- bump: ' + bumpType,
-    '',
-  ].join('\n');
-}
-
-/** versionFilePath: per-tool version file */
-function versionFilePath(ctx: ToolExecutionContext, name: string): string {
-  return path.join(libraryDir(ctx), name + '.version.json');
-}
-
-/** changelogFilePath: single library changelog */
-function changelogFilePath(ctx: ToolExecutionContext): string {
-  return path.join(libraryDir(ctx), 'CHANGELOG.md');
-}
-
-/** readCurrentVersion: read a tool version (default 0.0.0) */
-async function readCurrentVersion(ctx: ToolExecutionContext, name: string): Promise<string> {
-  try {
-    const raw = await readFile(versionFilePath(ctx, name), 'utf8');
-    const data = JSON.parse(raw) as { version?: string };
-    return data.version || '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
-
-/** writeVersionFile: persist version metadata */
-async function writeVersionFile(ctx: ToolExecutionContext, name: string, version: string, promotedAt: string): Promise<void> {
-  const payload = JSON.stringify({ version, promotedAt }, null, 2);
-  await writeFile(versionFilePath(ctx, name), payload, 'utf8');
-}
-
-function scopeDir(ctx: ToolExecutionContext): string {
-  return path.join(ctx.sandboxRoot, 'tmp', 'tools', ctx.sessionId);
-}
-
-/**
- * 会话级能力库 —— 沉淀下来的能力放这里。
- *
- * 与任务作用域的区别（这是「沉淀」能成立的关键）：
- *   · tmp/tools/<session>/  是**义肢**：任务结束必须回收，否则孤儿闸判红；
- *   · .codelens/tool-library/<session>/ 是**记忆**：recycle 时选择晋升才写入，
- *     下一代可以直接 use，不必重建。读本 §6 第 6 步「把答案写回 π / 记忆」
- *     在机器侧就落在这一层。
- */
-function libraryDir(ctx: ToolExecutionContext): string {
-  return path.join(ctx.sandboxRoot, '.codelens', 'tool-library', ctx.sessionId);
-}
-
-function defPath(ctx: ToolExecutionContext, name: string): string {
-  return path.join(scopeDir(ctx), `${name}.json`);
-}
-
-function libraryPath(ctx: ToolExecutionContext, name: string): string {
-  return path.join(libraryDir(ctx), `${name}.json`);
-}
-
-async function appendEvent(ctx: ToolExecutionContext, event: string, payload: Record<string, unknown>): Promise<void> {
-  const dir = scopeDir(ctx);
-  await mkdir(dir, { recursive: true });
-  await appendFile(path.join(dir, 'events.jsonl'), `${JSON.stringify({ ts: Date.now(), event, ...payload })}\n`, 'utf8');
-}
 
 /** `{{input}}` 用本次调用传入的 input 替换；`{{prev}}` 用上一步的 summary 替换。 */
 function substitute(value: unknown, vars: { input: string; prev: string }): unknown {
@@ -428,282 +338,26 @@ export const toolForgeTool: ToolDefinition = {
     // 晋升：自动生成测试 -> 写入测试文件 -> 强制跑测试 -> 版本化 -> changelog -> 晋升到能力库
     const promote = args.answers && (args.answers as Record<string, unknown>).promote === true;
     let promoted = false;
+    let nextVersion = '';
     if (promote) {
-      try {
-        // 1. 自动生成测试
-        const testCode = generateTests(spec);
-        const testDir = path.join(ctx.sandboxRoot, 'tests', 'tools');
-        await mkdir(testDir, { recursive: true });
-        const testPath = path.join(testDir, name + '.test.ts');
-        await writeFile(testPath, testCode, 'utf8');
-
-        // 2. 强制跑测试：仅有 package.json 的项目沙箱才执行门禁，否则跳过（保持旧行为兼容）
-        let hasPackageJson = false;
-        try {
-          await readFile(path.join(ctx.sandboxRoot, 'package.json'), 'utf8');
-          hasPackageJson = true;
-        } catch {
-          hasPackageJson = false;
-        }
-        if (hasPackageJson) {
-          try {
-            execSync('npx vitest run ' + testPath, {
-              cwd: ctx.sandboxRoot,
-              stdio: 'pipe',
-              timeout: 60000,
-            });
-          } catch (testError) {
-            await rm(testPath, { force: true });
-            await appendEvent(ctx, 'tool_promote_test_failed', { name });
-            await rm(file, { force: true });
-            return {
-              ok: false,
-              summary: '晋升失败：自动生成的测试未通过（' + String(testError).slice(0, 200) + '）',
-              error: { code: 'TOOL_PROMOTE_TEST_FAILED', kind: 'internal', message: 'generated test failed' },
-            };
-          }
-        }
-
-        // 3. 版本化
-        const current = await readCurrentVersion(ctx, name);
-        const bumpType = determineBumpType(spec.references);
-        const nextVersion = bumpVersion(current, bumpType);
-
-        // 4. changelog 与版本文件
-        await mkdir(libraryDir(ctx), { recursive: true });
-        await writeFile(changelogFilePath(ctx), generateChangelogEntry(name, nextVersion, spec, bumpType), 'utf8');
-        await writeVersionFile(ctx, name, nextVersion, new Date().toISOString());
-
-        // 5. 晋升到能力库
-        await writeFile(libraryPath(ctx, name), `${JSON.stringify(spec, null, 2)}\n`, 'utf8');
-        await appendEvent(ctx, 'tool_promoted', { name, version: nextVersion });
-        promoted = true;
-      } catch (err) {
-        /* 晋升失败不阻断回收：义肢照删，沉淀少一步 */
-        promoted = false;
+      const result = await runPromotion(ctx, name, spec);
+      if (!result.ok) {
+        await rm(file, { force: true });
+        return result.outcome;
       }
+      promoted = result.promoted;
+      nextVersion = result.nextVersion;
     }
 
+    await rm(file, { force: true });
     await rm(file, { force: true });
     markForgedToolRecycled(ctx.sessionId, name);
     await appendEvent(ctx, 'tool_removed', { name });
     await appendEvent(ctx, 'lesson', { name, text: lesson.lesson });
     return {
       ok: true,
-      summary: `已回收 ${name}${promoted ? '并晋升到能力库（下一代可直接复用）' : '（未晋升：下次还得重建）'}。沉淀：${lesson.lesson}`.slice(0, 900),
+      summary: `已回收 ${name}${promoted ? '并晋升到能力库 v' + nextVersion + '（下一代可直接复用）' : '（未晋升：下次还得重建）'}。沉淀：${lesson.lesson}`.slice(0, 900),
       data: { name, lesson: lesson.lesson, removed: true, promoted },
     };
   },
 };
-/**
- * 基于 ForgeSpec 生成 Vitest 测试代码。
- * 覆盖：validateForgeSpec 输入验证、正常执行路径、错误处理、边界条件。
- */
-export function generateTests(spec: ForgeSpec): string {
-  const { name, description, why_not_existing, steps, references } = spec;
-  const stepCount = steps.length;
-  const hasReferences = references.length > 0;
-  const stepTools = steps.map((s) => s.tool).join(', ');
-  const stepSummary = steps
-    .map((s, i) => "    // Step " + (i + 1) + ": " + s.tool + "(" + JSON.stringify(s.args) + ")")
-    .join('\n');
-
-  const escapedDesc = description.replace(/'/g, "\\'");
-  const escapedWhy = why_not_existing.replace(/'/g, "\\'");
-
-  const template = [
-    "import { describe, it, expect, beforeEach, vi } from 'vitest';",
-    "import { validateForgeSpec, validateReferences, composeLesson } from './tool-forge.tool.js';",
-    "import type { ForgeSpec, ForgeStep, ForgeReference } from './tool-forge.tool.js';",
-    "",
-    "describe('Tool Forge - " + name + "', () => {",
-    "  const spec: ForgeSpec = {",
-    "    name: '" + name + "',",
-    "    description: '" + description.replace(/'/g, "\\'") + "',",
-    "    why_not_existing: '" + why_not_existing.replace(/'/g, "\\'") + "',",
-    "    steps: " + JSON.stringify(steps, null, 2) + ",",
-    "    references: " + JSON.stringify(references, null, 2) + ",",
-    "  };",
-    "",
-    "  describe('validateForgeSpec', () => {",
-    "    it('should accept valid spec', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: '" + name + "',",
-    "        description: '" + description.replace(/'/g, "\\'") + "',",
-    "        why_not_existing: '" + why_not_existing.replace(/'/g, "\\'") + "',",
-    "        steps: " + JSON.stringify(steps, null, 2) + ",",
-    "        references: " + JSON.stringify(references, null, 2) + ",",
-    "      });",
-    "      expect(result.ok).toBe(true);",
-    "      expect(result.spec).toBeDefined();",
-    "      expect(result.spec?.name).toBe('" + name + "');",
-    "      expect(result.spec?.steps).toHaveLength(" + steps.length + ");",
-    "    });",
-    "",
-    "    it('should reject invalid name', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'Invalid_Name',",
-    "        description: 'test',",
-    "        why_not_existing: 'reason for testing',",
-    "        steps: [{ tool: 'fs_read', args: {} }],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('name');",
-    "    );",
-    "",
-    "    it('should reject short description', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'abc',",
-    "        why_not_existing: 'reason for testing',",
-    "        steps: [{ tool: 'fs_read', args: {} }],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('description');",
-    "    );",
-    "",
-    "    it('should reject short why_not_existing', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'short',",
-    "        steps: [{ tool: 'fs_read', args: {} }],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('why_not_existing');",
-    "    );",
-    "",
-    "    it('should reject empty steps', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'valid reason for testing',",
-    "        steps: [],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('steps');",
-    "    );",
-    "",
-    "    it('should reject too many steps', () => {",
-    "      const manySteps = Array.from({ length: 6 }, (_, i) => ({ tool: 'fs_read', args: {} }));",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'valid reason for testing',",
-    "        steps: manySteps,",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('5 步');",
-    "    );",
-    "",
-    "    it('should reject invalid step tool', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'valid reason for testing',",
-    "        steps: [{ tool: 'invalid_tool', args: {} }],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('不可用');",
-    "    );",
-    "",
-    "    it('should reject invalid step args', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'valid reason for testing',",
-    "        steps: [{ tool: 'fs_read', args: 'not_an_object' }],",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "      expect(result.message).toContain('args');",
-    "    );",
-    "",
-    "    it('should reject invalid references', () => {",
-    "      const result = validateForgeSpec({",
-    "        name: 'valid_name',",
-    "        description: 'valid description',",
-    "        why_not_existing: 'valid reason for testing',",
-    "        steps: [{ tool: 'fs_read', args: {} }],",
-    "        references: [{ url: 'not_a_url', title: 'test' }],",
-    "      });",
-    "      expect(result.ok).toBe(true);",
-    "    );",
-    "  );",
-    "",
-    "  describe('validateReferences', () => {",
-    "    it('should filter invalid URLs', () => {",
-    "      const refs = validateReferences([",
-    "        { url: 'https://example.com', title: 'valid' },",
-    "        { url: 'not_a_url', title: 'invalid' },",
-    "        { url: 'ftp://example.com', title: 'ftp' },",
-    "      ]);",
-    "      expect(refs).toHaveLength(1);",
-    "      expect(refs[0].url).toBe('https://example.com');",
-    "    );",
-    "",
-    "    it('should handle empty input', () => {",
-    "      expect(validateReferences([])).toEqual([]);",
-    "      expect(validateReferences(null)).toEqual([]);",
-    "      expect(validateReferences(undefined)).toEqual([]);",
-    "    );",
-    "",
-    "    it('should limit to 5 references', () => {",
-    "      const refs = validateReferences(",
-    "        Array.from({ length: 10 }, (_, i) => ({ url: 'https://example' + i + '.com', title: 'ref' + i }))",
-    "      );",
-    "      expect(refs).toHaveLength(5);",
-    "    );",
-    "  );",
-    "",
-    "  describe('composeLesson', () => {",
-    "    it('should compose valid lesson', () => {",
-    "      const result = composeLesson('test_tool', {",
-    "        category: 'file processing',",
-    "        to_pi: 'add to pi as utility',",
-    "        no_tool_next: 'use built-in fs tools',",
-    "      });",
-    "      expect(result.ok).toBe(true);",
-    "      expect(result.lesson).toContain('file processing');",
-    "      expect(result.lesson).toContain('add to pi');",
-    "      expect(result.lesson).toContain('built-in fs');",
-    "    );",
-    "",
-    "    it('should reject short answers', () => {",
-    "      const result = composeLesson('test', {",
-    "        category: 'a',",
-    "        to_pi: 'b',",
-    "        no_tool_next: 'c',",
-    "      });",
-    "      expect(result.ok).toBe(false);",
-    "    );",
-    "  );",
-    "",
-    "  describe('ForgeSpec structure', () => {",
-    "    it('should have correct step count', () => {",
-    "      const spec = {",
-    "        name: '" + name + "',",
-    "        steps: " + JSON.stringify(steps.map(s => s.tool), null, 2) + ",",
-    "      };",
-    "      expect(spec.steps).toHaveLength(" + steps.length + ");",
-    "    );",
-    "",
-    "    it('should have valid step tools', () => {",
-    "      const stepTools = " + JSON.stringify(steps.map(s => s.tool)) + ";",
-    "      const allowedTools = ['fs_read', 'fs_list', 'calc_evaluate', 'json_format', 'text_diff', 'time_now', 'uuid_generate'];",
-    "      for (const tool of spec.steps.map(s => s.tool)) {",
-    "        expect(allowedTools).toContain(tool);",
-    "      }",
-    "    );",
-    "",
-    "    it('should have references if provided', () => {",
-    "      const refCount = " + references.length + ";",
-    "      if (refCount > 0) {",
-    "        expect(true).toBe(true);",
-    "      }",
-    "    );",
-    "  );",
-    "  );",
-    "",
-  ];
-  return template.join("\n");
-}
