@@ -96,7 +96,8 @@ export type SseEventName =
   | 'run_report'
   | 'context_notice'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'warning';
 
 /** 模型调用限制（能力标签的「限制度量」来源）。null = 上游未标注。 */
 export interface ModelLimits {

@@ -1,6 +1,6 @@
 {
   "name": "codelens",
-  "version": "2.30.0",
+  "version": "2.31.0",
   "verify": [
     "check:config"
   ],
@@ -18,5 +18,11 @@
   },
   "engines": {
     "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
   }
 }

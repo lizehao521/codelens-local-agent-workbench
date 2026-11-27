@@ -115,13 +115,16 @@ function parseTagged(text: string): ReactParseResult | null {
     }
     const result = decodeCallObject(decoded);
     if (!result.ok) {
-      return { kind: 'invalid', text, error: { message: `${result.message}（TOOL_ARGS_INVALID）` } };
+      // TypeScript narrowing issue - use explicit type assertion
+      const errorMsg = (result as { ok: false; message: string }).message;
+      return { kind: 'invalid', text, error: { message: `${errorMsg}（TOOL_ARGS_INVALID）` } };
     }
+    const call = result.call;
     calls.push({
       id: nextCallId(),
-      name: result.call.name,
-      arguments: result.call.args,
-      rawArguments: result.call.rawArguments,
+      name: call.name,
+      arguments: call.args,
+      rawArguments: call.rawArguments,
     });
     cursor = close < 0 ? text.length : close + CLOSE_TAG.length;
   }
@@ -207,11 +210,55 @@ export function stripConsumed(text: string): string {
   return text.replace(pattern, '').trim();
 }
 
+/**
+ * L0: Try to parse as JSON protocol format {"tool": "name", "arguments": {...}}
+ * This supports models that output JSON protocol instead of XML-style tags.
+ */
+function parseJsonProtocol(text: string): ReactParseResult | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (typeof decoded !== 'object' || decoded === null || Array.isArray(decoded)) return null;
+  const record = decoded as Record<string, unknown>;
+  // Support both "tool" and "name" field for tool name
+  const name = record.tool ?? record.name;
+  if (typeof name !== 'string' || name.length === 0) return null;
+  const rawArgs = record.arguments;
+  let args: Record<string, unknown> = {};
+  if (rawArgs !== undefined && rawArgs !== null) {
+    if (typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return null;
+    args = rawArgs as Record<string, unknown>;
+  }
+  const rawArguments = JSON.stringify(args);
+  return {
+    kind: 'calls',
+    text: '',
+    toolCalls: [{
+      id: nextCallId(),
+      name,
+      arguments: args,
+      rawArguments,
+    }],
+    warnings: ['JSON 协议格式解析成功'],
+  };
+}
+
 export function parseReactOutput(text: string): ReactParseResult {
+  // L0: JSON protocol format (e.g., {"tool": "name", "arguments": {...}})
+  const jsonProtocol = parseJsonProtocol(text);
+  if (jsonProtocol) return jsonProtocol;
+  // L1: XML-style tool_call tags
   const tagged = parseTagged(text);
   if (tagged) return tagged;
+  // L2: Balanced object with "tool" field
   const balanced = parseBalancedFallback(text);
   if (balanced) return balanced;
+  // L3: Regex fallback
   const regex = parseRegexFallback(text);
   if (regex) return regex;
   return { kind: 'none' };

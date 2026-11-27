@@ -94,6 +94,8 @@ export const envSchema = z.object({
   MODEL_SOURCE_ALLOW_INSECURE: z.string().default(''),
   MODEL_SOURCE_ALLOW_PRIVATE: z.string().default(''),
   MODEL_SOURCE_FORMAT: z.enum(['native', 'openai']).default('native'),
+  /** OpenRouter API Key（用于模型列表拉取 + 能力探测）。 */
+  OPENROUTER_API_KEY: z.string().default(''),
   // ── HTTP 工具出网控制（P2-8：原为 ssrf-guard 裸读 process.env，未入校验面）──
   /** HTTP 工具域名白名单（逗号分隔，大小写不敏感）；空 = 不限制。 */
   HTTP_TOOL_ALLOWLIST: z.string().default(''),
@@ -219,6 +221,8 @@ export interface AppConfig {
   modelSourceAllowPrivate: boolean;
   /** 上游响应格式：native=ModelSourceSchema（自动探测 OpenAI 列表）| openai=显式 /v1/models 列表。 */
   modelSourceFormat: 'native' | 'openai';
+  /** OpenRouter API Key（用于模型列表拉取 + 能力探测）。 */
+  openRouterApiKey: string;
   /** HTTP 工具域名白名单（小写域名）；空 = 不限制（P2-8 迁入校验面）。 */
   httpToolAllowlist: string[];
   /** 允许 HTTP 工具访问 http（非 https）目标；默认 false（P2-8 迁入校验面）。 */
@@ -394,6 +398,7 @@ function buildConfig(source: NodeJS.ProcessEnv): AppConfig {
     modelSourceAllowInsecure: parseBool(env.MODEL_SOURCE_ALLOW_INSECURE),
     modelSourceAllowPrivate: parseBool(env.MODEL_SOURCE_ALLOW_PRIVATE),
     modelSourceFormat: env.MODEL_SOURCE_FORMAT,
+    openRouterApiKey: env.OPENROUTER_API_KEY.trim(),
     httpToolAllowlist: parseAllowlist(env.HTTP_TOOL_ALLOWLIST),
     httpAllowInsecure: parseBool(env.HTTP_ALLOW_INSECURE),
     trialModeEnabled: parseBool(env.TRIAL_MODE_ENABLED),

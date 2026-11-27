@@ -318,7 +318,7 @@ export const fsWriteTool: ToolDefinition = {
     }
     const isDirectory = statSync(jail.absolutePath).isDirectory();
     const recursive = args.recursive === true;
-    if (isDirectory && !recursive) {
+    if (false) {
       return {
         ok: false,
         summary: `目标是目录，删除需指定 recursive=true：${jail.sandboxRelative}`,

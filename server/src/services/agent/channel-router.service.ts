@@ -70,14 +70,16 @@ export class ChannelRouter {
     supports: boolean;
     probed: boolean;
     status: 'supported' | 'unsupported' | 'failed' | 'cached' | 'cancelled';
+    capabilities: ProviderCapabilities;
   }> {
     const cached = this.capabilities.get(provider, model);
+    const staticCaps = capabilitiesFor(provider);
     if (cached && (cached.probe_status === 'supported' || cached.probe_status === 'unsupported')) {
-      return { supports: cached.probe_status === 'supported', probed: false, status: 'cached' };
+      return { supports: cached.probe_status === 'supported', probed: false, status: 'cached', capabilities: staticCaps };
     }
     // 已取消：不发起探测，也不写能力表（取消不是能力结论）。
     if (signal?.aborted) {
-      return { supports: capabilitiesFor(provider).nativeTools, probed: false, status: 'cancelled' };
+      return { supports: staticCaps.nativeTools, probed: false, status: 'cancelled', capabilities: staticCaps };
     }
     const outcome: ProbeOutcome = await this.adapter.probeToolSupport(
       {
@@ -93,7 +95,7 @@ export class ChannelRouter {
     );
     // 探测被取消：同样不落库。把 abort 缓存成 failed/supported 都会污染后续决策。
     if (outcome.status === 'cancelled') {
-      return { supports: capabilitiesFor(provider).nativeTools, probed: false, status: 'cancelled' };
+      return { supports: staticCaps.nativeTools, probed: false, status: 'cancelled', capabilities: staticCaps };
     }
     const caps = capabilitiesFor(provider);
     if (outcome.status === 'supported') {
@@ -109,7 +111,7 @@ export class ChannelRouter {
         explicitParallelToolCalls: caps.explicitParallelToolCalls,
         notes: `探测通过：${outcome.evidence}`,
       });
-      return { supports: true, probed: true, status: 'supported' };
+      return { supports: true, probed: true, status: 'supported', capabilities: caps };
     }
     if (outcome.status === 'unsupported') {
       this.capabilities.upsert({
@@ -124,7 +126,7 @@ export class ChannelRouter {
         explicitParallelToolCalls: caps.explicitParallelToolCalls,
         notes: outcome.evidence === 'tools_param_rejected' ? 'provider 拒绝 tools 参数' : '模型返回纯文本',
       });
-      return { supports: false, probed: true, status: 'unsupported' };
+      return { supports: false, probed: true, status: 'unsupported', capabilities: caps };
     }
     // failed: cache as failed (not unsupported), keep static defaults for the decision.
     this.capabilities.upsert({
@@ -136,7 +138,7 @@ export class ChannelRouter {
       toolChoiceValues: caps.toolChoiceValues,
       notes: `探测失败：${outcome.detail}`,
     });
-    return { supports: caps.nativeTools, probed: true, status: 'failed' };
+    return { supports: caps.nativeTools, probed: true, status: 'failed', capabilities: caps };
   }
 
   /** Chooses the channel for a request; auto follows the probe result. */
@@ -158,7 +160,9 @@ export class ChannelRouter {
     const probe = await this.probe(provider, model, apiKey, baseUrl, signal);
     // 取消不是“探测未通过”：别把取消写进 degradedReason，run 会立刻终止。
     if (probe.status === 'cancelled') {
-      return { channel: capabilities.nativeTools ? 'native' : 'react', degraded: false, degradedReason: null, capabilities };
+      // Use probe capabilities if available, otherwise fall back to static capabilities
+      const probeCapabilities = probe.capabilities ?? capabilities;
+      return { channel: probeCapabilities.nativeTools ? 'native' : 'react', degraded: false, degradedReason: null, capabilities: probeCapabilities };
     }
     if (probe.supports) {
       return { channel: 'native', degraded: false, degradedReason: null, capabilities };
@@ -176,10 +180,25 @@ export class ChannelRouter {
 
   /**
    * Runtime degradation: a native turn that fails because the provider rejects
-   * the tools parameter (400 naming tools/function) flips to ReAct.
+   * the tools parameter (400/422 naming tools/function) flips to ReAct.
    */
   static shouldDegrade(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
-    return /400/.test(message) && /tool|function/i.test(message);
+    // Match common tool/function calling rejection patterns:
+    // - HTTP 400/422 with tool/function in message
+    // - "tool_calls" / "function_calls" / "tools" parameter rejected
+    // - Provider-specific: "Invalid tool", "Function calling not supported", etc.
+    const toolRelatedPatterns = [
+      /400.*(tool|function)/i,
+      /422.*(tool|function)/i,
+      /tool_calls?.*(invalid|rejected|unsupported|not allowed)/i,
+      /function_calls?.*(invalid|rejected|unsupported|not allowed)/i,
+      /tools? parameter.*(invalid|rejected|unsupported)/i,
+      /invalid.*tool/i,
+      /function calling not supported/i,
+      /does not support.*function calling/i,
+      /function calling is not enabled/i,
+    ];
+    return toolRelatedPatterns.some((pattern) => pattern.test(message));
   }
 }

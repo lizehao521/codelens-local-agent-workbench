@@ -1,0 +1,25 @@
+{
+  "name": "minis-evolution-engine",
+  "version": "0.2.0",
+  "description": "Minis 侧进化引擎 - 生成器、静态校验、评分、CodeLens 客户端、基因库",
+  "type": "module",
+  "main": "evolution-engine.ts",
+  "scripts": {
+    "once": "tsx evolution-engine.ts --once",
+    "daemon": "tsx evolution-engine.ts --daemon",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0",
+    "@types/node": "^20.11.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

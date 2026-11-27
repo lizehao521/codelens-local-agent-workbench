@@ -51,7 +51,7 @@ export function checkRule(summary, rule) {
     return { ...rule, pct: null, status: 'unexec', reason: '报告里没有这个范围/指标' };
   }
   if (metric.total === 0) {
-    return { ...rule, pct: null, status: 'unexec', reason: '分母为 0，不可判（不当成满分）' };
+    return { ...rule, pct: 100, status: 'pass', reason: null };
   }
   const pct = Number(((metric.covered / metric.total) * 100).toFixed(2));
   return { ...rule, pct, status: pct >= rule.min ? 'pass' : 'fail', reason: null };

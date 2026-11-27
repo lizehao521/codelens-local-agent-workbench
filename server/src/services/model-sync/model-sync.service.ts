@@ -32,6 +32,8 @@ export interface ModelSyncServiceConfig {
   format?: 'native' | 'openai';
   timeoutMs: number;
   logFilePath: string;
+  /** 可选 API Key（用于 OpenRouter 等需要认证的模型目录）。 */
+  apiKey?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -91,7 +93,16 @@ export class ModelSyncService {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), this.cfg.timeoutMs || DEFAULT_TIMEOUT_MS);
-        const res = await this.fetchImpl(sourceUrl, { signal: controller.signal } as RequestInit);
+        const headers: Record<string, string> = {
+          'Accept': 'application/json',
+        };
+        if (this.cfg.apiKey) {
+          headers['Authorization'] = `Bearer ${this.cfg.apiKey}`;
+        }
+        const res = await this.fetchImpl(sourceUrl, {
+          signal: controller.signal,
+          headers,
+        } as RequestInit);
         clearTimeout(timer);
         if (!res.ok) throw new Error(`上游返回 HTTP ${res.status}`);
         const raw = await res.json();
@@ -183,19 +194,25 @@ export class ModelSyncService {
 
 /**
  * 适配 OpenAI 兼容的 /v1/models 响应（{ object:'list', data:[{ id }] }）为 ModelSourceSchema。
+ * 同时兼容 OpenRouter 等仅返回 { data: [...] } 无 object 字段的格式。
  * 这样常见的中继/网关（仅暴露 /v1/models）也能直接作为上游模型源。
  * 返回 null 表示不是该格式，交由主流程按校验错误上报。
  */
 function normalizeOpenAiModels(raw: unknown, sourceUrl: string): unknown | null {
   if (!raw || typeof raw !== 'object') return null;
-  const obj = raw as { object?: unknown; data?: unknown };
-  if (obj.object !== 'list' || !Array.isArray(obj.data)) return null;
-  const models = obj.data
+  const obj = raw as { object?: unknown; data?: unknown[] };
+  // 兼容两种格式：标准 OpenAI (object: 'list') 和 OpenRouter (无 object 字段，但有 data 数组)
+  const isOpenAiFormat = obj.object === 'list' && Array.isArray(obj.data);
+  const isOpenRouterFormat = obj.object === undefined && Array.isArray(obj.data);
+  if (!isOpenAiFormat && !isOpenRouterFormat) return null;
+
+  const data = obj.data as Array<{ id?: unknown; name?: unknown }>;
+  const models = data
     .filter(
-      (m): m is { id: string } =>
-        !!m && typeof m === 'object' && typeof (m as { id?: unknown }).id === 'string',
+      (m): m is { id: string; name?: string } =>
+        !!m && typeof m === 'object' && typeof m.id === 'string',
     )
-    .map((m) => ({ id: m.id, name: m.id }));
+    .map((m) => ({ id: m.id, name: m.name ?? m.id }));
   if (models.length === 0) return null;
 
   // baseUrl = 上游 URL 的 origin + 去掉末级路径（/v1/models → /v1）

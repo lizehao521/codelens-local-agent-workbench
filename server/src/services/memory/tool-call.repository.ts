@@ -193,4 +193,28 @@ export class ToolCallRepository {
       [sessionId, sinceCreatedAt],
     )?.n ?? 0;
   }
+
+  /** Update error fields on a tool call row by call_id. */
+  update(
+    callId: string,
+    fields: { errorKind?: string | null; errorMsg?: string | null; status?: ToolCallStatus },
+  ): void {
+    const setParts: string[] = [];
+    const params: (string | number | null)[] = [];
+    if (fields.errorKind !== undefined) {
+      setParts.push('error_kind = ?');
+      params.push(fields.errorKind);
+    }
+    if (fields.errorMsg !== undefined) {
+      setParts.push('error_msg = ?');
+      params.push(fields.errorMsg);
+    }
+    if (fields.status !== undefined) {
+      setParts.push('status = ?');
+      params.push(fields.status);
+    }
+    if (setParts.length === 0) return;
+    params.push(callId);
+    this.db.run(`UPDATE tool_calls SET ${setParts.join(', ')} WHERE call_id = ?`, params);
+  }
 }

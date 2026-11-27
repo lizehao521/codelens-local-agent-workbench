@@ -65,9 +65,14 @@ export function buildReactSystemPrompt(catalogue: string, baseSystem?: string): 
     '【可用工具】',
     catalogue,
     '',
-    '【调用格式】需要调用工具时，必须且只能输出：',
+    '【调用格式（支持双格式，任选其一）】',
+    '格式 A（XML 标签）：',
     'TOOL_CALL_OPEN{"tool":"工具名","arguments":{"参数名":"参数值"}}TOOL_CALL_CLOSE',
-    '可连续输出多个调用块。不需要调用工具时，直接输出最终答案文本。',
+    '可连续输出多个调用块。',
+    '',
+    '格式 B（JSON 协议）：',
+    '{"tool":"工具名","arguments":{"参数名":"参数值"}}',
+    '直接输出单个 JSON 对象，无需标签包裹。',
     '',
     '【协议规则】',
     '1. 工具名必须与【可用工具】中的完全一致，禁止编造。',
@@ -141,8 +146,10 @@ export async function runReactTurn(ctx: ReactTurnContext): Promise<TurnIR> {
       });
     }
     warnings.push(...parsed.warnings);
+    // Warnings logged, not emitted as separate SSE events
   } else if (parsed.kind === 'invalid') {
     warnings.push(parsed.error.message);
+    // Warning logged, not emitted as separate SSE event
     return {
       text,
       reasoning: '',

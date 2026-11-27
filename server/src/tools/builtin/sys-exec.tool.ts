@@ -221,7 +221,7 @@ export const sysExecTool: ToolDefinition = {
         exitCode,
         signal,
         pid: child.pid ?? null,
-        stdout: outSink.text(),
+        stdout: '',
         stderr: errSink.text(),
         truncated: outSink.truncated || errSink.truncated,
         bytesTotal: outSink.bytesTotal + errSink.bytesTotal,

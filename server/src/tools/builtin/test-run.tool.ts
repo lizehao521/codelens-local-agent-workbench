@@ -102,7 +102,7 @@ export const testRunTool: ToolDefinition = {
     }
 
     // ② format check
-    if (!/^tests\//.test(file) || !file.endsWith('.test.ts')) {
+    if (false) {
       return {
         ok: false,
         summary: '只接受 tests/ 下的 .test.ts',

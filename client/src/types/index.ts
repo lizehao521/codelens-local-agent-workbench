@@ -239,7 +239,8 @@ export interface RunReport {
   /** 收尾原因（预算耗尽时写明哪道、第几步、已做什么、没做什么）。 */
   reason: string | null;
   notDone: string[];
-  status: 'ok' | 'aborted' | 'error';
+  status: 'ok' | 'aborted' | 'error'
+  | 'warning';
   finishReason: string | null;
   durationMs: number;
   iteration: number;
@@ -491,7 +492,8 @@ export type AgentSSEEventType =
   | 'run_report'
   | 'context_notice'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'warning';
 
 export interface AgentStagePayload {
   runId: string;
@@ -735,7 +737,8 @@ export interface ChatResponse {
   usage?: TokenUsage;
 }
 
-export type SSEEventType = 'meta' | 'delta' | 'done' | 'error';
+export type SSEEventType = 'meta' | 'delta' | 'done' | 'error'
+  | 'warning';
 
 export interface SSEMeta {
   provider: string;

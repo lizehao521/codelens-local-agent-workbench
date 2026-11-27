@@ -8,12 +8,13 @@ const PROVIDERS: ProviderInfo[] = [
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     models: [
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
+      { id: 'deepseek-v3', name: 'DeepSeek V3' },
+      { id: 'deepseek-r1', name: 'DeepSeek R1' },
       { id: 'deepseek-chat', name: 'DeepSeek Chat' },
       { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner' },
+      { id: 'deepseek-coder', name: 'DeepSeek Coder' },
     ],
-    defaultModel: 'deepseek-v4-pro',
+    defaultModel: 'deepseek-v3',
     docsUrl: 'https://platform.deepseek.com/api-docs',
   },
   {
@@ -21,10 +22,13 @@ const PROVIDERS: ProviderInfo[] = [
     name: '智谱 GLM',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     models: [
-      { id: 'glm-4.6', name: 'GLM-4.6' },
-      { id: 'glm-4.5-air', name: 'GLM-4.5-Air' },
+      { id: 'glm-4-plus', name: 'GLM-4-Plus' },
+      { id: 'glm-4-flash', name: 'GLM-4-Flash' },
+      { id: 'glm-4-air', name: 'GLM-4-Air' },
+      { id: 'glm-zero', name: 'GLM-Zero' },
+      { id: 'glm-4.5-flash', name: 'GLM-4.5-Flash' },
     ],
-    defaultModel: 'glm-4.6',
+    defaultModel: 'glm-4-plus',
     docsUrl: 'https://docs.bigmodel.cn/cn/guide/develop/openai/introduction',
   },
   {
@@ -32,10 +36,12 @@ const PROVIDERS: ProviderInfo[] = [
     name: 'Moonshot Kimi',
     baseUrl: 'https://api.moonshot.cn/v1',
     models: [
-      { id: 'kimi-k2', name: 'Kimi K2' },
-      { id: 'moonshot-v1-8k', name: 'Moonshot v1 8K' },
+      { id: 'kimi-k2.5', name: 'Kimi K2.5' },
+      { id: 'kimi-1.5', name: 'Kimi 1.5' },
+      { id: 'moonshot-v1-32k', name: 'Moonshot v1 32K' },
+      { id: 'moonshot-v1-128k', name: 'Moonshot v1 128K' },
     ],
-    defaultModel: 'kimi-k2',
+    defaultModel: 'kimi-k2.5',
     docsUrl: 'https://platform.moonshot.cn/docs/api/chat',
   },
   {
@@ -43,10 +49,13 @@ const PROVIDERS: ProviderInfo[] = [
     name: '通义千问',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: [
-      { id: 'qwen-max', name: 'Qwen Max' },
-      { id: 'qwen-plus', name: 'Qwen Plus' },
+      { id: 'qwen2.5-max', name: 'Qwen2.5-Max' },
+      { id: 'qwen2.5-plus', name: 'Qwen2.5-Plus' },
+      { id: 'qwen2.5-turbo', name: 'Qwen2.5-Turbo' },
+      { id: 'qwen2.5-72b', name: 'Qwen2.5-72B' },
+      { id: 'qwen2.5-coder', name: 'Qwen2.5-Coder' },
     ],
-    defaultModel: 'qwen-plus',
+    defaultModel: 'qwen2.5-max',
     docsUrl: 'https://help.aliyun.com/zh/model-studio/developer-reference/compatibility-of-openai-with-dashscope',
   },
   {
@@ -54,10 +63,13 @@ const PROVIDERS: ProviderInfo[] = [
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     models: [
-      { id: 'gpt-4o-mini', name: 'GPT-4o mini' },
-      { id: 'gpt-4o', name: 'GPT-4o' },
+      { id: 'o1-preview', name: 'o1 Preview' },
+      { id: 'o1-mini', name: 'o1 Mini' },
+      { id: 'gpt-4o-2024-11-20', name: 'GPT-4o (2024-11-20)' },
+      { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
     ],
-    defaultModel: 'gpt-4o-mini',
+    defaultModel: 'o1-preview',
     docsUrl: 'https://platform.openai.com/docs/api-reference/chat',
   },
   {
@@ -162,10 +174,8 @@ export function normalizeBaseUrl(raw: string): string {
   if (!url) return '';
   url = url.replace(/\/+$/, '');
   // 循环剥离，兼容重复叠加（如 .../chat/completions/chat/completions）。
-  for (let i = 0; i < 3; i += 1) {
-    const next = url.replace(ENDPOINT_SUFFIX_RE, '').replace(/\/+$/, '');
-    if (next === url) break;
-    url = next;
+  while (ENDPOINT_SUFFIX_RE.test(url)) {
+    url = url.replace(ENDPOINT_SUFFIX_RE, '');
   }
   return url;
 }

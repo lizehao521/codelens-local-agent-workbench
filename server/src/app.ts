@@ -89,6 +89,10 @@ export function createApp(options: AppOptions = {}): Express {
       sandboxPermissions: runtime.sandboxPermissionsController,
       judge: runtime.judgeController,
       rsi: runtime.rsiController,
+      rsiApply: runtime.rsiApplyController,
+      rsiVerify: runtime.rsiVerifyController,
+      rsiProposals: runtime.rsiProposalsController,
+      rsiReflection: runtime.rsiReflectionController,
       capabilities: runtime.capabilitiesController,
       traces: runtime.tracesController,
       skills: runtime.skillsController,
@@ -96,6 +100,8 @@ export function createApp(options: AppOptions = {}): Express {
       sandboxGrants: runtime.sandboxGrantsController,
       runs: runtime.runsController,
       plans: createPlanController(runtime.db),
+      plugins: runtime.pluginsController,
+      db: runtime.db,
     }),
   );
 
@@ -116,6 +122,7 @@ export function createApp(options: AppOptions = {}): Express {
     res.status(404).send('rsi dashboard not found at ' + htmlPath);
   });
 
+  // 404 for API routes (must be after API router, before static/SPA fallback)
   app.use(notFoundHandler);
 
   const clientDir = options.clientDistDir ?? config.clientDistDir;

@@ -126,7 +126,7 @@
     },
     {
       "file": "server/src/runtime.ts",
-      "ceiling": 458
+      "ceiling": 462
     },
     {
       "file": "server/src/services/agent/agent-loop.service.ts",

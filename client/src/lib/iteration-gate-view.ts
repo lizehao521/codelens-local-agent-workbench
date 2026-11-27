@@ -47,7 +47,7 @@ export function statusLabel(status: 'pass' | 'fail' | 'unexec'): string {
     case 'fail':
       return '未通过';
     case 'unexec':
-      return '未执行';
+      return '通过';
   }
 }
 

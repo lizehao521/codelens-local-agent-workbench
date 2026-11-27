@@ -232,6 +232,12 @@ export interface AgentEventMap {
   context_notice: SseContextNoticePayload;
   done: SseDonePayload;
   error: SseErrorPayload;
+  warning: SseWarningPayload;
+}
+
+/** Warning event for non-fatal issues (checkpoint failures, etc.). */
+export interface SseWarningPayload {
+  text: string;
 }
 
 export type AgentEventName = keyof AgentEventMap;
@@ -258,4 +264,5 @@ export const AGENT_EVENT_NAMES: readonly AgentEventName[] = [
   'context_notice',
   'done',
   'error',
+  'warning',
 ];

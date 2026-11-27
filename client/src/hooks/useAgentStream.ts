@@ -28,6 +28,7 @@ import { useServerSessionStore } from '../stores/serverSessionStore';
 import { useToolCallStore } from '../stores/toolCallStore';
 import { useApprovalStore } from '../stores/approvalStore';
 import { useRunStore } from '../stores/runStore';
+import { useWarningStore } from '../stores/warningStore';
 import { createId } from '../lib/format';
 
 const FLUSH_INTERVAL = 50;
@@ -237,6 +238,10 @@ export function useAgentStream() {
             useRunStore.getState().applyDone(data, Date.now() - startedAtRef.current);
             settle({ status: 'done' });
             void useServerSessionStore.getState().reconcileAfterRun();
+          },
+          onWarning: (data: { text: string }) => {
+            if (settledRef.current) return;
+            useWarningStore.getState().addWarning(data.text, 'warning');
           },
           onError: (data: AgentErrorPayload) => {
             if (settledRef.current) return;

@@ -65,7 +65,7 @@ export const CAPABILITIES: Record<string, ProviderCapabilities> = {
     explicitParallelToolCalls: true,
   },
   nvidia: {
-    nativeTools: true,
+    nativeTools: false, // Nemotron-3-Ultra 不稳定支持 function calling，强制走 ReAct 通道
     toolChoiceValues: ['auto', 'none', 'required'],
     contextWindow: 128000,
     retainReasoningContent: true, // Nemotron-3-Ultra 回显 reasoning_content

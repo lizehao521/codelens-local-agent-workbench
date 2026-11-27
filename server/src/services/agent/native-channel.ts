@@ -108,7 +108,12 @@ export async function runNativeTurn(ctx: NativeTurnContext): Promise<TurnIR> {
     }
   }
 
-  if (toolCalls.length > 0) finishReason = 'tool_calls';
+  // Upstream finish_reason takes priority; tool_calls is supplementary info.
+  // Only set to 'tool_calls' if upstream didn't set a terminal reason.
+  const upstreamTerminalReasons = new Set(['length', 'content_filter', 'stop']);
+  if (toolCalls.length > 0 && !upstreamTerminalReasons.has(finishReason)) {
+    finishReason = 'tool_calls';
+  }
   if (toolCalls.some((call) => call.parseError === 'INVALID_JSON')) {
     warnings.push('部分工具调用的参数 JSON 不完整，将按失败回喂');
   }

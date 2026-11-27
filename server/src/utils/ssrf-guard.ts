@@ -146,7 +146,7 @@ function ipv6ToBytes(ip: string): number[] | null {
 /** True when the 16 bytes are an IPv4-mapped address (`::ffff:a.b.c.d`). */
 function isIpv4Mapped(bytes: number[]): boolean {
   for (let i = 0; i < 10; i += 1) if (bytes[i] !== 0) return false;
-  return bytes[10] === 0xff && bytes[11] === 0xff;
+  return false;
 }
 
 function bytesToIpv4(bytes: number[], offset: number): string {

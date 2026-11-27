@@ -4,7 +4,7 @@
 // 读 meta.channel 回填；supported → native，否则 react 并在运行卡标注「提示词解析模式」。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { TriangleAlert, CircleCheck, CircleX, Eye, EyeOff, Loader, RefreshCw, Server } from 'lucide-react';
+import { TriangleAlert, CircleCheck, CircleX, Eye, EyeOff, Loader, RefreshCw, Server, Globe } from 'lucide-react';
 import type { Provider, Settings } from '../../types';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -13,9 +13,84 @@ import { openAgentStream, parseAgentSSE } from '../../services/stream';
 import { fetchRelayLocalConfig, fetchRelayModels } from '../../lib/relay';
 import { Dropdown, Field } from './FormControls';
 import { ModelCapabilityPanel } from './ModelCapabilityPanel';
+import { useModelMarket, type SyncStatus } from '../../hooks/useModelMarket';
 import { cn } from '../../lib/cn';
 
 type ProbeState = 'idle' | 'probing' | 'native' | 'react' | 'error';
+
+function SyncStatusCard({
+  syncStatus,
+  triggerSync,
+}: {
+  syncStatus: SyncStatus | null;
+  triggerSync: () => void;
+}) {
+  if (!syncStatus) return null;
+
+  const statusTones: Record<string, 'ok' | 'warn' | 'muted'> = {
+    success: 'ok',
+    failed: 'warn',
+    disabled: 'muted',
+    error: 'warn',
+  };
+
+  return (
+    <div className="rounded-md border border-border bg-bg-secondary p-3">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-1.5">
+          <Globe size={14} className="text-text-secondary" />
+          <span className="text-sm font-medium text-text-primary">上游模型同步状态</span>
+          <span
+            className={cn(
+              'rounded-full border px-2 py-0.5 text-[11px]',
+              statusTones[syncStatus.lastStatus] === 'ok' && 'border-success bg-success-subtle text-success',
+              statusTones[syncStatus.lastStatus] === 'warn' && 'border-warning bg-warning-subtle text-warning',
+              statusTones[syncStatus.lastStatus] === 'muted' && 'border-border text-text-secondary',
+            )}
+          >
+            {syncStatus.lastStatus === 'success' ? '成功' : syncStatus.lastStatus === 'failed' ? '失败' : syncStatus.lastStatus === 'disabled' ? '已禁用' : '进行中'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={triggerSync}
+          className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-text-secondary hover:border-accent hover:text-accent"
+        >
+          <RefreshCw size={11} /> 触发同步
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <span className="text-text-tertiary">最后同步</span>
+          <div className="text-text-primary font-mono">
+            {syncStatus.lastRunAt ? new Date(syncStatus.lastRunAt).toLocaleString('zh-CN') : '—'}
+          </div>
+        </div>
+        <div>
+          <span className="text-text-tertiary">模型总数</span>
+          <div className="text-text-primary font-medium">{syncStatus.lastModelCount ?? 0}</div>
+        </div>
+        <div>
+          <span className="text-text-tertiary">Provider 数</span>
+          <div className="text-text-primary font-medium">{syncStatus.lastProviderCount ?? 0}</div>
+        </div>
+        <div>
+          <span className="text-text-tertiary">数据源</span>
+          <div className="text-text-tertiary truncate font-mono text-[11px]" title={syncStatus.sourceUrl}>
+            {syncStatus.sourceUrl || '—'}
+          </div>
+        </div>
+        {syncStatus.lastError && (
+          <div className="col-span-2">
+            <span className="text-text-tertiary">错误信息</span>
+            <div className="text-danger text-sm break-words">{syncStatus.lastError}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function ProviderZone() {
   const settings = useSettingsStore((s) => s.settings);
@@ -32,6 +107,9 @@ export function ProviderZone() {
   const [relayNote, setRelayNote] = useState<string | null>(null);
   const [relayError, setRelayError] = useState<string | null>(null);
   const [relayLoading, setRelayLoading] = useState(false);
+
+  // 复用模型市场 hook 的同步状态与触发同步
+  const { syncStatus, triggerSync } = useModelMarket();
 
   const isCustom = settings.provider === 'custom';
   // 试用锁定：服务端在「无 BYOK Key」时会强制改上游与模型；前端必须把这件事显式化，
@@ -185,6 +263,9 @@ export function ProviderZone() {
 
   return (
     <div className="space-y-4">
+      {/* 同步状态概览卡 */}
+      <SyncStatusCard syncStatus={syncStatus} triggerSync={triggerSync} />
+
       {trialLocked && (
         <div className="rounded-md border border-border-subtle bg-bg-inset px-2.5 py-2 text-xs text-text-secondary">
           <p>

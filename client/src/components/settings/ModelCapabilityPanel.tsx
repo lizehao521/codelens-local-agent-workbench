@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Sparkles,
   Zap,
+  Search,
+  ExternalLink,
 } from 'lucide-react';
 import type { ModelCapabilities, ProviderModel, Settings } from '../../types';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -125,6 +127,26 @@ export function ModelCapabilityPanel({
 
   return (
     <div className="space-y-3">
+      {/* 打开模型市场按钮 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
+          <Search size={12} /> 浏览全部模型
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            // 通过 selectModel 跳转到模型市场的第一个模型（触发 settingsStore 更新）
+            // 实际跳转由 SettingsModal 的 zone 状态控制，这里通过 settingsStore 暴露的 selectProvider 配合
+            // 简化：直接打开模型市场 tab，SettingsModal 会响应 zone 变化
+            // 这里通过自定义事件通知 SettingsModal 切换 zone
+            window.dispatchEvent(new CustomEvent('open-model-market'));
+          }}
+          className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-secondary hover:border-accent hover:text-accent"
+        >
+          <ExternalLink size={11} /> 模型市场
+        </button>
+      </div>
+
       {/* 同步状态条（旁路徽标） */}
       {sync && (
         <div

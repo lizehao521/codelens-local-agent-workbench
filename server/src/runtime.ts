@@ -26,6 +26,10 @@ import { JudgeService } from './services/judge/judge.service.js';
 import { ruleSemanticAssessor } from './services/judge/semantic.js';
 import { JudgeController } from './controllers/judge.controller.js';
 import { RsiController } from './controllers/rsi.controller.js';
+import { RsiApplyController } from './controllers/rsi-apply.controller.js';
+import { RsiVerifyController } from './controllers/rsi-verify.controller.js';
+import { RsiProposalsController } from './controllers/rsi-proposals.controller.js';
+import { RsiReflectionController } from './controllers/rsi-reflection.controller.js';
 import { ApprovalService } from './services/agent/approval.service.js';
 import { FallbackBudgetService } from './services/agent/fallback-budget.service.js';
 import { TrialHealthService } from './services/agent/trial-health.service.js';
@@ -61,6 +65,7 @@ import { RunResumeService } from './services/agent/run-resume.service.js';
 import { SandboxGrantService } from './services/tools/sandbox-grant.service.js';
 import { SandboxGrantsController } from './controllers/sandbox-grants.controller.js';
 import { RunsController } from './controllers/runs.controller.js';
+import { PluginsController } from './controllers/plugins.controller.js';
 import { probeSandboxWritable } from './utils/sandbox-probe.js';
 import { RsiBridgeService } from './services/rsi/rsi-bridge.service.js';
 import { RsiSchedulerService, setRsiScheduler } from './services/rsi/scheduler.service.js';
@@ -83,6 +88,10 @@ export interface Runtime {
   sandboxPermissionsController: SandboxPermissionsController;
   judgeController: JudgeController;
   rsiController: RsiController;
+  rsiApplyController: RsiApplyController;
+  rsiVerifyController: RsiVerifyController;
+  rsiProposalsController: RsiProposalsController;
+  rsiReflectionController: RsiReflectionController;
   judge: JudgeService;
   policy: UpdateService;
   rsi?: RsiBridgeService;
@@ -98,6 +107,7 @@ export interface Runtime {
   checkpointsController: CheckpointsController;
   sandboxGrantsController: SandboxGrantsController;
   runsController: RunsController;
+  pluginsController: PluginsController;
   close(): Promise<void>;
 }
 
@@ -324,6 +334,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     recovery,
   );
   const toolsController = new ToolsController(registry, config.sandboxRoot);
+  const pluginsController = new PluginsController();
 
   const mcpStore = new McpConfigStore(config.mcpConfigPath || undefined);
   const mcpManager = new McpManagerService(mcpStore, registry);
@@ -347,6 +358,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
       format: config.modelSourceFormat,
       timeoutMs: 60_000,
       logFilePath: modelSyncLogPath,
+      apiKey: config.openRouterApiKey,
     },
     opts.fetchImpl ?? globalThis.fetch,
     opts.validateUrl,
@@ -359,6 +371,10 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   const judgeController = new JudgeController(judge, policy);
   // RSI 自我迭代视图：依赖 db —— 看板读数（overview）要查会话/判决/代际对比。
   const rsiController = new RsiController(db);
+  const rsiApplyController = new RsiApplyController(db);
+  const rsiVerifyController = new RsiVerifyController(db);
+  const rsiProposalsController = new RsiProposalsController(db);
+  const rsiReflectionController = new RsiReflectionController(db);
 
   // ── 可观测面（只读）─────────────────────────────────────────────────────────
   // 三者都不在执行路径上：轨迹 / 技能库是数据面，能力目录是状态面。
@@ -430,6 +446,10 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     sandboxPermissionsController,
     judgeController,
     rsiController,
+    rsiApplyController,
+    rsiVerifyController,
+    rsiProposalsController,
+    rsiReflectionController,
     judge,
     policy,
     rsi,
@@ -444,6 +464,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     checkpointsController,
     sandboxGrantsController,
     runsController,
+    pluginsController,
     close: async () => {
       if (closed) return;
       closed = true;

@@ -58,6 +58,8 @@ export interface AgentStreamHandlers {
   onContextNotice?: (data: AgentContextNoticePayload) => void;
   onDone?: (data: AgentDonePayload) => void;
   onError?: (data: AgentErrorPayload) => void;
+  /** 警告事件（ReAct 解析警告、工具参数校验失败等）。 */
+  onWarning?: (data: { text: string }) => void;
 }
 
 /** 事件名 → 载荷类型映射（未知事件名走不到这里，直接忽略） */
@@ -91,7 +93,9 @@ type PayloadOf<T extends AgentSSEEventType> = T extends 'stage'
                         ? AgentContextNoticePayload
                         : T extends 'done'
                           ? AgentDonePayload
-                          : AgentErrorPayload;
+                          : T extends 'warning'
+                            ? { text: string }
+                            : AgentErrorPayload;
 
 function parseEventData(raw: string): unknown | null {
   const dataLines: string[] = [];
@@ -126,6 +130,7 @@ const EVENT_NAMES: AgentSSEEventType[] = [
   'context_notice',
   'done',
   'error',
+  'warning',
 ];
 
 /**
@@ -201,6 +206,9 @@ export async function parseAgentSSE(response: Response, handlers: AgentStreamHan
         break;
       case 'error':
         handlers.onError?.(data as PayloadOf<'error'>);
+        break;
+      case 'warning':
+        handlers.onWarning?.(data as PayloadOf<'warning'>);
         break;
     }
   };

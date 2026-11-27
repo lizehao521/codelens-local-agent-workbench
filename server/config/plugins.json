@@ -1,0 +1,44 @@
+{
+  "custom": [
+    {
+      "id": "test-plugin",
+      "name": "Test Plugin",
+      "version": "1.0.0",
+      "description": "A test plugin",
+      "panels": [
+        {
+          "id": "panel1",
+          "title": "Panel 1",
+          "items": [
+            {
+              "label": "Test",
+              "prompt": "Test prompt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "custom-mwxke6j4",
+      "name": "test",
+      "version": "1.0.0",
+      "description": "test",
+      "panels": [
+        {
+          "id": "p1",
+          "title": "P1",
+          "items": [
+            {
+              "label": "l",
+              "prompt": "p"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "enabled": {
+    "test-plugin": true,
+    "custom-mwxke6j4": true
+  }
+}

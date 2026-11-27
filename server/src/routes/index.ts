@@ -13,6 +13,8 @@ import { createSandboxPermissionsRoutes } from './sandbox-permissions.routes.js'
 import { createJudgeRoutes } from './judge.routes.js';
 import { createRsiRoutes } from './rsi.routes.js';
 import { createRsiSchedulerRoutes } from './rsi-scheduler.routes.js';
+import { createRsiApplyRoutes } from './rsi-apply.routes.js';
+import { createRsiProposalsRoutes } from './rsi-proposals.routes.js';
 import { getRsiScheduler } from '../services/rsi/scheduler.service.js';
 import { createCapabilitiesRoutes } from './capabilities.routes.js';
 import { createTracesRoutes } from './traces.routes.js';
@@ -21,6 +23,8 @@ import { createCheckpointsRoutes } from './checkpoints.routes.js';
 import { createSandboxGrantsRoutes } from './sandbox-grants.routes.js';
 import { createRunsRoutes } from './runs.routes.js';
 import { createPlanRoutes } from './plan.routes.js';
+import { createPluginsRoutes } from './plugins.routes.js';
+import type { Db } from '../repositories/db.js';
 import type { AgentController } from '../controllers/agent.controller.js';
 import type { ApprovalController } from '../controllers/approval.controller.js';
 import type { SessionsController } from '../controllers/sessions.controller.js';
@@ -31,6 +35,10 @@ import type { HealthController } from '../controllers/health.controller.js';
 import type { SandboxPermissionsController } from '../controllers/sandbox-permissions.controller.js';
 import type { JudgeController } from '../controllers/judge.controller.js';
 import type { RsiController } from '../controllers/rsi.controller.js';
+import type { RsiApplyController } from '../controllers/rsi-apply.controller.js';
+import type { RsiVerifyController } from '../controllers/rsi-verify.controller.js';
+import type { RsiProposalsController } from '../controllers/rsi-proposals.controller.js';
+import type { RsiReflectionController } from '../controllers/rsi-reflection.controller.js';
 import type { CapabilitiesController } from '../controllers/capabilities.controller.js';
 import type { TracesController } from '../controllers/traces.controller.js';
 import type { SkillsController } from '../controllers/skills.controller.js';
@@ -38,6 +46,7 @@ import type { CheckpointsController } from '../controllers/checkpoints.controlle
 import type { SandboxGrantsController } from '../controllers/sandbox-grants.controller.js';
 import type { RunsController } from '../controllers/runs.controller.js';
 import type { PlanController } from '../controllers/plan.controller.js';
+import type { PluginsController } from '../controllers/plugins.controller.js';
 
 export interface ApiRouterDeps {
   agent: AgentController;
@@ -50,13 +59,19 @@ export interface ApiRouterDeps {
   sandboxPermissions: SandboxPermissionsController;
   judge: JudgeController;
   rsi: RsiController;
+  rsiApply: RsiApplyController;
+  rsiVerify: RsiVerifyController;
+  rsiProposals: RsiProposalsController;
+  rsiReflection: RsiReflectionController;
   capabilities: CapabilitiesController;
   traces: TracesController;
   skills: SkillsController;
+  plugins: PluginsController;
   checkpoints: CheckpointsController;
   sandboxGrants: SandboxGrantsController;
   runs: RunsController;
   plans: PlanController;
+  db: Db;
 }
 
 export function createApiRouter(deps: ApiRouterDeps): Router {
@@ -80,12 +95,15 @@ export function createApiRouter(deps: ApiRouterDeps): Router {
   v1.use(createJudgeRoutes(deps.judge));
   v1.use(createRsiRoutes(deps.rsi));
   v1.use(createRsiSchedulerRoutes(() => getRsiScheduler()));
+  v1.use('/rsi', createRsiApplyRoutes(deps.rsiApply, deps.rsiVerify, deps.db));
+  v1.use('/rsi', createRsiProposalsRoutes({ proposals: deps.rsiProposals, reflection: deps.rsiReflection }));
   v1.use(createCapabilitiesRoutes({ capabilities: deps.capabilities }));
   v1.use(createTracesRoutes({ traces: deps.traces }));
   v1.use(createSkillsRoutes({ skills: deps.skills }));
   v1.use(createCheckpointsRoutes({ checkpoints: deps.checkpoints }));
   v1.use(createSandboxGrantsRoutes({ grants: deps.sandboxGrants }));
   v1.use(createRunsRoutes({ runs: deps.runs }));
+  v1.use('/plugins', createPluginsRoutes({ plugins: deps.plugins }));
   router.use('/v1', v1);
 
   return router;
