@@ -318,14 +318,11 @@ export const fsWriteTool: ToolDefinition = {
     }
     const isDirectory = statSync(jail.absolutePath).isDirectory();
     const recursive = args.recursive === true;
-    if (false) {
+    if (isDirectory && !recursive) {
       return {
         ok: false,
         summary: `目标是目录，删除需指定 recursive=true：${jail.sandboxRelative}`,
         error: {
-          // kind 必须取 ToolErrorKind 的锁定枚举值。早前这里被写成 precondition_failed
-          // （不在枚举内），是为了迎合一份错误判据 —— tsc 直接 TS2322，整次升级作废。
-          // 「参数不合法」对应的正确 kind 就是 invalid_args。详见 docs/rsi-self-iteration.md §20.8。
           code: 'TOOL_INVALID_ARGS',
           kind: 'invalid_args',
           message: '删除目录必须指定 recursive=true',
