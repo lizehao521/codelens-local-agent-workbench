@@ -1,3 +1,10 @@
+/*
+ * tool-forge-test-gen —— 基于 ForgeSpec 生成 Vitest 测试代码（纯字符串生成，无 IO）。
+ *
+ * 强化维度：工具纪律的「晋升即验证」——每个晋升到能力库的宏都自带一份可运行的判据，
+ * 防止「造出来、没人验、直接吞进库里」的纪律漏洞。覆盖 validateForgeSpec 输入校验、
+ * validateReferences 过滤、composeLesson 三问、以及 ForgeSpec 结构约束。
+ */
 import type { ForgeSpec } from './tool-forge.tool.js';
 
 /**

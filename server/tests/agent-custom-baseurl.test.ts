@@ -123,7 +123,7 @@ describe('registry 合并视图', () => {
     expect(deepseek?.baseUrl).toBe('https://relay.example/deepseek/v1');
     // 同步模型优先，静态模型仍在
     expect(deepseek?.models.map((m) => m.id)).toContain('relay-model');
-    expect(deepseek?.models.map((m) => m.id)).toContain('deepseek-v4-pro');
+    expect(deepseek?.models.map((m) => m.id)).toContain('deepseek-v3');
   });
 
   it('静态表未被同步污染（返回副本）', () => {

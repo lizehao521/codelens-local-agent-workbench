@@ -1,3 +1,9 @@
+/*
+ * tool-forge-shared —— 动态工具（tool.forge）的共享支撑层：沙箱路径、审计事件与晋升流程。
+ *
+ * 强化维度：工具纪律（§6）的机器侧落地 —— 把「晋升必须过测试闸、语义化版本、沉淀可审计」
+ * 从 tool-forge.tool.ts 拆出，避免单文件超棘轮上限；所有函数仍只服务 tool.forge 一族。
+ */
 import { mkdir, readFile, writeFile, appendFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolExecutionContext, ToolOutcome } from '../../types/tool.js';
