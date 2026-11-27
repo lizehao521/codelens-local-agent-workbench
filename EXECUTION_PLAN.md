@@ -8,7 +8,7 @@
 | **P0-2** | Tool Forge 晋升流程集成 generateTests | 1-2d | ✅ **完成**（0d193dc） | Minis 实现 |
 | **P1-1** | Judge/Update 可视化面板 | 1d | ✅ **完成**（7e3c5d7） | Minis 实现 |
 | **P1-2** | Update 策略版本化 + 自动 Changelog | 0.5d | ✅ **完成**（da9e919 + 本轮自动 Changelog） | Minis 实现 |
-| **P2-1** | 检查点/回滚 UI | 1d | ⏳ 待定 | CodeLens |
+| **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 | 1d | ✅ **完成**（SideRail 审计台标签 + AuditView 全量实现） | Minis 实现 |
 | **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | 1-2d | 🔄 **进行中**（rg ✅ / 基因库种子 13 条 ✅ / Patch 质量重写 ✅） | Minis |
 
 ---
@@ -76,7 +76,6 @@ CodeLens Agent 需要实现：
 - 自动 Changelog 生成 + 发版切段（`npm run changelog` / `npm run changelog:release -- x.y.z`）
 
 **待办**:
-1. P2-1 检查点/回滚 UI（时间轴、一键恢复、差异预览）
 2. P2-2 Minis 进化引擎优化：文件发现换 rg、基因库种子、候选 Patch 与真实文件内容对齐
 3. 版本号已到 2.32.0，但仓库仍无 git tag —— 需要发布标签时再打 `v2.32.0`
 
@@ -88,5 +87,5 @@ CodeLens Agent 需要实现：
 |--------|------|------|------|
 | **P1-1** | Judge/Update 可视化面板 | 前端图表：通过率/Token/延迟钻取 | ✅ 2.31.0 |
 | **P1-2** | Update 策略版本化 + 自动 Changelog | π 语义化版本 + 自动 Changelog 生成 | ✅ 2.32.0 |
-| **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 | ⏳ 待定 |
+| **P2-1** | 检查点/回滚 UI | 时间轴、一键恢复、差异预览 | ✅ 2.32.0 |
 | **P2-2** | Minis 进化引擎优化 | 文件发现换 rg、基因库种子、Patch 质量提升 | 🔄 进行中（rg ✅ / 种子 13 条 ✅ / Patch 质量重写 ✅） |
