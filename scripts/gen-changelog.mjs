@@ -34,8 +34,13 @@ const text = readFileSync(CHANGELOG, 'utf8');
 if (args.release) {
   const date = args.date ?? new Date().toISOString().slice(0, 10);
   const next = freezeRelease(text, args.release, date);
-  writeFileSync(CHANGELOG, next);
-  console.log(`[changelog] 已冻结：## [${args.release}] - ${date}（新开 Unreleased）`);
+  if (!args.dryRun) {
+    writeFileSync(CHANGELOG, next);
+    console.log(`[changelog] 已冻结：## [${args.release}] - ${date}（新开 Unreleased）`);
+  } else {
+    console.log('[changelog] dry-run — 下面是冻结后的全文：');
+    console.log(next);
+  }
   process.exit(0);
 }
 
@@ -58,7 +63,7 @@ if (args.write) {
 
 /** `--flag value` 解析；未知参数直接失败，避免拼错后静默跑成默认行为。 */
 function parseArgs(argv) {
-  const out = { write: false, release: null, since: null, limit: 30, date: null };
+  const out = { write: false, release: null, since: null, limit: 30, date: null, dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--write') out.write = true;
@@ -66,6 +71,7 @@ function parseArgs(argv) {
     else if (arg === '--since') out.since = argv[++i];
     else if (arg === '--date') out.date = argv[++i];
     else if (arg === '--limit') out.limit = Number(argv[++i]);
+    else if (arg === '--dry-run') out.dryRun = true;
     else if (arg === '--help' || arg === '-h') {
       console.log('用法见 scripts/gen-changelog.mjs 文件头注释');
       process.exit(0);
