@@ -184,6 +184,19 @@ export class JudgeController {
   }
 
   /**
+   * 判据塔趋势：按时间桶聚合 pass 率 / 均分 / 覆盖率 / token 消耗。
+   *
+   * 参数只接受 `days`（1-90，默认 7）。越界收敛放在 resolveWindow 里，
+   * 这里不重复一遍边界逻辑（两处各管一半必然分叉）。
+   * 只读：路径上没有写方法，与 insight 同一组禁令。
+   */
+  stats(req: Request, res: Response): void {
+    const rawDays = Number(req.query.days);
+    const days = Number.isFinite(rawDays) ? rawDays : 7;
+    res.json(this.judge.stats({ days }));
+  }
+
+  /**
    * 强化内核洞察视图：一次拿全四项（四层状态 / 两档分布 / 深判花费 / 经验注入）。
    *
    * 三条禁令（由结构保证，不靠自觉）：

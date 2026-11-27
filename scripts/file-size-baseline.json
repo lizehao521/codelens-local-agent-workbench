@@ -50,7 +50,7 @@
     },
     {
       "file": "client/src/services/api-judge.ts",
-      "ceiling": 313
+      "ceiling": 349
     },
     {
       "file": "client/src/services/api-rsi.ts",
@@ -110,7 +110,7 @@
     },
     {
       "file": "server/src/controllers/judge.controller.ts",
-      "ceiling": 366
+      "ceiling": 379
     },
     {
       "file": "server/src/providers/openai-compatible.adapter.ts",
@@ -118,7 +118,7 @@
     },
     {
       "file": "server/src/repositories/judge.repository.ts",
-      "ceiling": 383
+      "ceiling": 399
     },
     {
       "file": "server/src/repositories/schema.ts",
@@ -166,7 +166,7 @@
     },
     {
       "file": "server/src/services/judge/judge.service.ts",
-      "ceiling": 1136
+      "ceiling": 1149
     },
     {
       "file": "server/src/services/judge/replay.ts",

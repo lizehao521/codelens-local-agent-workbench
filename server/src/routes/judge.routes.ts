@@ -18,5 +18,7 @@ export function createJudgeRoutes(controller: JudgeController): Router {
   router.get('/judge/effectiveness', (req, res) => controller.effectiveness(req, res));
   // 洞察视图：只读聚合（四层状态 / 两档分布 / 深判花费 / 经验注入）。
   router.get('/judge/insight', (req, res) => controller.insight(req, res));
+  // 趋势视图：只读聚合（按时间桶的 pass 率 / 均分 / 覆盖率 / token）。
+  router.get('/judge/stats', (req, res) => controller.stats(req, res));
   return router;
 }

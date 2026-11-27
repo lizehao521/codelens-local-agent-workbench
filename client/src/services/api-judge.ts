@@ -310,3 +310,39 @@ export async function getJudgeEffectiveness(): Promise<LessonEffectivenessRow[]>
   const res = await get<{ lessons: LessonEffectivenessRow[] }>('/judge/effectiveness');
   return res.lessons;
 }
+
+/** 趋势桶：与 server/src/services/judge/stats.ts 的 JudgeStatsBucket 同构。 */
+export interface JudgeStatsBucket {
+  t: number;
+  runs: number;
+  rules: number;
+  deep: number;
+  pass: number;
+  fail: number;
+  inconclusive: number;
+  avgScore: number | null;
+  avgCoverage: number | null;
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface JudgeStats {
+  window: { from: number; to: number; bucketMs: number; days: number };
+  buckets: JudgeStatsBucket[];
+  totals: {
+    runs: number;
+    pass: number;
+    fail: number;
+    inconclusive: number;
+    avgScore: number | null;
+    avgCoverage: number | null;
+    promptTokens: number;
+    completionTokens: number;
+  };
+  rowsWithoutSnapshot: number;
+}
+
+/** GET /api/v1/judge/stats —— 按时间桶的判决趋势（只读）。 */
+export async function getJudgeStats(days = 7): Promise<JudgeStats> {
+  return get<JudgeStats>(withQuery('/judge/stats', { days }));
+}

@@ -41,6 +41,8 @@ import {
   type KernelInsight,
 } from './insight.js';
 import { resolveBaseUrl } from '../../providers/registry.js';
+import { buildStats, resolveWindow, type JudgeStats } from './stats.js';
+
 import {
   COVERAGE_THRESHOLD,
   DEFAULT_LAYER_PROFILES,
@@ -813,6 +815,19 @@ export class JudgeService {
 
   effectiveness(): LessonEffectiveness[] {
     return this.repo.lessonEffectiveness();
+  }
+
+  /**
+   * 判据塔趋势（只读）：按时间桶聚合 pass 率 / 均分 / 覆盖率 / token。
+   *
+   * 与 insight 的边界：insight 回答「现在什么状态」，stats 回答「这段时间的趋势」。
+   * 窗口与桶宽的口径全部收在 resolveWindow/buildStats 里（纯函数可单测），
+   * 这里只负责取行 —— 取多少行由 repo 的 cap 硬性约束，不在内存里无界聚合。
+   */
+  stats(opts: { days?: number; now?: number; maxRows?: number } = {}): JudgeStats {
+    const window = resolveWindow(opts.days ?? 7, opts.now ?? Date.now());
+    const rows = this.repo.runsInRange(window.from, window.to, opts.maxRows ?? 5000);
+    return buildStats(rows, window);
   }
 
   /**

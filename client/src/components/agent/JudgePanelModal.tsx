@@ -1,16 +1,20 @@
 // 判据塔面板（运行时「判据塔」按钮打开，只读）。
 //
-// 三块内容对应强化内核的三件事：
+// 五个 tab 对应强化内核的五件事：
 //   1. 判决历史 —— 每次任务被怎么判、覆盖率多少（r 是否可信）；
 //   2. 自证状态 —— 金丝雀现在能不能分开好坏样本（判据还有没有资格判决）；
-//   3. 经验有效性 —— 注入过的 π 经验，事后任务表现如何（C2 闭环是否真的成立）。
+//   3. 经验有效性 —— 注入过的 π 经验，事后任务表现如何（C2 闭环是否真的成立）；
+//   4. 内核洞察 —— 四层状态 / 两档分布 / 深判花费 / 注入预算（这一刻的整体状态）；
+//   5. 判决趋势 —— 按时间桶的通过率 / 均分 / 判决量（这段时间在变好还是变差）。
 //
 // 这里刻意不做任何「手动改判决」的入口：r 只能来自运行期 Judge。
 
 import { useState } from 'react';
-import { TriangleAlert, CircleCheckBig, Gauge, HelpCircle, CircleX } from 'lucide-react';
+import { TriangleAlert, Gauge } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { cn } from '../../lib/cn';
+import { pct, runTone, runLabel, VerdictIcon } from './judge-run-badges';
+import { JudgeTrendView } from './JudgeTrendView';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import {
   deepJudgeRun,
@@ -24,13 +28,12 @@ import {
   type JudgeDeepResult,
   type JudgeReplayResult,
   type JudgeRunSummary,
-  type JudgeRunVerdict,
   type JudgeSelfCheck,
   type JudgeVerdictStatus,
   type LessonEffectivenessRow,
 } from '../../services/api';
 
-type Tab = 'runs' | 'self' | 'policy' | 'insight';
+type Tab = 'runs' | 'self' | 'policy' | 'insight' | 'trend';
 
 /** 空列表用模块级常量：每次渲染新建数组会让下游 memo 与引用比较全部失效。 */
 const EMPTY_RUNS: JudgeRunSummary[] = [];
@@ -41,29 +44,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'self', label: '判据塔自证' },
   { key: 'policy', label: '经验有效性' },
   { key: 'insight', label: '内核洞察' },
+  { key: 'trend', label: '判决趋势' },
 ];
-
-function pct(n: number): string {
-  return `${Math.round(n * 100)}%`;
-}
-
-function runTone(verdict: JudgeRunVerdict): string {
-  if (verdict === 'pass') return 'text-success';
-  if (verdict === 'fail') return 'text-danger';
-  return 'text-warning';
-}
-
-function runLabel(verdict: JudgeRunVerdict): string {
-  if (verdict === 'pass') return '通过';
-  if (verdict === 'fail') return '失败';
-  return '未定论';
-}
-
-function VerdictIcon({ status }: { status: JudgeVerdictStatus }) {
-  if (status === 'pass') return <CircleCheckBig size={12} className="shrink-0 text-success" />;
-  if (status === 'fail') return <CircleX size={12} className="shrink-0 text-danger" />;
-  return <HelpCircle size={12} className="shrink-0 text-text-tertiary" />;
-}
 
 const STATUS_LABEL: Record<JudgeVerdictStatus, string> = {
   pass: '通过',
@@ -133,6 +115,7 @@ export function JudgePanelModal({ open, onClose }: { open: boolean; onClose: () 
         {/* 条件渲染即懒加载：只在切到该 tab 时挂载并发请求，
             不并进上面的 Promise.all（那会让每次开面板都解压 200 条深判快照）。 */}
         {!loading && !error && tab === 'insight' && <InsightView />}
+        {!loading && !error && tab === 'trend' && <JudgeTrendView />}
       </div>
     </Modal>
   );

@@ -160,6 +160,22 @@ export class JudgeRepository {
   }
 
   /**
+   * 窗口内的判决行（升序），供趋势聚合使用。
+   *
+   * 上限是硬约束：这是唯一一个「按时间范围取行」的查询，没有上限就等于
+   * 允许一个 days=90 的请求把整表读进内存。默认 5000 行足够覆盖 90 天日桶；
+   * 超限时返回最新 N 行（ORDER BY id DESC 再反转），宁可截断也不能 OOM。
+   */
+  runsInRange(from: number, to: number, maxRows = 5000): JudgeRunRow[] {
+    const cap = Math.min(Math.max(maxRows, 1), 20000);
+    const rows = this.db.all<JudgeRunRow>(
+      `SELECT * FROM judge_runs WHERE created_at >= ? AND created_at <= ? ORDER BY id DESC LIMIT ?`,
+      [from, to, cap],
+    );
+    return rows.reverse();
+  }
+
+  /**
    * 某条规则判决下的全部深判子行（新的在前）。
    * 幂等判定与「最新深判摘要」都从这里读，避免两处口径分叉。
    */
