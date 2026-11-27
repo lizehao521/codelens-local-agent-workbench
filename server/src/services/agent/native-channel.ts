@@ -115,7 +115,7 @@ export async function runNativeTurn(ctx: NativeTurnContext): Promise<TurnIR> {
     finishReason = 'tool_calls';
   }
   if (toolCalls.some((call) => call.parseError === 'INVALID_JSON')) {
-    warnings.push('部分工具调用的参数 JSON 不完整，将按失败回喂');
+    warnings.push('部分工具调用的参数 JSON 不完整，已按失败回喂。建议：检查 JSON 格式（双引号、无尾随逗号、括号闭合、字符串转义），修正后重试。');
   }
   return { text, reasoning, toolCalls, finishReason, warnings, usage };
 }

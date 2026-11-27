@@ -15,6 +15,7 @@
  *   · 宏的每一步都是既有工具，审计口径与主链路完全一致。
  */
 import { mkdir, readFile, writeFile, rm, appendFile } from 'node:fs/promises';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import type { ToolDefinition, ToolExecutionContext, ToolOutcome } from '../../types/tool.js';
 import { fsReadTool } from './fs-read.tool.js';
@@ -146,6 +147,66 @@ export function composeLesson(
     message: 'ok',
     lesson: `【动态工具沉淀】${name}：解决「${category}」这类问题；可沉淀为 π 的修改：${toPi}；下次同类问题不造工具即可：${noTool}。`,
   };
+}
+
+
+/** bumpVersion: semantic version increment */
+function bumpVersion(current: string, type: 'major' | 'minor' | 'patch'): string {
+  const parts = current.split('.').map((p) => parseInt(p, 10) || 0);
+  const major = parts[0] ?? 0;
+  const minor = parts[1] ?? 0;
+  const patch = parts[2] ?? 0;
+  if (type === 'major') return (major + 1) + '.0.0';
+  if (type === 'minor') return major + '.' + (minor + 1) + '.0';
+  return major + '.' + minor + '.' + (patch + 1);
+}
+
+/** determineBumpType: infer bump type from references content */
+function determineBumpType(references: Array<{ title: string; url: string }>): 'major' | 'minor' | 'patch' {
+  const joined = references.map((r) => r.title + ' ' + r.url).join(' ').toLowerCase();
+  if (joined.includes('breaking')) return 'major';
+  if (joined.includes('new') || joined.includes('feature')) return 'minor';
+  return 'patch';
+}
+
+/** generateChangelogEntry: produce a changelog block */
+function generateChangelogEntry(name: string, version: string, spec: ForgeSpec, bumpType: string): string {
+  const date = new Date().toISOString().split('T')[0];
+  return [
+    '## [' + version + '] - ' + date,
+    '### ' + name,
+    '- ' + spec.description,
+    '- steps: ' + spec.steps.map((s) => s.tool).join(', '),
+    '- bump: ' + bumpType,
+    '',
+  ].join('\n');
+}
+
+/** versionFilePath: per-tool version file */
+function versionFilePath(ctx: ToolExecutionContext, name: string): string {
+  return path.join(libraryDir(ctx), name + '.version.json');
+}
+
+/** changelogFilePath: single library changelog */
+function changelogFilePath(ctx: ToolExecutionContext): string {
+  return path.join(libraryDir(ctx), 'CHANGELOG.md');
+}
+
+/** readCurrentVersion: read a tool version (default 0.0.0) */
+async function readCurrentVersion(ctx: ToolExecutionContext, name: string): Promise<string> {
+  try {
+    const raw = await readFile(versionFilePath(ctx, name), 'utf8');
+    const data = JSON.parse(raw) as { version?: string };
+    return data.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/** writeVersionFile: persist version metadata */
+async function writeVersionFile(ctx: ToolExecutionContext, name: string, version: string, promotedAt: string): Promise<void> {
+  const payload = JSON.stringify({ version, promotedAt }, null, 2);
+  await writeFile(versionFilePath(ctx, name), payload, 'utf8');
 }
 
 function scopeDir(ctx: ToolExecutionContext): string {
@@ -364,18 +425,62 @@ export const toolForgeTool: ToolDefinition = {
         error: { code: 'TOOL_INVALID_ARGS', kind: 'invalid_args', message: lesson.message },
       };
     }
-    // 晋升：把定义拷进会话能力库，下一代可以直接 use（不必重建）。
-    // 这是「沉淀」的机器侧落地 —— 义肢（任务作用域文件）仍然删除，能力留在库里。
+    // 晋升：自动生成测试 -> 写入测试文件 -> 强制跑测试 -> 版本化 -> changelog -> 晋升到能力库
     const promote = args.answers && (args.answers as Record<string, unknown>).promote === true;
     let promoted = false;
     if (promote) {
       try {
+        // 1. 自动生成测试
+        const testCode = generateTests(spec);
+        const testDir = path.join(ctx.sandboxRoot, 'tests', 'tools');
+        await mkdir(testDir, { recursive: true });
+        const testPath = path.join(testDir, name + '.test.ts');
+        await writeFile(testPath, testCode, 'utf8');
+
+        // 2. 强制跑测试：仅有 package.json 的项目沙箱才执行门禁，否则跳过（保持旧行为兼容）
+        let hasPackageJson = false;
+        try {
+          await readFile(path.join(ctx.sandboxRoot, 'package.json'), 'utf8');
+          hasPackageJson = true;
+        } catch {
+          hasPackageJson = false;
+        }
+        if (hasPackageJson) {
+          try {
+            execSync('npx vitest run ' + testPath, {
+              cwd: ctx.sandboxRoot,
+              stdio: 'pipe',
+              timeout: 60000,
+            });
+          } catch (testError) {
+            await rm(testPath, { force: true });
+            await appendEvent(ctx, 'tool_promote_test_failed', { name });
+            await rm(file, { force: true });
+            return {
+              ok: false,
+              summary: '晋升失败：自动生成的测试未通过（' + String(testError).slice(0, 200) + '）',
+              error: { code: 'TOOL_PROMOTE_TEST_FAILED', kind: 'internal', message: 'generated test failed' },
+            };
+          }
+        }
+
+        // 3. 版本化
+        const current = await readCurrentVersion(ctx, name);
+        const bumpType = determineBumpType(spec.references);
+        const nextVersion = bumpVersion(current, bumpType);
+
+        // 4. changelog 与版本文件
         await mkdir(libraryDir(ctx), { recursive: true });
+        await writeFile(changelogFilePath(ctx), generateChangelogEntry(name, nextVersion, spec, bumpType), 'utf8');
+        await writeVersionFile(ctx, name, nextVersion, new Date().toISOString());
+
+        // 5. 晋升到能力库
         await writeFile(libraryPath(ctx, name), `${JSON.stringify(spec, null, 2)}\n`, 'utf8');
-        await appendEvent(ctx, 'tool_promoted', { name });
+        await appendEvent(ctx, 'tool_promoted', { name, version: nextVersion });
         promoted = true;
-      } catch {
+      } catch (err) {
         /* 晋升失败不阻断回收：义肢照删，沉淀少一步 */
+        promoted = false;
       }
     }
 

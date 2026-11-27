@@ -109,10 +109,13 @@ export class CallResolver {
             retryable: false,
           },
         });
+        // Provide detailed feedback to help LLM fix the JSON and retry
+        const rawArgs = call.rawArguments || '{}';
+        const truncatedArgs = rawArgs.slice(0, 200);
         feedback.push({
           callId: row.call_id,
           toolName: row.tool_name,
-          observation: `工具调用失败：参数 JSON 不完整（${call.rawArguments.slice(0, 80)}），请重新发起调用并提供完整参数。`,
+          observation: `工具调用失败：参数 JSON 解析失败。\n\n原始参数（前200字符）：\n${truncatedArgs}\n\n常见问题：\n1. 缺少引号（字符串必须用双引号包裹）\n2. 尾随逗号（JSON 不允许最后一个属性后有逗号）\n3. 缺少大括号/方括号闭合\n4. 字符串中未转义的引号或换行\n5. 单引号代替双引号\n\n请修正 JSON 格式后重新发起工具调用。原始参数片段：${rawArgs.slice(0, 100)}`,
           errorKind: 'invalid_args',
         });
         continue;
