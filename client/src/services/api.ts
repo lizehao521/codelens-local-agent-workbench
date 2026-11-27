@@ -14,3 +14,4 @@ export * from './api-sandbox';
 export * from './api-observability';
 export * from './api-judge';
 export * from './api-rsi';
+export * from './api-policy';

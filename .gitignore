@@ -120,3 +120,13 @@ client/playwright-report/
 /probe-*.txt
 /.arts/
 /acct-data/
+
+# 本轮并行会话的一次性调度脚本与临时探针（非源码）
+/dispatch_task*.js
+/test_zod.ts
+/tmp/
+
+# 自升级/RSI 探针跑出来的临时落盘（apply-patch 联调、探针沙箱、自检报告）
+/.self-upgrade/proposals/
+/server/.probe-run-*/
+/workspace/

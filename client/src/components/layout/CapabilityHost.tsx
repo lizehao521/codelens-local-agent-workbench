@@ -3,6 +3,7 @@
 
 import { useEffect } from 'react';
 import { JudgePanelModal } from '../agent/JudgePanelModal';
+import { PolicyVersionsModal } from '../agent/PolicyVersionsModal';
 import { RsiDashboardModal } from '../agent/RsiDashboardModal';
 import { RsiSelfIterationDashboard } from '../agent/RsiSelfIterationDashboard';
 import { RsiIterationGate } from '../agent/RsiIterationGate';
@@ -34,6 +35,7 @@ export function CapabilityHost() {
   return (
     <>
       <JudgePanelModal open={activeModal === 'judge'} onClose={closeCapability} />
+      <PolicyVersionsModal open={activeModal === 'policy'} onClose={closeCapability} />
       <RsiDashboardModal open={activeModal === 'rsi'} onClose={closeCapability} sessionId={sessionId} />
       <RsiSelfIterationDashboard open={activeModal === 'rsi-live'} onClose={closeCapability} />
       <SandboxPermissionModal open={activeModal === 'sandbox'} onClose={closeCapability} />

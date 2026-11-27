@@ -4,6 +4,24 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+#### P1-1 判决统计趋势（Judge Stats Trend）
+- 服务端 `GET /api/v1/judge/stats?days=N` — 按天聚合通过率 / 均分 / 判决量 / 空桶 / token 消耗（`services/judge/stats.ts`，窗口上限 90 天）
+- 前端 `JudgeTrendView` — 纯 SVG 折线 + 柱状（无图表库依赖），支持 7/14/30 天窗口切换，空桶灰显
+- `judge-run-badges.tsx` — 从判决面板抽出运行徽标，控制单文件行数
+
+#### P1-2 π 策略版本历史与回滚
+- 服务端 `GET /api/v1/policy/versions?limit=N` — 版本列表 + 相邻版本差异（新增/删除/阈值变更）
+- 服务端 `POST /api/v1/policy/rollback {version}` — 回滚到指定版本并写入新版本号（审计可追溯）
+- `services/agent/policy-diff.ts` — 策略差异计算（`added` / `removed` / `thresholdChanges`）
+- 前端 `PolicyVersionsModal` — 侧栏「策略版本」入口，展示版本链与差异，一键回滚（含 404 `POLICY_VERSION_NOT_FOUND` 与参数错误提示）
+
+#### 修复
+- `PolicyVersionsModal` 在接口返回缺 `versions` 字段时崩溃（`data?.versions.map` → `(data?.versions ?? [])`）
+
 ## [2.31.0] - 2026-11-27
 
 ### 新增

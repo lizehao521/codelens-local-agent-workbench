@@ -25,6 +25,7 @@ import { UpdateService } from './services/agent/update.service.js';
 import { JudgeService } from './services/judge/judge.service.js';
 import { ruleSemanticAssessor } from './services/judge/semantic.js';
 import { JudgeController } from './controllers/judge.controller.js';
+import { PolicyController } from './controllers/policy.controller.js';
 import { RsiController } from './controllers/rsi.controller.js';
 import { RsiApplyController } from './controllers/rsi-apply.controller.js';
 import { RsiVerifyController } from './controllers/rsi-verify.controller.js';
@@ -87,6 +88,7 @@ export interface Runtime {
   healthController: HealthController;
   sandboxPermissionsController: SandboxPermissionsController;
   judgeController: JudgeController;
+  policyController: PolicyController;
   rsiController: RsiController;
   rsiApplyController: RsiApplyController;
   rsiVerifyController: RsiVerifyController;
@@ -369,6 +371,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
   const healthController = new HealthController(db, mcpManager, config.sandboxRoot, config.agentDbPath);
   const sandboxPermissionsController = new SandboxPermissionsController(sandboxPermissions);
   const judgeController = new JudgeController(judge, policy);
+  const policyController = new PolicyController(policy);
   // RSI 自我迭代视图：依赖 db —— 看板读数（overview）要查会话/判决/代际对比。
   const rsiController = new RsiController(db);
   const rsiApplyController = new RsiApplyController(db);
@@ -445,6 +448,7 @@ export function createRuntime(opts: CreateRuntimeOptions = {}): Runtime {
     healthController,
     sandboxPermissionsController,
     judgeController,
+    policyController,
     rsiController,
     rsiApplyController,
     rsiVerifyController,

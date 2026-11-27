@@ -7,6 +7,7 @@ import {
   Gauge,
   History,
   LineChart,
+  RotateCcw,
   MessageSquare,
   Settings,
   ShieldAlert,
@@ -22,6 +23,7 @@ const VIEWS: Array<{ id: WorkspaceView; label: string; icon: typeof MessageSquar
 
 const CAPABILITIES: Array<{ id: CapabilityModal; label: string; icon: typeof Gauge; hint: string }> = [
   { id: 'judge', label: '判据塔', icon: Gauge, hint: '判决历史、自证状态与经验有效性' },
+  { id: 'policy', label: 'π 版本', icon: RotateCcw, hint: '策略版本历史与追加式回滚' },
   { id: 'rsi', label: 'RSI', icon: LineChart, hint: '套件通过率、分母基线与代际曲线' },
   { id: 'rsi-live', label: '自迭代', icon: Activity, hint: '逐轮参数/信号变化与同类检索证据' },
   { id: 'iteration', label: '迭代', icon: ShieldCheck, hint: '逐轮量化判据、去留决策与人工处置' },
