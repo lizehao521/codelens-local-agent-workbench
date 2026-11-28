@@ -161,9 +161,29 @@ function parseRegexFallback(text: string): ReactParseResult | null {
   const nameMatch = /"tool"\s*:\s*"([^"]+)"/.exec(text);
   if (!nameMatch) return null;
   const name = nameMatch[1]!;
-  const argsKey = text.indexOf('"arguments"', nameMatch.index + nameMatch[0].length);
+
+  // 从 tool 名之后向后扫，维护相对深度；只在 depth===0 处接受 "arguments" 键，
+  // 跳过嵌套对象（如 "data":{"arguments":...}）内的同名键。
+  let argsKey = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = nameMatch.index + nameMatch[0].length; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      if (depth === 0 && text.startsWith('arguments"', i + 1)) { argsKey = i; break; }
+      inString = true;
+    } else if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+  }
+
   if (argsKey < 0) {
-    // Tool name only: accept as a no-argument call (schema validation decides later).
     return {
       kind: 'calls',
       text: text.replace(nameMatch[0]!, '').trim(),

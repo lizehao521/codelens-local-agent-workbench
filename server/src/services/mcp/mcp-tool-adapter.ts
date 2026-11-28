@@ -76,8 +76,9 @@ export interface McpToolInfo {
  * and stays soft-gated. Nothing unannotated ever lands on `none`.
  */
 export function gradeMcpRisk(annotations: McpToolInfo['annotations']): { risk: ToolDefinition['risk']; approvalMode: ToolDefinition['approvalMode'] } {
-  if (annotations?.readOnlyHint === true) return { risk: 'low', approvalMode: 'none' };
+  // 冲突时 destructive 优先：fail-closed 选更保守的一侧
   if (annotations?.destructiveHint === true) return { risk: 'high', approvalMode: 'hard' };
+  if (annotations?.readOnlyHint === true) return { risk: 'low', approvalMode: 'none' };
   return { risk: 'medium', approvalMode: 'soft' };
 }
 
@@ -93,7 +94,9 @@ export function adaptMcpTool(
   const canonical = canonicalMcpToolName(serverId, tool.name);
   // A read-only tool is inherently idempotent — that is what makes its
   // timeouts safe to auto-retry (P2-1 retry gate in the executor).
-  const idempotent = tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true;
+  const idempotent = tool.annotations?.destructiveHint === true
+  ? false
+  : (tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true);
   const graded = gradeMcpRisk(tool.annotations);
   return {
     name: canonical,

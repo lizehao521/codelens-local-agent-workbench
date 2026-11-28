@@ -128,6 +128,8 @@ export class ApprovalService {
 
   /** Issues a challenge and parks the tool call until the user decides. */
   async requestApproval(req: ApprovalChallengeRequest, sse: SseWriter): Promise<ParkedDecision> {
+    // 任务预算已耗尽：不签发必然过期的令牌，直接让 executor 走 TOOL_APPROVAL_EXPIRED。
+    if (req.deadline !== undefined && req.deadline <= Date.now()) return 'expired';
     const key = parkKey(req.sessionId, req.toolCall.call_id);
     this.attachWriter(req.sessionId, sse);
     const { token, tokenHash, expiresAt } = issueApprovalToken({
@@ -163,12 +165,8 @@ export class ApprovalService {
 
     const existing = this.callParks.get(key);
     if (existing) {
-      // P1-4: a previous request already parked this callId. With the
-      // per-session serialization guard (P0-2) this should not happen; if a
-      // stale park still exists (e.g. a superseded run), the old waiter MUST
-      // be woken — swapping `resolve` without settling the old promise left
-      // the previous executor awaiting forever. Drop the stale park and park
-      // afresh below.
+      // P1-4: a stale park on the same callId must be woken before re-parking,
+      // else the superseded executor awaits forever (swapped resolve never settled).
       clearTimeout(existing.timer);
       this.callParks.delete(key);
       existing.resolve('aborted');

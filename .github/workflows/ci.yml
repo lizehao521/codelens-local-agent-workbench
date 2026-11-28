@@ -43,3 +43,8 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npm run test:acceptance
+      # 对抗判据通道：收敛失败循环 V1/V2/N1 + 全库审计三真 BUG（混合换行 replace /
+      # 审批 deadline 死循环 / rename 覆盖绕过）+ E1（MCP annotations 冲突 fail-closed）
+      # 反向断言，就地执行 candidates/ 草稿判据，不搬进 tests/（红线）。
+      # 见 server/vitest.ci-guards.config.ts。
+      - run: npm run test:ci-guards

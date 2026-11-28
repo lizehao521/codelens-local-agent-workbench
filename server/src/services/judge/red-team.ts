@@ -33,38 +33,37 @@ export interface Claim {
 }
 
 /**
- * 完成时态的动作声明。
+ * 完成时态的动作声明（中英双语）。
  *
- * 结构为「已/成功 + 少量修饰 + 动作动词」——「已创建」本身就是完成时态，
- * 不再强制后面跟「了」（中文里「已创建 A 并写入了 B」前一个动作就没有「了」，
- * 强求会让最常见的句式漏检）。
+ * 结构为「已/成功/already/successfully + 少量修饰 + 动作动词」。
+ * 中文不强制「了」；英文用过去分词/过去式。
  *
  * 两处收紧以保证不误杀：
- *  - 「已」后只允许 6 字修饰，避免跨句拼接；
- *  - 句中含「开始/正在/尚未/还未/即将」等语气时整句跳过（见 INCOMPLETE_HINT）。
+ *  - 完成词后只允许 6 字修饰，避免跨句拼接；
+ *  - 句中含「开始/正在/尚未/starting/in progress」等语气时整句跳过（见 INCOMPLETE_HINT）。
  */
 const CLAIM_PATTERNS: Array<{ kind: ClaimKind; re: RegExp }> = [
   {
     kind: 'write',
-    re: /(?:已经?|成功)[^。；\n]{0,6}(?:创建|新建|生成|写入|保存|修改|更新|删除|移除|重命名|移动)/,
+    re: /(?:已经?|成功|already|successfully)[^。；\n]{0,6}(?:创建|新建|生成|写入|保存|修改|更新|删除|移除|重命名|移动|created|wrote|saved|generated|modified|updated|deleted|removed|renamed|moved)/i,
   },
   {
     kind: 'read',
-    re: /(?:已经?|成功)[^。；\n]{0,6}(?:读取|查看|阅读|检查|扫描|列出)/,
+    re: /(?:已经?|成功|already|successfully)[^。；\n]{0,6}(?:读取|查看|阅读|检查|扫描|列出|read|viewed|scanned|listed|checked)/i,
   },
   {
     kind: 'exec',
-    re: /(?:已经?|成功)[^。；\n]{0,6}(?:运行|执行|部署|安装|编译|构建|启动|重启|测试)/,
+    re: /(?:已经?|成功|already|successfully)[^。；\n]{0,6}(?:运行|执行|部署|安装|编译|构建|启动|重启|测试|ran|executed|deployed|installed|compiled|built|started|restarted|tested)/i,
   },
 ];
 
 /**
- * 未完成语气的信号。
+ * 未完成语气的信号（中英双语）。
  *
- * 「已开始创建」「正在创建」「尚未完成」都在说「还没做完」，
+ * 「已开始创建」「正在创建」「尚未完成」「starting」「in progress」都在说「还没做完」，
  * 把它们当成完成声明会大面积误杀——尤其是模型解释进度的时候。
  */
-const INCOMPLETE_HINT = /(开始|正在|进行中|尚未|还未|没有完成|未完成|即将|将要|将会|打算|准备)/;
+const INCOMPLETE_HINT = /(开始|正在|进行中|尚未|还未|没有完成|未完成|即将|将要|将会|打算|准备|starting|in progress|not yet|haven't|hasn't)/i;
 
 /**
  * 工具 display_name → 动作类别。
@@ -99,14 +98,11 @@ export function extractClaims(finalAnswer: string): Claim[] {
   if (body.trim() === '') return [];
 
   const claims: Claim[] = [];
-  const seen = new Set<ClaimKind>();
   for (const sentence of sentences(body)) {
     // 未完成语气的句子整句跳过：「已开始创建」不是完成声明。
     if (INCOMPLETE_HINT.test(sentence)) continue;
     for (const { kind, re } of CLAIM_PATTERNS) {
-      if (seen.has(kind)) continue;
       if (!re.test(sentence)) continue;
-      seen.add(kind);
       claims.push({ kind, quote: sentence.slice(0, 80) });
     }
   }

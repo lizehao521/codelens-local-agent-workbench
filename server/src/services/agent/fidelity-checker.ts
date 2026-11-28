@@ -99,10 +99,19 @@ export function checkFidelity(summaryText: string, transcript?: string): Fidelit
 }
 
 /** Builds the compaction prompt instructing the model to emit all nine sections. */
-export function buildCompactionPrompt(): string {
-  return [
+export function buildCompactionPrompt(missing?: string[]): string {
+  const base = [
     '请把以下对话历史压缩为一份九段式摘要，每一段必须单独成行并以小标题开头（缺一不可）：',
     ...SUMMARY_SECTIONS.map((section) => `- ${section}`),
     '每段 1-3 句话，保留所有文件路径、数字结论与未解决事项。',
-  ].join('\n');
+  ];
+  if (missing && missing.length > 0) {
+    base.push(
+      '',
+      '【上一轮自检未通过，缺失段落】',
+      ...missing.map((m) => `- ${m}`),
+      '请在本次摘要中补全上述缺失段落，其余段落保持完整。',
+    );
+  }
+  return base.join('\n');
 }

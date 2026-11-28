@@ -140,7 +140,15 @@ export function buildEffectPreview(
       }
     }
 
-    const recoverable = Boolean(ctx.checkpointEnabled) && insideWorkspace(abs, ctx.sandboxRoot);
+    // For rename, recoverable requires BOTH source and target to be inside workspace (snapshot scope).
+    let recoverable = Boolean(ctx.checkpointEnabled) && insideWorkspace(abs, ctx.sandboxRoot);
+    if (operation === 'rename') {
+      const newPath = String(args.newPath ?? '');
+      const newJail = resolveInSandbox(ctx.sandboxRoot, newPath, true, ctx.allowedDirs);
+      if (!newJail.ok || !insideWorkspace(newJail.absolutePath, ctx.sandboxRoot)) {
+        recoverable = false;
+      }
+    }
     const irreversibility = FS_IRREVERSIBLE.has(operation);
     let reversible = !irreversibility;
     let summary: string;
@@ -169,7 +177,25 @@ export function buildEffectPreview(
     } else if (operation === 'append') {
       summary = `将向 ${display} 追加内容`;
     } else if (operation === 'rename') {
-      summary = `将把 ${display} 重命名为 ${String(args.newPath ?? '')}`;
+      const newPath = String(args.newPath ?? '');
+      const newJail = resolveInSandbox(ctx.sandboxRoot, newPath, true, ctx.allowedDirs);
+      summary = `将把 ${display} 重命名为 ${newPath}`;
+      if (newJail.ok && !insideWorkspace(newJail.absolutePath, ctx.sandboxRoot)) {
+        // Target is outside workspace (snapshot scope) - not recoverable
+        recoverable = false;
+        recoveryNote = '目标路径不在工作区快照范围内，重命名后不可恢复';
+      } else if (newJail.ok) {
+        // Check if target exists and would be overwritten
+        try {
+          const st = statSync(newJail.absolutePath);
+          if (st.isFile() || st.isDirectory()) {
+            recoverable = false;
+            recoveryNote = '目标路径已存在，重命名会覆盖且不在快照范围内，不可恢复';
+          }
+        } catch {
+          // target doesn't exist - fine
+        }
+      }
     } else {
       summary = `将写入 ${display}`;
     }
@@ -194,14 +220,15 @@ export function buildEffectPreview(
     const command = String(args.command ?? '');
     const execArgs = Array.isArray(args.args) ? args.args.map((v) => String(v)) : [];
     const cwd = String(args.cwd ?? '.');
+    const items: EffectItem[] = [
+      { path: `${command} ${execArgs.join(' ')}`.trim(), kind: 'command', exists: true, bytes: null },
+      { path: cwd, kind: 'dir', exists: true, bytes: null },
+    ];
     return {
       reversible: false,
       summary: `将启动进程 ${command}（参数 ${execArgs.length} 个，工作目录 ${cwd}）`,
-      items: [
-        { path: `${command} ${execArgs.join(' ')}`.trim(), kind: 'command', exists: true, bytes: null },
-        { path: cwd, kind: 'dir', exists: true, bytes: null },
-      ],
-      itemCount: 1,
+      items,
+      itemCount: items.length,
       recoverable: false,
       recoveryNote: '命令执行的副作用（子进程、网络、环境变更）无法通过快照撤销',
     };

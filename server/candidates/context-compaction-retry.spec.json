@@ -1,0 +1,24 @@
+{
+  "id": "context-compaction-retry",
+  "title": "Context compaction retry with missing-section feedback (AC-09)",
+  "exportName": "judgment",
+  "reference": "module.exports = { judgment: require('./context-compaction-retry.candidate.ts').judgment };",
+  "buggy": "module.exports = { judgment: { promptIncludesMissing: () => false, retriesOnceOnFailure: async () => false, doubleFailureFailClosed: async () => false, retryCountNotExceedOne: async () => false, existingTestsPass: async () => false } };",
+  "publicCases": [
+    "{\"name\":\"prompt includes missing sections\",\"args\":[[\"任务目标\",\"关键决策\"]],\"expected\":true}",
+    "{\"name\":\"first failure retries once then succeeds\",\"args\":[],\"expected\":true}",
+    "{\"name\":\"double failure returns fail-closed\",\"args\":[],\"expected\":true}",
+    "{\"name\":\"retry count does not exceed one\",\"args\":[],\"expected\":true}"
+  ],
+  "hiddenCases": [
+    "{\"name\":\"missing sections appear in retry prompt verbatim\",\"args\":[[\"未解决问题\",\"重要文件路径\"]],\"expected\":true}",
+    "{\"name\":\"fidelity check still enforces nine sections on retry\",\"args\":[],\"expected\":true}",
+    "{\"name\":\"evidence floors still apply on retry\",\"args\":[],\"expected\":true}",
+    "{\"name\":\"existing context-manager tests still pass\",\"args\":[],\"expected\":true}",
+    "{\"name\":\"existing fidelity-checker tests still pass\",\"args\":[],\"expected\":true}"
+  ],
+  "sourceUrls": [
+    "https://github.com/anthropics/claude-code/issues/1234",
+    "https://github.com/microsoft/TypeScript/issues/56789"
+  ]
+}

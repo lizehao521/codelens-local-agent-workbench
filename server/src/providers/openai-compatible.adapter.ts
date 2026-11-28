@@ -408,8 +408,7 @@ export function buildChatBody(params: ChatParams, caps?: ProviderCapabilities): 
     model: params.model,
     messages,
     temperature: params.temperature,
-    max_tokens: params.maxTokens,
-    stream: params.stream,
+    max_tokens: params.maxTokens, stream: params.stream, ...(process.env.AGENT_REASONING_EFFORT ? { reasoning_effort: process.env.AGENT_REASONING_EFFORT } : {}),
   };
   if (params.stream) {
     body.stream_options = { include_usage: true };

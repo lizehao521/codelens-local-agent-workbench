@@ -16,6 +16,7 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "test": "vitest run && npm run test:krsi",
+    "test:ci-guards": "vitest run --config vitest.ci-guards.config.ts",
     "test:coverage": "vitest run --config vitest.coverage.config.ts --coverage",
     "check:coverage-floor": "node ../scripts/check-coverage-floor.mjs --package=server",
     "check:coverage": "npm run test:coverage && npm run check:coverage-floor",

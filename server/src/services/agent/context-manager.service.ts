@@ -199,41 +199,51 @@ export class ContextManager {
     const transcript =
       (previousAnchor ? `【此前的压缩摘要】\n${previousAnchor}\n\n` : '') +
       head.map((row) => `[${row.role}] ${row.content.slice(0, 600)}`).join('\n');
-    let summary: string;
-    try {
-      summary = await this.deps.summarize(transcript, buildCompactionPrompt());
-    } catch {
-      return { ok: false, missing: ['摘要生成失败'] };
+
+    // Try once, then retry ONCE with missing-sections feedback if fidelity fails.
+    // Double failure → fail-closed (AC-09 unchanged).
+    let missing: string[] | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let summary: string;
+      try {
+        summary = await this.deps.summarize(transcript, buildCompactionPrompt(missing));
+      } catch {
+        return { ok: false, missing: ['摘要生成失败'] };
+      }
+      const fidelity = checkFidelity(summary, transcript);
+      if (fidelity.ok) {
+        // P2-4③: the summary line is a USER message — a system-role summary sat
+        // beside the system prompt (double system), which some upstreams reject.
+        const summaryMessage: UpstreamMessage = {
+          role: 'user',
+          content: `【上下文压缩摘要】\n${summary}`,
+        };
+        // Persist as an is_summary message so later turns (and a page reload) reuse
+        // it instead of re-summarizing the same prefix (P2-4①).
+        //
+        // The anchor goes AT the boundary it summarises, not at the end of the log.
+        // Appending it made it the newest row, so every later turn resolved the live
+        // region to the rows AFTER it — empty — and silently dropped the L3 tail that
+        // AC-09 promises to retain. Seating it at `boundarySeq` keeps history order
+        // truthful: below it everything is covered by the summary, above it still live.
+        const boundarySeq = live[keepFrom]!.seq;
+        this.deps.messages.insertAt(
+          {
+            sessionId,
+            role: 'user',
+            content: summaryMessage.content,
+            isSummary: true,
+            tokens: estimateTextTokens(summary),
+          },
+          boundarySeq,
+        );
+        return { ok: true, summaryMessage, tail, removedCount: head.length, before };
+      }
+      // Fidelity failed — capture missing sections for retry (attempt 0 only)
+      missing = [...fidelity.missing, ...fidelity.missingEvidence];
+      // Loop continues for attempt 1 (the retry); if attempt 1 also fails, we fall through
     }
-    const fidelity = checkFidelity(summary, transcript);
-    if (!fidelity.ok) {
-      return { ok: false, missing: [...fidelity.missing, ...fidelity.missingEvidence] };
-    }
-    // P2-4③: the summary line is a USER message — a system-role summary sat
-    // beside the system prompt (double system), which some upstreams reject.
-    const summaryMessage: UpstreamMessage = {
-      role: 'user',
-      content: `【上下文压缩摘要】\n${summary}`,
-    };
-    // Persist as an is_summary message so later turns (and a page reload) reuse
-    // it instead of re-summarizing the same prefix (P2-4①).
-    //
-    // The anchor goes AT the boundary it summarises, not at the end of the log.
-    // Appending it made it the newest row, so every later turn resolved the live
-    // region to the rows AFTER it — empty — and silently dropped the L3 tail that
-    // AC-09 promises to retain. Seating it at `boundarySeq` keeps history order
-    // truthful: below it everything is covered by the summary, above it still live.
-    const boundarySeq = live[keepFrom]!.seq;
-    this.deps.messages.insertAt(
-      {
-        sessionId,
-        role: 'user',
-        content: summaryMessage.content,
-        isSummary: true,
-        tokens: estimateTextTokens(summary),
-      },
-      boundarySeq,
-    );
-    return { ok: true, summaryMessage, tail, removedCount: head.length, before };
+    // Double failure → fail-closed
+    return { ok: false, missing: missing ?? ['压缩自检未通过'] };
   }
 }

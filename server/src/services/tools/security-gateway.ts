@@ -78,8 +78,17 @@ export function assessRisk(
       }
       return { risk: 'medium', approvalMode: 'soft', reason: '写入新文件' };
     }
-    if (operation === 'rename' || operation === 'append') {
-      return { risk: 'medium', approvalMode: 'soft', reason: '文件变更操作' };
+    if (operation === 'rename') {
+      // 检查目标 newPath 是否已存在
+      const targetJail = resolveInSandbox(ctx.sandboxRoot, String(args.newPath ?? ''), true, ctx.allowedDirs);
+      const targetExists = targetJail.ok && existsSync(targetJail.absolutePath);
+      if (targetExists) {
+        return { risk: 'high', approvalMode: 'hard', reason: '重命名会覆盖已存在文件，需要确认' };
+      }
+      return { risk: 'medium', approvalMode: 'soft', reason: '重命名文件' };
+    }
+    if (operation === 'append') {
+      return { risk: 'medium', approvalMode: 'soft', reason: '文件追加操作' };
     }
     if (operation === 'create') {
       if (targetExists) {

@@ -1,0 +1,16 @@
+{
+  "id": "checkpoint-disabled-noise",
+  "title": "CHECKPOINT_ENABLED 关闭时产生噪声（日志/SSE/运行卡字段），误导用户以为快照在工作",
+  "allowed": [
+    "src/services/tx/checkpoint.service.ts",
+    "src/services/agent/agent-loop.service.ts",
+    "src/services/agent/run-assembly.ts",
+    "src/services/agent/call-resolver.ts"
+  ],
+  "judge": "tests/self-upgrade/checkpoint-disabled-noise.test.ts",
+  "probe": "checkpoint-disabled-noise.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改变 CHECKPOINT_ENABLED 默认值（仍默认关闭）、不破坏 enabled 时的 checkpoint 能力、checkpoint.service.ts 与 agent-loop.service.ts 不得净增行"
+}

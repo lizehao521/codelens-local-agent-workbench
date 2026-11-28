@@ -1,0 +1,13 @@
+{
+  "id": "convergence-blind-to-failure-loops",
+  "title": "收敛判定对失败循环盲视：连续失败轮不得误判收敛",
+  "allowed": [
+    "src/services/agent/convergence-detector.ts"
+  ],
+  "judge": "tests/self-upgrade/convergence-blind-to-failure-loops.test.ts",
+  "probe": "convergence-blind-to-failure-loops.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改动 tests/、server/self-upgrade/tasks.json、账本等 D4 文件；仅修改 convergence-detector.ts；复用任务 2 的失败语义（status='failed' 或 errorCode 存在）识别失败轮次"
+}

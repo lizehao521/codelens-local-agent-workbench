@@ -774,7 +774,8 @@ export class AgentLoopService {
         const filesToSnapshot = this.filesToSnapshot(resolved.items);
         // 新建文件执行前不存在，capture 拍不到；执行后按这份清单补 create 记录。
         const createdFiles = selectCreatedFiles(resolved.items);
-        if (filesToSnapshot.length > 0) {
+        // disabled 时不尝试 capture——否则 CheckpointDisabledError 被 catch 后打 warn 噪声日志
+        if (filesToSnapshot.length > 0 && this.deps.checkpoint?.enabled) {
           try {
             await this.deps.checkpoint?.capture(session.id, {
               files: filesToSnapshot,

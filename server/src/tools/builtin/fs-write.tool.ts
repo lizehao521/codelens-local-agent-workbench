@@ -192,47 +192,44 @@ export const fsWriteTool: ToolDefinition = {
           },
         };
       }
-      // 行尾归一化：若原文是 CRLF，把 oldText 里的 LF 归一化成 CRLF，保证跨行匹配。
-      const crlf = original.includes('\r\n');
-      const needle = crlf ? oldText.replace(/\r?\n/g, '\r\n') : oldText.replace(/\r\n/g, '\n');
-      let count = 0;
-      let index = -1;
-      let from = 0;
-      const matches: { line: number; col: number }[] = [];
-      while (true) {
-        const hit = original.indexOf(needle, from);
-        if (hit === -1) break;
-        count += 1;
-        if (count === 1) index = hit;
-        // 计算行号和列号（1-based）
-        const before = original.slice(0, hit);
-        const line = before.split('\n').length;
-        const col = before.split('\n').pop()!.length + 1;
-        matches.push({ line, col });
-        from = hit + needle.length;
+      // 命中扫描：统计次数、首个位置与行号列号。
+      function collectHits(needle: string) {
+        let c = 0, idx = -1, from = 0;
+        const ms: { line: number; col: number }[] = [];
+        for (;;) {
+          const hit = original.indexOf(needle, from);
+          if (hit === -1) break;
+          if (++c === 1) idx = hit;
+          const before = original.slice(0, hit);
+          ms.push({ line: before.split('\n').length, col: before.split('\n').pop()!.length + 1 });
+          from = hit + needle.length;
+        }
+        return { count: c, index: idx, matches: ms };
       }
-      if (count === 0) {
-        return {
-          ok: false,
-          summary: `未在 ${jail.sandboxRelative} 中找到匹配片段`,
-          error: { code: 'REPLACE_NO_MATCH', kind: 'invalid_args', message: 'oldText 在文件中未命中任何位置', suggestion: NEXT_ACTION.noMatch },
-        };
+      // 原样优先：命中≥1 完全按原样；命中 0 才归一化兜底，多形态命中即歧义，不猜位置。
+      const exact = collectHits(oldText);
+      let selected = { ...exact, needle: oldText };
+      if (exact.count === 0) {
+        const norm = [...new Set([oldText.replace(/\r\n/g, '\n'), oldText.replace(/\r?\n/g, '\r\n')])]
+          .filter(n => n !== oldText).map(n => ({ needle: n, ...collectHits(n) })).filter(h => h.count > 0);
+        const only = norm[0];
+        if (norm.length === 1 && only && only.count === 1) selected = only;
+        else if (norm.length > 0) selected = { count: 2, index: -1, matches: [], needle: oldText };
       }
-      if (count > 1) {
-        const locations = matches.map((m) => `line ${m.line}, col ${m.col}`).join('; ');
-        return {
-          ok: false,
-          summary: `oldText 在 ${jail.sandboxRelative} 中命中 ${count} 处，请提供更长上下文`,
-          error: { code: 'REPLACE_AMBIGUOUS', kind: 'invalid_args', message: `oldText 命中 ${count} 处（${locations}），拒绝模糊替换`, suggestion: NEXT_ACTION.ambiguous },
-          // matches 是既有契约（命中次数，字符串化后等于 '3'），位置信息必须另开键。
-          // 实测教训：为了给位置信息复用 matches 会撞坏 fs-write-replace 的 C3 ——
-          // 新能力不许改变既有字段的含义与类型，只能加新键。
-          data: { matches: count, matchLocations: matches },
-        };
-      }
+      const { count, index, matches, needle: chosenNeedle } = selected;
+      if (count === 0) return {
+        ok: false, summary: `未在 ${jail.sandboxRelative} 中找到匹配片段`,
+        error: { code: 'REPLACE_NO_MATCH', kind: 'invalid_args', message: 'oldText 在文件中未命中任何位置', suggestion: NEXT_ACTION.noMatch },
+      };
+      if (count > 1) return {
+        ok: false, summary: `oldText 在 ${jail.sandboxRelative} 中命中 ${count} 处，请提供更长上下文`,
+        error: { code: 'REPLACE_AMBIGUOUS', kind: 'invalid_args', message: `oldText 命中 ${count} 处（${matches.map(m => `line ${m.line}, col ${m.col}`).join('; ')}），拒绝模糊替换`, suggestion: NEXT_ACTION.ambiguous },
+        // matches 是既有契约（命中次数），位置信息必须另开键，不改既有字段含义与类型。
+        data: { matches: count, matchLocations: matches },
+      };
       // 恰好命中 1 处：前段 + newText + 后段，其余字节原样保留。
-      const replacement = crlf ? newText.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n') : newText.replace(/\r\n/g, '\n');
-      const next = original.slice(0, index) + replacement + original.slice(index + needle.length);
+      const replacement = chosenNeedle.includes('\r\n') ? newText.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n') : newText.replace(/\r\n/g, '\n');
+      const next = original.slice(0, index) + replacement + original.slice(index + chosenNeedle.length);
       ctx.reportProgress('writing', `替换 ${jail.sandboxRelative}`);
       await mkdir(path.dirname(jail.absolutePath), { recursive: true });
       await writeFile(jail.absolutePath, next, 'utf8');

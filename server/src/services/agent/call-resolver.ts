@@ -22,6 +22,7 @@ import type { ToolCallIR } from './turn-ir.js';
 import { argsDigest } from '../../utils/digest.js';
 import { resolveCanonical } from '../../utils/tool-name.js';
 import { toolNotFoundObservation } from './system-prompt.js';
+import { repairJson } from '../../utils/json-repair.js';
 
 export interface ResolvedCall {
   items: ExecuteItemInput[];
@@ -60,65 +61,49 @@ export class CallResolver {
     for (const call of calls) {
       // ── unparseable arguments (stream cut mid-JSON) ────────────────────────
       if (call.parseError === 'INVALID_JSON') {
-        const row = this.deps.toolCalls.insert({
-          sessionId,
-          messageId,
-          callId: call.id,
-          toolName: call.name || '(unknown)',
-          toolWireName: call.name || 'unknown',
-          displayName: call.name || '未知调用',
-          category: 'compute',
-          source: 'builtin',
-          risk: 'low',
-          approvalMode: 'none',
-          channel,
-          iteration,
-          argsJson: call.rawArguments || '{}',
-          argsDigest: argsDigest({}),
-        });
-        this.deps.toolCalls.markFinished(row.id, {
-          status: 'failed',
-          errorKind: 'invalid_args',
-          errorMsg: '工具调用的参数 JSON 不完整',
-        });
-        this.deps.sse.emit('tool_call', {
-          callId: row.call_id,
-          name: row.tool_name,
-          displayName: row.display_name,
-          category: 'compute',
-          arguments: {},
-          risk: 'low',
-          approvalMode: 'none',
-          source: 'builtin',
-          iteration,
-          status: 'pending',
-        });
-        this.deps.sse.emit('tool_result', {
-          callId: row.call_id,
-          name: row.tool_name,
-          status: 'failed',
-          summary: '工具调用的参数 JSON 不完整',
-          data: null,
-          truncated: false,
-          durationMs: 0,
-          resultId: '',
-          error: {
-            code: 'TOOL_ARGS_INVALID',
-            kind: 'invalid_args',
-            message: '上游返回的工具调用参数 JSON 不完整，无法解析',
-            retryable: false,
-          },
-        });
-        // Provide detailed feedback to help LLM fix the JSON and retry
         const rawArgs = call.rawArguments || '{}';
-        const truncatedArgs = rawArgs.slice(0, 200);
-        feedback.push({
-          callId: row.call_id,
-          toolName: row.tool_name,
-          observation: `工具调用失败：参数 JSON 解析失败。\n\n原始参数（前200字符）：\n${truncatedArgs}\n\n常见问题：\n1. 缺少引号（字符串必须用双引号包裹）\n2. 尾随逗号（JSON 不允许最后一个属性后有逗号）\n3. 缺少大括号/方括号闭合\n4. 字符串中未转义的引号或换行\n5. 单引号代替双引号\n\n请修正 JSON 格式后重新发起工具调用。原始参数片段：${rawArgs.slice(0, 100)}`,
-          errorKind: 'invalid_args',
-        });
-        continue;
+        const repairResult = repairJson(rawArgs);
+        if (repairResult.ok && repairResult.repaired) {
+          call.arguments = repairResult.value as Record<string, unknown>;
+          call.rawArguments = JSON.stringify(repairResult.value);
+        } else {
+          const repaired = repairResult.repaired;
+          const row = this.deps.toolCalls.insert({
+            sessionId, messageId, callId: call.id,
+            toolName: call.name || '(unknown)', toolWireName: call.name || 'unknown', displayName: call.name || '未知调用',
+            category: 'compute', source: 'builtin', risk: 'low', approvalMode: 'none',
+            channel, iteration, argsJson: rawArgs, argsDigest: argsDigest({}),
+          });
+          this.deps.toolCalls.markFinished(row.id, { status: 'failed', errorKind: 'invalid_args', errorMsg: '工具调用的参数 JSON 不完整' });
+          this.deps.sse.emit('tool_call', {
+            callId: row.call_id, name: row.tool_name, displayName: row.display_name,
+            category: 'compute', arguments: {}, risk: 'low', approvalMode: 'none', source: 'builtin',
+            iteration, status: 'pending',
+          });
+          this.deps.sse.emit('tool_result', {
+            callId: row.call_id,
+            name: row.tool_name,
+            status: 'failed',
+            summary: repaired ? '工具调用的参数 JSON 修复失败' : '工具调用的参数 JSON 不完整',
+            data: null,
+            truncated: false,
+            durationMs: 0,
+            resultId: '',
+            error: {
+              code: 'TOOL_ARGS_INVALID',
+              kind: 'invalid_args',
+              message: repaired ? '参数 JSON 自动修复失败，请手动修正后重试' : '上游返回的工具调用参数 JSON 不完整，无法解析',
+              retryable: false,
+            },
+          });
+          feedback.push({
+            callId: row.call_id,
+            toolName: row.tool_name,
+            observation: `工具调用失败：参数 JSON 解析失败。\n\n原始参数（前200字符）：\n${rawArgs.slice(0, 200)}\n\n常见问题：\n1. 缺少引号（字符串必须用双引号包裹）\n2. 尾随逗号（JSON 不允许最后一个属性后有逗号）\n3. 缺少大括号/方括号闭合\n4. 字符串中未转义的引号或换行\n5. 单引号代替双引号\n\n请修正 JSON 格式后重新发起工具调用。原始参数片段：${rawArgs.slice(0, 100)}`,
+            errorKind: 'invalid_args',
+          });
+          continue;
+        }
       }
 
       // ── hallucinated tool name: no budget consumption (AC-08) ──────────────

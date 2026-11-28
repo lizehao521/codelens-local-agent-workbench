@@ -1,0 +1,14 @@
+{
+  "id": "fs-write-json-escape-recovery",
+  "title": "fs.write 参数 JSON 转义错误自动恢复",
+  "allowed": [
+    "src/services/agent/call-resolver.ts",
+    "src/utils/json-repair.ts"
+  ],
+  "judge": "tests/self-upgrade/fs-write-json-escape-recovery.test.ts",
+  "probe": "fs-write-json-escape-recovery.probe.ts",
+  "mode": "red-baseline",
+  "maxAttempts": 3,
+  "status": "candidate",
+  "boundary": "不改动 tests/、server/self-upgrade/tasks.json、账本等 D4 文件；call-resolver.ts 净增 ≤1 行（超出则抽独立模块 json-repair.ts ≤300 行）；自动恢复每 call 最多一次；无法恢复时保留回灌语义"
+}
