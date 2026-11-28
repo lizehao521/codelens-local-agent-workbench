@@ -24,7 +24,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import os from 'node:os';
 
-const LIMIT = Math.max(1, Number(process.env.RSI_API_RPM ?? 40));
+// A22-B-4：非数字/NaN 环境变量不得让 LIMIT 变成 NaN（否则限速完全失效）。非法值回退默认 40。
+const LIMIT_RAW = Number(process.env.RSI_API_RPM ?? 40);
+const LIMIT = Number.isFinite(LIMIT_RAW) && LIMIT_RAW >= 1 ? Math.floor(LIMIT_RAW) : 40;
 const WINDOW_MS = 60_000;
 /** 取到窗口边界后再多等一点，避免边界抖动导致「刚好还是 40」。 */
 const MARGIN_MS = 25;
@@ -55,7 +57,8 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 /** 纯函数：给定窗口内已有请求的时间戳，返回需要等待的毫秒数。-1 表示立即可发。 */
 export function computeRateWait(timestamps: number[], now: number, limit: number, windowMs: number): number {
-  const fresh = timestamps.filter((t) => now - t < windowMs);
+  // A22-R-3：忽略未来时间戳（时钟回拨或写入脏数据），否则 now-oldest 为负会算出超过窗口的等待。
+  const fresh = timestamps.filter((t) => t <= now && now - t < windowMs);
   if (fresh.length < limit) return -1;
   const oldest = Math.min(...fresh);
   return windowMs - (now - oldest) + MARGIN_MS;
